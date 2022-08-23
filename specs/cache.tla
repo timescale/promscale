@@ -36,12 +36,12 @@ Min(S) == CHOOSE x \in S : \A y \in S : x =< y
 (*--algorithm cache
 variables
     now = 1;
-    current_epoch = 0;
+    current_epoch = 0; \* needs to be < now at the beginning
     delete_epoch = 0;
     series_metadata = [x \in SeriesId |-> NoEntry];
     series_referenced_from_data = {};
     cached_series = [i \in Ingesters |-> {}];
-    observed_epochs = [i \in Ingesters |-> 0];
+    cache_epochs = [i \in Ingesters |-> 0];
 
 define
     TypeInvariant == 
@@ -51,10 +51,14 @@ define
         /\ series_metadata \in [SeriesId -> SeriesEntry]
         /\ series_referenced_from_data \in SUBSET SeriesId
         /\ cached_series \in [Ingesters -> SUBSET SeriesId]
-        /\ observed_epochs \in [Ingesters -> Epoch]
+        /\ cache_epochs \in [Ingesters -> Epoch]
 
     ForeignKeySafety ==
-        /\ \A sid \in series_referenced_from_data: series_metadata[sid].stored = TRUE
+        /\ \A sid \in series_referenced_from_data: series_metadata[sid].stored
+
+    EpochInvariant ==
+        /\ now >= current_epoch
+        /\ (current_epoch > delete_epoch \/ delete_epoch = 0)
 
     StoredSeries == 
         {s \in DOMAIN series_metadata: series_metadata[s].stored = TRUE}
@@ -84,7 +88,8 @@ begin
         (* 
          * No need to use SELECT FOR SHARE as current_epoch and delete_epoch
          * are in the same row in the epoch table (and epoch table only has
-         * one row).
+         * one row), and because this transaction doesn't apply changes to 
+         * the database state.
          *)
         fetched_cur_epoch := current_epoch;
         fetched_del_epoch := delete_epoch;
@@ -93,7 +98,7 @@ begin
     ScrubCache:
         (* This needs to be under an RW mutex *)
         with i \in Ingesters do
-            if observed_epochs[i] <= fetched_del_epoch then
+            if cache_epochs[i] <= fetched_del_epoch then
                 (* 
                  * Observed epoch is too far behind: some items in 
                  * the cache may already have been deleted in the 
@@ -104,7 +109,7 @@ begin
             else
                 cached_series[i] := cached_series[i] \ fetched_series;
             end if;
-            observed_epochs[i] := fetched_cur_epoch;
+            cache_epochs[i] := fetched_cur_epoch;
         end with;
 end process;
 
@@ -142,8 +147,8 @@ begin
                  *)
                 new_references := new_series;
                 new_series := new_series \ cached_series[self];
-                locally_observed_epoch := observed_epochs[self];
-             CreateSeries:
+                locally_observed_epoch := cache_epochs[self];
+            CreateSeries:
                 (*
                  * get_or_create_series_id calls resurrect_series_id
                  * which, in turn, uses UPDATE and will cause a transaction
@@ -152,13 +157,13 @@ begin
                 series_metadata := [x \in new_series |-> NewEntry] @@ series_metadata;
                 (*
                  * The previous line is actually a DB transaction that could
-                 * be rolled back. We don't handle it here for the sake of not
+                 * be aborted. We don't handle it here for the sake of not
                  * bloating this spec even more. It should be entirely safe to
-                 * wipe the cache clean if a rollback happens.
+                 * wipe the cache clean if an abort happens.
                  *)
                 cached_series[self] := cached_series[self] \union new_series;
             IngestTransaction:
-                (* this if is epoch_abort *)
+                (* this if statement is the epoch_abort *)
                 if locally_observed_epoch <= delete_epoch then
                     (*
                      * Note: in the actual implementation we will effectively
@@ -216,8 +221,16 @@ begin
             or
                 (* mark_series_to_be_dropped_as_unused *)
                 MarkUnused:
-                    (* SELECT FOR SHARE current_epoch FROM epoch_table *)
-                    locally_observed_epoch := Max({current_epoch, now});
+                    (* 
+                     * SELECT FOR SHARE current_epoch FROM epoch_table
+                     * is required to guarantee this transaction happens
+                     * entirely before or entirely after PrepareDeleteTx.
+                     *
+                     * Otherwise it's possible for the MarkUnused transaction to
+                     * commit after PrepareDeleteTx commits and caches observe it,
+                     * but without actually observing what is being marked.
+                     *)
+                    locally_observed_epoch := current_epoch;
                     with 
                         stale_series = {s \in StoredSeries: 
                                         /\ (s \notin series_referenced_from_data) 
@@ -231,26 +244,19 @@ begin
                         series_metadata := 
                             [s \in stale_series |-> EntryMarkedForDeletion(locally_observed_epoch)] @@ series_metadata;
                     end with;
-                AdvanceEpoch:
-                    (* 
-                     * This must happen AFTER marking. 
-                     * Cache scrubber reads in the oppposite order, first current_epoch, then rows
-                     * It guarantees that it sees marked rows of _at least_ current_epoch (or newer)
-                     *)
-                    current_epoch := Max({current_epoch, locally_observed_epoch});
             or
                 (* delete_expired_series *)
                 PrepareDeleteTx:
                     (* This requires an UPDATE lock on delete_epoch, and current_epoch *)
-                    delete_epoch := Max({current_epoch - Delay, delete_epoch});
+                    current_epoch := now;
+                    delete_epoch := current_epoch - Delay;
                     locally_observed_epoch := delete_epoch;
                     (* First COMMIT *)
                 ActuallyDeleteTx:
                     (*
-                     * DELETE ... RETURNING id statement. Otherwise
-                     * under Read Committed it could stomp over a client-driven
+                     * Under Read Committed we could stomp over a client-driven
                      * resurrect-UPDATE.
-                     * (Alternatively, rechecking WHERE conditions should work)
+                     * Therefore we need to recheck the WHERE conditions
                      *
                      * DELETE should provoke a conflict with
                      * get_or_create_series_id called by Ingester
@@ -266,10 +272,10 @@ begin
 end process;        
 end algorithm; *)
     
-\* BEGIN TRANSLATION (chksum(pcal) = "6bd9e418" /\ chksum(tla) = "45295ab8")
-\* Process variable locally_observed_epoch of process ingester at line 115 col 5 changed to locally_observed_epoch_
+\* BEGIN TRANSLATION (chksum(pcal) = "ccb7c249" /\ chksum(tla) = "f094f5b2")
+\* Process variable locally_observed_epoch of process ingester at line 120 col 5 changed to locally_observed_epoch_
 VARIABLES now, current_epoch, delete_epoch, series_metadata, 
-          series_referenced_from_data, cached_series, observed_epochs, pc
+          series_referenced_from_data, cached_series, cache_epochs, pc
 
 (* define statement *)
 TypeInvariant ==
@@ -279,10 +285,14 @@ TypeInvariant ==
     /\ series_metadata \in [SeriesId -> SeriesEntry]
     /\ series_referenced_from_data \in SUBSET SeriesId
     /\ cached_series \in [Ingesters -> SUBSET SeriesId]
-    /\ observed_epochs \in [Ingesters -> Epoch]
+    /\ cache_epochs \in [Ingesters -> Epoch]
 
 ForeignKeySafety ==
-    /\ \A sid \in series_referenced_from_data: series_metadata[sid].stored = TRUE
+    /\ \A sid \in series_referenced_from_data: series_metadata[sid].stored
+
+EpochInvariant ==
+    /\ now >= current_epoch
+    /\ (current_epoch > delete_epoch \/ delete_epoch = 0)
 
 StoredSeries ==
     {s \in DOMAIN series_metadata: series_metadata[s].stored = TRUE}
@@ -301,7 +311,7 @@ VARIABLES fetched_cur_epoch, fetched_del_epoch, fetched_series, new_series,
           locally_observed_epoch
 
 vars == << now, current_epoch, delete_epoch, series_metadata, 
-           series_referenced_from_data, cached_series, observed_epochs, pc, 
+           series_referenced_from_data, cached_series, cache_epochs, pc, 
            fetched_cur_epoch, fetched_del_epoch, fetched_series, new_series, 
            new_references, locally_observed_epoch_, candidates, 
            locally_observed_epoch >>
@@ -315,7 +325,7 @@ Init == (* Global variables *)
         /\ series_metadata = [x \in SeriesId |-> NoEntry]
         /\ series_referenced_from_data = {}
         /\ cached_series = [i \in Ingesters |-> {}]
-        /\ observed_epochs = [i \in Ingesters |-> 0]
+        /\ cache_epochs = [i \in Ingesters |-> 0]
         (* Process cache_refresh_worker *)
         /\ fetched_cur_epoch = [self \in CacheRefreshWorkers |-> 0]
         /\ fetched_del_epoch = [self \in CacheRefreshWorkers |-> 0]
@@ -339,7 +349,7 @@ SelectEpochAndMarked(self) == /\ pc[self] = "SelectEpochAndMarked"
                               /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                               series_metadata, 
                                               series_referenced_from_data, 
-                                              cached_series, observed_epochs, 
+                                              cached_series, cache_epochs, 
                                               new_series, new_references, 
                                               locally_observed_epoch_, 
                                               candidates, 
@@ -347,10 +357,10 @@ SelectEpochAndMarked(self) == /\ pc[self] = "SelectEpochAndMarked"
 
 ScrubCache(self) == /\ pc[self] = "ScrubCache"
                     /\ \E i \in Ingesters:
-                         /\ IF observed_epochs[i] <= fetched_del_epoch[self]
+                         /\ IF cache_epochs[i] <= fetched_del_epoch[self]
                                THEN /\ cached_series' = [cached_series EXCEPT ![i] = {}]
                                ELSE /\ cached_series' = [cached_series EXCEPT ![i] = cached_series[i] \ fetched_series[self]]
-                         /\ observed_epochs' = [observed_epochs EXCEPT ![i] = fetched_cur_epoch[self]]
+                         /\ cache_epochs' = [cache_epochs EXCEPT ![i] = fetched_cur_epoch[self]]
                     /\ pc' = [pc EXCEPT ![self] = "Done"]
                     /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                     series_metadata, 
@@ -370,7 +380,7 @@ IngesterBegin(self) == /\ pc[self] = "IngesterBegin"
                        /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                        series_metadata, 
                                        series_referenced_from_data, 
-                                       cached_series, observed_epochs, 
+                                       cached_series, cache_epochs, 
                                        fetched_cur_epoch, fetched_del_epoch, 
                                        fetched_series, new_series, 
                                        new_references, locally_observed_epoch_, 
@@ -383,7 +393,7 @@ ReceiveInput(self) == /\ pc[self] = "ReceiveInput"
                       /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                       series_metadata, 
                                       series_referenced_from_data, 
-                                      cached_series, observed_epochs, 
+                                      cached_series, cache_epochs, 
                                       fetched_cur_epoch, fetched_del_epoch, 
                                       fetched_series, new_references, 
                                       locally_observed_epoch_, candidates, 
@@ -392,12 +402,12 @@ ReceiveInput(self) == /\ pc[self] = "ReceiveInput"
 CacheLookupTransaction(self) == /\ pc[self] = "CacheLookupTransaction"
                                 /\ new_references' = [new_references EXCEPT ![self] = new_series[self]]
                                 /\ new_series' = [new_series EXCEPT ![self] = new_series[self] \ cached_series[self]]
-                                /\ locally_observed_epoch_' = [locally_observed_epoch_ EXCEPT ![self] = observed_epochs[self]]
+                                /\ locally_observed_epoch_' = [locally_observed_epoch_ EXCEPT ![self] = cache_epochs[self]]
                                 /\ pc' = [pc EXCEPT ![self] = "CreateSeries"]
                                 /\ UNCHANGED << now, current_epoch, 
                                                 delete_epoch, series_metadata, 
                                                 series_referenced_from_data, 
-                                                cached_series, observed_epochs, 
+                                                cached_series, cache_epochs, 
                                                 fetched_cur_epoch, 
                                                 fetched_del_epoch, 
                                                 fetched_series, candidates, 
@@ -409,7 +419,7 @@ CreateSeries(self) == /\ pc[self] = "CreateSeries"
                       /\ pc' = [pc EXCEPT ![self] = "IngestTransaction"]
                       /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                       series_referenced_from_data, 
-                                      observed_epochs, fetched_cur_epoch, 
+                                      cache_epochs, fetched_cur_epoch, 
                                       fetched_del_epoch, fetched_series, 
                                       new_series, new_references, 
                                       locally_observed_epoch_, candidates, 
@@ -423,7 +433,7 @@ IngestTransaction(self) == /\ pc[self] = "IngestTransaction"
                            /\ pc' = [pc EXCEPT ![self] = "IngesterBegin"]
                            /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                            series_metadata, cached_series, 
-                                           observed_epochs, fetched_cur_epoch, 
+                                           cache_epochs, fetched_cur_epoch, 
                                            fetched_del_epoch, fetched_series, 
                                            new_series, new_references, 
                                            locally_observed_epoch_, candidates, 
@@ -445,7 +455,7 @@ BgWorkerTxBegin(self) == /\ pc[self] = "BgWorkerTxBegin"
                          /\ UNCHANGED << current_epoch, delete_epoch, 
                                          series_metadata, 
                                          series_referenced_from_data, 
-                                         cached_series, observed_epochs, 
+                                         cached_series, cache_epochs, 
                                          fetched_cur_epoch, fetched_del_epoch, 
                                          fetched_series, new_series, 
                                          new_references, 
@@ -458,14 +468,14 @@ DropChunkData(self) == /\ pc[self] = "DropChunkData"
                        /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
                        /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                        series_metadata, cached_series, 
-                                       observed_epochs, fetched_cur_epoch, 
+                                       cache_epochs, fetched_cur_epoch, 
                                        fetched_del_epoch, fetched_series, 
                                        new_series, new_references, 
                                        locally_observed_epoch_, candidates, 
                                        locally_observed_epoch >>
 
 MarkUnused(self) == /\ pc[self] = "MarkUnused"
-                    /\ locally_observed_epoch' = [locally_observed_epoch EXCEPT ![self] = Max({current_epoch, now})]
+                    /\ locally_observed_epoch' = [locally_observed_epoch EXCEPT ![self] = current_epoch]
                     /\ LET stale_series == {s \in StoredSeries:
                                             /\ (s \notin series_referenced_from_data)
                                            
@@ -475,32 +485,22 @@ MarkUnused(self) == /\ pc[self] = "MarkUnused"
                                             /\ (s \notin MarkedSeries)
                                             } IN
                          series_metadata' = [s \in stale_series |-> EntryMarkedForDeletion(locally_observed_epoch'[self])] @@ series_metadata
-                    /\ pc' = [pc EXCEPT ![self] = "AdvanceEpoch"]
+                    /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
                     /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                     series_referenced_from_data, cached_series, 
-                                    observed_epochs, fetched_cur_epoch, 
+                                    cache_epochs, fetched_cur_epoch, 
                                     fetched_del_epoch, fetched_series, 
                                     new_series, new_references, 
                                     locally_observed_epoch_, candidates >>
 
-AdvanceEpoch(self) == /\ pc[self] = "AdvanceEpoch"
-                      /\ current_epoch' = Max({current_epoch, locally_observed_epoch[self]})
-                      /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
-                      /\ UNCHANGED << now, delete_epoch, series_metadata, 
-                                      series_referenced_from_data, 
-                                      cached_series, observed_epochs, 
-                                      fetched_cur_epoch, fetched_del_epoch, 
-                                      fetched_series, new_series, 
-                                      new_references, locally_observed_epoch_, 
-                                      candidates, locally_observed_epoch >>
-
 PrepareDeleteTx(self) == /\ pc[self] = "PrepareDeleteTx"
-                         /\ delete_epoch' = Max({current_epoch - Delay, delete_epoch})
+                         /\ current_epoch' = now
+                         /\ delete_epoch' = current_epoch' - Delay
                          /\ locally_observed_epoch' = [locally_observed_epoch EXCEPT ![self] = delete_epoch']
                          /\ pc' = [pc EXCEPT ![self] = "ActuallyDeleteTx"]
-                         /\ UNCHANGED << now, current_epoch, series_metadata, 
+                         /\ UNCHANGED << now, series_metadata, 
                                          series_referenced_from_data, 
-                                         cached_series, observed_epochs, 
+                                         cached_series, cache_epochs, 
                                          fetched_cur_epoch, fetched_del_epoch, 
                                          fetched_series, new_series, 
                                          new_references, 
@@ -512,7 +512,7 @@ ActuallyDeleteTx(self) == /\ pc[self] = "ActuallyDeleteTx"
                           /\ pc' = [pc EXCEPT ![self] = "Resurrect"]
                           /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                           series_referenced_from_data, 
-                                          cached_series, observed_epochs, 
+                                          cached_series, cache_epochs, 
                                           fetched_cur_epoch, fetched_del_epoch, 
                                           fetched_series, new_series, 
                                           new_references, 
@@ -524,16 +524,15 @@ Resurrect(self) == /\ pc[self] = "Resurrect"
                    /\ pc' = [pc EXCEPT ![self] = "BgWorkerTxBegin"]
                    /\ UNCHANGED << now, current_epoch, delete_epoch, 
                                    series_referenced_from_data, cached_series, 
-                                   observed_epochs, fetched_cur_epoch, 
+                                   cache_epochs, fetched_cur_epoch, 
                                    fetched_del_epoch, fetched_series, 
                                    new_series, new_references, 
                                    locally_observed_epoch_, candidates, 
                                    locally_observed_epoch >>
 
 bg_worker(self) == BgWorkerTxBegin(self) \/ DropChunkData(self)
-                      \/ MarkUnused(self) \/ AdvanceEpoch(self)
-                      \/ PrepareDeleteTx(self) \/ ActuallyDeleteTx(self)
-                      \/ Resurrect(self)
+                      \/ MarkUnused(self) \/ PrepareDeleteTx(self)
+                      \/ ActuallyDeleteTx(self) \/ Resurrect(self)
 
 (* Allow infinite stuttering to prevent deadlock on termination. *)
 Terminating == /\ \A self \in ProcSet: pc[self] = "Done"
