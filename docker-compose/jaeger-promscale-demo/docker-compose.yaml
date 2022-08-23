@@ -1,0 +1,55 @@
+version: '3.0'
+
+services:
+  db:
+    image: timescale/timescaledb-ha:pg14-latest
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+    # ports:
+    #   - 5432:5432/tcp
+
+  promscale:
+    # TODO: Use docker image with Jaeger gRPC remote store support after 0.14.0 release.
+    image: timescale/promscale:latest
+    restart: on-failure
+    depends_on:
+      - db
+    environment:
+      PROMSCALE_DB_URI: postgres://postgres:password@db:5432/postgres?sslmode=allow
+      PROMSCALE_TRACING_OTLP_SERVER_ADDRESS: ":9202"
+    # ports:
+    #   - 9201:9201/tcp
+    #   - 9202:9202/tcp
+
+  jaeger-query:
+    depends_on:
+      - promscale
+    restart: on-failure
+    image: jaegertracing/jaeger-query:1.37.0
+    environment:
+      SPAN_STORAGE_TYPE: grpc-plugin
+      GRPC_STORAGE_SERVER: promscale:9202
+    ports:
+      - "16686:16686"
+
+  hotrod:
+    depends_on:
+      - jaeger-collector
+    image: jaegertracing/example-hotrod:1.37.0
+    environment:
+      JAEGER_ENDPOINT: http://jaeger-collector:14268/api/traces
+    ports:
+      - "8080-8083:8080-8083"
+
+  jaeger-collector:
+    depends_on:
+      - promscale
+    restart: on-failure
+    image: jaegertracing/jaeger-collector:1.37.0
+    environment:
+      SPAN_STORAGE_TYPE: grpc-plugin
+      GRPC_STORAGE_SERVER: promscale:9202
+    # ports:
+    #   - "6831:6831/udp"
+    #   - "14268:14268"
