@@ -23,6 +23,9 @@ type AuthConfig interface {
 	getTenantSafetyMatcher() (*labels.Matcher, error)
 	// IsTenantAllowed returns true if the given tenantName is allowed to be ingested.
 	IsTenantAllowed(string) bool
+	// ValidTenants returns a list of tenants that are authorized in the current session of Promscale.
+	// If -metrics.multi-tenancy.allow-non-tenants is applied, then []tenantName is empty and allTenantsValid is true.
+	ValidTenants() (tenantName []string, allTenantsValid bool)
 }
 
 // selectiveConfig defines the configuration for tenancy where only valid tenants are allowed.
@@ -69,6 +72,13 @@ func (cfg *selectiveConfig) IsTenantAllowed(tenantName string) bool {
 	return false
 }
 
+func (cfg *selectiveConfig) ValidTenants() (tenantName []string, allTenantsValid bool) {
+	for name := range cfg.validTenantsMap {
+		tenantName = append(tenantName, name)
+	}
+	return tenantName, false
+}
+
 func (cfg *selectiveConfig) getTenantSafetyMatcher() (*labels.Matcher, error) {
 	matcher, err := getMTSafeLabelMatcher(cfg.tenants())
 	if err != nil {
@@ -109,6 +119,10 @@ func (cfg *AllowAllTenantsConfig) IsTenantAllowed(tenantName string) bool {
 		return false
 	}
 	return true
+}
+
+func (cfg *AllowAllTenantsConfig) ValidTenants() (tenantName []string, allTenantsValid bool) {
+	return []string{}, true
 }
 
 func (cfg *AllowAllTenantsConfig) getTenantSafetyMatcher() (*labels.Matcher, error) {

@@ -10,7 +10,9 @@ import (
 	"sort"
 	"unsafe"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
@@ -78,9 +80,79 @@ func (lr *labelsReader) LabelValues(labelName string) ([]string, error) {
 	return labelValues, nil
 }
 
+const (
+	getLabelIDofValidTenant           = `SELECT id::INTEGER FROM _prom_catalog.label WHERE key = '__tenant__' AND value = $1::TEXT`
+	labelCompareClause                = ` $%d::INTEGER = any(labels) `
+	getLabelNamesBelongingToTenantIDs = `
+SELECT ARRAY_AGG(a.key) FROM
+(
+	SELECT key
+		FROM _prom_catalog.label
+			WHERE id IN (
+				SELECT unnest(labels) AS valid_label_ids
+					FROM _prom_catalog.series
+						WHERE %s -- Label id of valid tenant goes here.
+			)
+		GROUP BY 1 ORDER BY 1
+) a
+`
+)
+
 // LabelNames implements the LabelReader interface. It returns all distinct
 // label names available in the database.
 func (lr *labelsReader) LabelNames() ([]string, error) {
+	if lr.authConfig != nil {
+		// Multi-tenancy is enabled. Hence, we have to use a different LabelNames() query
+		// if only some tenants are authorized, i.e., when using NewSelectiveTenancyConfig().
+		validTenants, allTenantsValid := lr.authConfig.ValidTenants()
+		if !allTenantsValid {
+			var tenantLabelIds []int
+
+			for _, validTenantName := range validTenants {
+				validTenantLabelID := 0
+				if err := lr.conn.QueryRow(context.Background(), getLabelIDofValidTenant, validTenantName).Scan(&validTenantLabelID); err != nil {
+					if err == pgx.ErrNoRows {
+						// Given tenant data is not ingested yet. Hence, no id corresponding to this tenant name found.
+						continue
+					}
+					return nil, fmt.Errorf("error fetching label id of valid tenants: %w", err)
+				}
+				tenantLabelIds = append(tenantLabelIds, validTenantLabelID)
+			}
+			if len(tenantLabelIds) == 0 {
+				return []string{}, nil
+			}
+			clause := fmt.Sprintf(labelCompareClause, 1)
+			args := []interface{}{tenantLabelIds[0]}
+			if len(tenantLabelIds) > 1 {
+				for i := 1; i < len(tenantLabelIds); i++ {
+					clause += clause + ` OR ` + fmt.Sprintf(labelCompareClause, i+1)
+					args = append(args, tenantLabelIds[i])
+				}
+			}
+			// Final query will look like this
+			//
+			// SELECT ARRAY_AGG(a.key) FROM
+			//(
+			//	SELECT key
+			//		FROM _prom_catalog.label
+			//			WHERE id IN (
+			//				SELECT unnest(labels) AS valid_label_ids
+			//					FROM _prom_catalog.series
+			//						WHERE $1::INTEGER = any(labels) OR $2::INTEGER = any(labels) -- Label id of valid tenant goes here.
+			//			)
+			//		GROUP BY 1
+			//) a
+			query := fmt.Sprintf(getLabelNamesBelongingToTenantIDs, clause)
+			var labelNames []string
+			fmt.Println(query)
+			if err := lr.conn.QueryRow(context.Background(), query, args...).Scan(&labelNames); err != nil {
+				return nil, fmt.Errorf("error reading label names belonging to a tenant id: %w", err)
+			}
+			return labelNames, nil
+		}
+	}
+
 	rows, err := lr.conn.Query(context.Background(), getLabelNamesSQL)
 	if err != nil {
 		return nil, err
