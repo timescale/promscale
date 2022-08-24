@@ -618,14 +618,14 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 
 		wauth := mt.WriteAuthorizer()
 		// Ingest tenant-a.
-		request := newWriteRequestWithTs(applyTenantInLabels(tenants[0], copyMetrics(ts)))
+		request := newWriteRequestWithTs(applyTenantAsExternalLabel(tenants[0], copyMetrics(ts)))
 		err = wauth.Process(&http.Request{}, request)
 		require.NoError(t, err)
 		_, _, err = client.IngestMetrics(context.Background(), request)
 		require.NoError(t, err)
 
 		// Ingest tenant-b.
-		request = newWriteRequestWithTs(applyTenantInLabels(tenants[1], copyMetrics(ts)))
+		request = newWriteRequestWithTs(applyTenantAsExternalLabel(tenants[1], copyMetrics(ts)))
 		err = wauth.Process(&http.Request{}, request)
 		require.NoError(t, err)
 		_, _, err = client.IngestMetrics(context.Background(), request)
@@ -633,7 +633,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingest tenant-c.
-		request = newWriteRequestWithTs(applyTenantInLabels(tenants[2], copyMetrics(ts)))
+		request = newWriteRequestWithTs(applyTenantAsExternalLabel(tenants[2], copyMetrics(ts)))
 		err = wauth.Process(&http.Request{}, request)
 		require.Error(t, err)
 		require.Equal(t, err.Error(), "write-authorizer process: authorization error for tenant tenant-c: unauthorized or invalid tenant")
@@ -736,6 +736,99 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 	})
 }
 
+func TestMultiTenancyLabelNames(t *testing.T) {
+	ts, _ := generateSmallMultiTenantTimeseries()
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+		getClient := func(auth tenancy.Authorizer) *pgclient.Client {
+			client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, auth, false)
+			require.NoError(t, err)
+			return client
+		}
+
+		tsForTenantA := applyTenantAsExternalLabel("tenant-a", []prompb.TimeSeries{ts[0]})
+		tsForTenantB := applyTenantAsExternalLabel("tenant-b", []prompb.TimeSeries{ts[1]})
+
+		auth := tenancy.NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, false)
+		authr, err := tenancy.NewAuthorizer(auth)
+		require.NoError(t, err)
+
+		client := getClient(authr)
+		ingstr := client.Inserter()
+		_, _, err = ingstr.Ingest(context.Background(), newWriteRequestWithTs(tsForTenantA))
+		require.NoError(t, err)
+		_, _, err = ingstr.Ingest(context.Background(), newWriteRequestWithTs(tsForTenantB))
+		require.NoError(t, err)
+
+		// Case 1 -> Label names when both tenant-a and tenant-b are authorized.
+		qr, err := client.Queryable().SamplesQuerier(context.Background(), 1, 5)
+		require.NoError(t, err)
+
+		labelNames, _, err := qr.LabelNames() // Label names should be sorted by default.
+		require.NoError(t, err)
+		require.Equal(t, []string{"__name__", "__tenant__", "common", "empty", "foo", "ins", "job"}, labelNames)
+
+		values, _, err := qr.LabelValues("__tenant__")
+		require.NoError(t, err)
+		require.Equal(t, []string{"tenant-a", "tenant-b"}, values)
+		client.Close()
+
+		// Case 2 -> Label names when only tenant-a is authorized.
+		auth = tenancy.NewSelectiveTenancyConfig([]string{"tenant-a"}, false)
+		authr, err = tenancy.NewAuthorizer(auth)
+		require.NoError(t, err)
+
+		client = getClient(authr)
+		qr, err = client.Queryable().SamplesQuerier(context.Background(), 1, 5)
+		require.NoError(t, err)
+
+		labelNames, _, err = qr.LabelNames()
+		require.NoError(t, err)
+		require.Equal(t, []string{"__name__", "__tenant__", "common", "empty", "foo"}, labelNames)
+
+		// Ensure that we do not leak the tenant `tenant-b` name.
+		values, _, err = qr.LabelValues("__tenant__")
+		require.NoError(t, err)
+		require.Equal(t, []string{"tenant-a"}, values)
+		client.Close()
+
+		// Case 3 -> Label names when no tenant is authorized.
+		auth = tenancy.NewSelectiveTenancyConfig([]string{""}, false)
+		authr, err = tenancy.NewAuthorizer(auth)
+		require.NoError(t, err)
+
+		client = getClient(authr)
+		qr, err = client.Queryable().SamplesQuerier(context.Background(), 1, 5)
+		require.NoError(t, err)
+
+		labelNames, _, err = qr.LabelNames()
+		require.NoError(t, err)
+		require.Equal(t, []string{}, labelNames)
+
+		values, _, err = qr.LabelValues("__tenant__")
+		require.NoError(t, err)
+		require.Equal(t, []string{}, values)
+		client.Close()
+
+		// Case 4 -> Label names when non-tenants are allowed, but, only tenant-b is authorized.
+		auth = tenancy.NewSelectiveTenancyConfig([]string{"tenant-b"}, true)
+		authr, err = tenancy.NewAuthorizer(auth)
+		require.NoError(t, err)
+
+		client = getClient(authr)
+		defer client.Close()
+		qr, err = client.Queryable().SamplesQuerier(context.Background(), 1, 5)
+		require.NoError(t, err)
+
+		labelNames, _, err = qr.LabelNames()
+		require.NoError(t, err)
+		require.Equal(t, []string{"__name__", "__tenant__", "ins", "job"}, labelNames)
+
+		values, _, err = qr.LabelValues("__tenant__")
+		require.NoError(t, err)
+		require.Equal(t, []string{"tenant-b"}, values)
+	})
+}
+
 func verifyResults(t testing.TB, expectedResult []prompb.TimeSeries, receivedResult []*prompb.TimeSeries) {
 	if len(receivedResult) != len(expectedResult) {
 		require.Fail(t, fmt.Sprintf("lengths of result (%d) and expectedResult (%d) does not match", len(receivedResult), len(expectedResult)))
@@ -758,7 +851,7 @@ func requestWithHeaderTenant(tenant string) *http.Request {
 	return &http.Request{Header: header}
 }
 
-func applyTenantInLabels(tenant string, ts []prompb.TimeSeries) []prompb.TimeSeries {
+func applyTenantAsExternalLabel(tenant string, ts []prompb.TimeSeries) []prompb.TimeSeries {
 	for i := 0; i < len(ts); i++ {
 		ts[i].Labels = append(ts[i].Labels, prompb.Label{Name: tenancy.TenantLabelKey, Value: tenant})
 	}
