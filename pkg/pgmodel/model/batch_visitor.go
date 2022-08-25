@@ -51,7 +51,8 @@ func (vtr *batchVisitor) Visit(
 				vtr.minTime = t
 			}
 		}
-		seriesId, seriesEpoch, err = insertable.Series().GetSeriesID()
+		seriesId = insertable.Series().StoredSeries().SeriesID()
+		seriesEpoch = insertable.Series().StoredSeries().Epoch()
 		if err != nil {
 			return fmt.Errorf("get series-id: %w", err)
 		}

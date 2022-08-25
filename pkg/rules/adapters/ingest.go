@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"time"
 
 	"github.com/pkg/errors"
@@ -60,11 +61,21 @@ func (app *appenderAdapter) Append(_ storage.SeriesRef, l labels.Labels, t int64
 	if err != nil {
 		return 0, fmt.Errorf("get ingestor: %w", err)
 	}
-	series, metricName, err := dbIngestor.SeriesCache().GetSeriesFromProtos(util.LabelToPrompbLabels(l))
-	if err != nil {
-		return 0, fmt.Errorf("get series from protos: %w", err)
-	}
 
+	prompbLabels := util.LabelToPrompbLabels(l)
+	key, metricName, err := cache.GenerateKey(prompbLabels)
+	if err != nil {
+		return 0, err
+	}
+	storedSeries, ok := dbIngestor.StoredSeriesCache().GetSeries(key)
+	var unresolvedSeries *model.UnresolvedSeries
+	if !ok {
+		unresolvedSeries, err = dbIngestor.UnresolvedSeriesCache().GetSeries(key, prompbLabels)
+		if err != nil {
+			return 0, err
+		}
+	}
+	series := model.NewSeries(key, unresolvedSeries, storedSeries)
 	samples := model.NewPromSamples(series, []prompb.Sample{{Timestamp: t, Value: v}})
 	if _, found := app.data[metricName]; !found {
 		app.data[metricName] = make([]model.Insertable, 0)

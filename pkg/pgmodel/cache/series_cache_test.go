@@ -7,16 +7,25 @@ package cache
 import (
 	"bytes"
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 	"math"
 	"strings"
 	"testing"
 
-	promLabels "github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
+func ConvertLabels(ls labels.Labels) []prompb.Label {
+	ll := make([]prompb.Label, len(ls))
+	for i := range ls {
+		ll[i].Name = ls[i].Name
+		ll[i].Value = ls[i].Value
+	}
+	return ll
+}
+
 func TestBigLabels(t *testing.T) {
-	cache := NewSeriesCache(DefaultConfig, nil)
 	builder := strings.Builder{}
 	builder.Grow(int(^uint16(0)) + 1) // one greater than uint16 max
 
@@ -25,17 +34,16 @@ func TestBigLabels(t *testing.T) {
 		builder.WriteString(builder.String())
 	}
 
-	l := promLabels.Labels{
-		promLabels.Label{
+	l := labels.Labels{
+		labels.Label{
 			Name:  builder.String(),
 			Value: "",
 		},
 	}
 
-	_, err := cache.GetSeriesFromLabels(l)
-	if err == nil {
-		t.Errorf("expected error")
-	}
+	pbLabels := ConvertLabels(l)
+	_, _, err := GenerateKey(pbLabels)
+	require.Error(t, err)
 }
 
 func TestGenerateKey(t *testing.T) {
@@ -51,4 +59,34 @@ func TestGenerateKey(t *testing.T) {
 
 	require.Equal(t, "test", metricName)
 	require.Equal(t, []byte("\x08\x00__name__\x04\x00test\x04\x00hell\x06\x00oworld\x05\x00hello\x05\x00world"), keyBuffer.Bytes())
+}
+
+func TestInsertWithDifferentKeys(t *testing.T) {
+	var pbLabels = []prompb.Label{
+		{Name: "__name__", Value: "test"},
+		{Name: "hell", Value: "oworld"},
+		{Name: "hello", Value: "world"},
+	}
+	cacheKey, _, err := GenerateKey(pbLabels)
+	require.NoError(t, err)
+
+	cache := NewStoredSeriesCache(DefaultConfig, nil)
+
+	series := model.NewStoredSeries(model.SeriesID(1), model.NewSeriesEpoch(1))
+
+	cache.PutSeries(cacheKey, series)
+
+	gotSeries, present := cache.GetSeries(cacheKey)
+	require.True(t, present)
+
+	require.Equal(t, series, gotSeries)
+
+	keyTwo, _, err := GenerateKey(pbLabels)
+	require.NoError(t, err)
+
+	require.Equal(t, cacheKey, keyTwo)
+
+	gotSeriesTwo, present := cache.GetSeries(keyTwo)
+	require.True(t, present)
+	require.Equal(t, series, gotSeriesTwo)
 }

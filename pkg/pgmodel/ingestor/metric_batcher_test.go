@@ -136,9 +136,7 @@ func TestInitializeMetricBatcher(t *testing.T) {
 
 func TestSendBatches(t *testing.T) {
 	makeSeries := func(seriesID int) *model.Series {
-		l := &model.Series{}
-		l.SetSeriesID(pgmodel.SeriesID(seriesID), model.NewSeriesEpoch(time.Now().Unix()))
-		return l
+return model.NewSeries(nil, nil, model.NewStoredSeries(pgmodel.SeriesID(seriesID), model.NewSeriesEpoch(time.Now().Unix())))
 	}
 	var workFinished sync.WaitGroup
 	errChan := make(chan error, 1)
@@ -155,11 +153,8 @@ func TestSendBatches(t *testing.T) {
 
 	// we make sure that we receive batch data
 	for i := 0; i < 3; i++ {
-		id, _, err := batch.data.batch.Data()[i].Series().GetSeriesID()
-		if err != nil {
-			t.Fatal(err)
-		}
-		require.Equal(t, fmt.Sprintf("%v", i+1), id.String())
+		id := batch.data.batch.Data()[i].Series().StoredSeries().SeriesID()
+		require.Equal(t, fmt.Sprintf("%v", i+1), fmt.Sprintf("%v", id))
 	}
 }
 
@@ -202,7 +197,10 @@ func TestOrderExemplarLabelValues(t *testing.T) {
 	}
 	exemplarSeriesLabels := []prompb.Label{{Name: "__name__", Value: "exemplar_test_metric"}, {Name: "component", Value: "test_infra"}}
 
-	series := model.NewSeries("hash_key", exemplarSeriesLabels)
+	key, _, err := cache.GenerateKey(exemplarSeriesLabels)
+	require.NoError(t, err)
+	unresolvedSeries := model.NewUnresolvedSeries(exemplarSeriesLabels)
+	series := model.NewSeries(key, unresolvedSeries, nil)
 	insertables := make([]model.Insertable, 3) // Since 3 exemplars.
 
 	for i, exemplar := range rawExemplars {
@@ -215,7 +213,7 @@ func TestOrderExemplarLabelValues(t *testing.T) {
 	prepareExemplarPosCache(posCache)
 
 	elf := NewExamplarLabelFormatter(mockConn, posCache)
-	err := elf.orderExemplarLabelValues(insertableVisitor(insertables))
+	err = elf.orderExemplarLabelValues(insertableVisitor(insertables))
 	require.NoError(t, err)
 
 	// Verify exemplar label value positioning.

@@ -6,6 +6,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/tmpcache"
 	"sync"
 	"testing"
 	"time"
@@ -408,7 +409,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
+		scache := tmpcache.NewUnresolvedSeriesCache()
 		//this is the range_end of a chunk boundary (exclusive)
 		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
 
@@ -459,7 +460,8 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		}
 
 		c := cache.NewMetricCache(cache.DefaultConfig)
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, nil, &ingstr.Cfg{
+		ascache := cache.NewStoredSeriesCache(cache.DefaultConfig, nil)
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, ascache, nil, &ingstr.Cfg{
 			DisableEpochSync:        true,
 			InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
 			NumCopiers:              2,
@@ -659,7 +661,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Error("expected ingest to fail due to old epoch")
 		}
 
-		scache.Reset()
+		ascache.Reset()
 
 		ingestor.Close()
 		ingestor2, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)

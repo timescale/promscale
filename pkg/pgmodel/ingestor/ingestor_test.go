@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/tmpcache"
 	"testing"
 
 	"go.uber.org/atomic"
@@ -257,16 +258,17 @@ func TestDBIngestorIngest(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			sCache := cache.NewSeriesCache(cache.DefaultConfig, nil)
+			sCache := cache.NewStoredSeriesCache(cache.DefaultConfig, nil)
 			inserter := model.MockInserter{
 				InsertSeriesErr: c.insertSeriesErr,
 				InsertDataErr:   c.insertDataErr,
-				InsertedSeries:  make(map[string]model.SeriesID),
+				InsertedSeries:  make(map[*model.SeriesCacheKey]model.SeriesID),
 			}
 			i := DBIngestor{
-				dispatcher: &inserter,
-				sCache:     sCache,
-				closed:     atomic.NewBool(false),
+				dispatcher:            &inserter,
+				unresolvedSeriesCache: tmpcache.NewUnresolvedSeriesCache(),
+				storedSeriesCache:     sCache,
+				closed:                atomic.NewBool(false),
 			}
 
 			wr := NewWriteRequest()

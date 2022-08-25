@@ -19,13 +19,14 @@ import (
 )
 
 const (
-	seriesInsertSQL = "SELECT _prom_catalog.get_or_create_series_id_for_label_array($1, $2, l.elem), l.nr FROM unnest($3::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
+	seriesCreateSQL = "SELECT _prom_catalog.get_or_create_series_id_for_label_array($1, $2, l.elem), l.nr FROM unnest($3::prom_api.label_array[]) WITH ORDINALITY l(elem, nr) ORDER BY l.elem"
 )
 
 type seriesWriter struct {
-	conn          pgxconn.PgxConn
-	labelArrayOID uint32
-	labelsCache   *cache.InvertedLabelsCache
+	conn              pgxconn.PgxConn
+	labelArrayOID     uint32
+	labelsCache       *cache.InvertedLabelsCache
+	storedSeriesCache cache.StoredSeriesCache
 }
 
 type SeriesVisitor interface {
@@ -34,8 +35,8 @@ type SeriesVisitor interface {
 
 func labelArrayTranscoder() pgtype.ValueTranscoder { return &pgtype.Int4Array{} }
 
-func NewSeriesWriter(conn pgxconn.PgxConn, labelArrayOID uint32, labelsCache *cache.InvertedLabelsCache) *seriesWriter {
-	return &seriesWriter{conn, labelArrayOID, labelsCache}
+func NewSeriesWriter(conn pgxconn.PgxConn, labelArrayOID uint32, labelsCache *cache.InvertedLabelsCache, ssCache cache.StoredSeriesCache) *seriesWriter {
+	return &seriesWriter{conn, labelArrayOID, labelsCache, ssCache}
 }
 
 type perMetricInfo struct {
@@ -59,8 +60,13 @@ func (h *seriesWriter) PopulateOrCreateSeries(ctx context.Context, sv SeriesVisi
 	infos := make(map[string]*perMetricInfo)
 	seriesCount := 0
 	err := sv.VisitSeries(func(metricInfo *pgmodel.MetricInfo, series *model.Series) error {
-		if !series.IsSeriesIDSet() {
-			metricName := series.MetricName()
+		if series.StoredSeries() == nil && series.UnresolvedSeries() != nil {
+			if series.UnresolvedSeries().IsResolved() {
+				// This series was already inserted
+				return nil
+			}
+			metricName := series.UnresolvedSeries().MetricName()
+			//log.Info("msg", "Creating temp cache entry", "metricName", metricName)
 			info, ok := infos[metricName]
 			if !ok {
 				info = &perMetricInfo{
@@ -91,23 +97,21 @@ func (h *seriesWriter) PopulateOrCreateSeries(ctx context.Context, sv SeriesVisi
 	{
 		for _, info := range infos {
 			for _, series := range info.series {
-				names, values, ok := series.NameValues()
-				if !ok {
-					//was already set
-					continue
-				}
-				for i := range names {
-					key := cache.LabelKey{MetricName: series.MetricName(), Name: names[i], Value: values[i]}
-					_, added := labelMap[key]
-					if !added {
-						labelInfo, cached := h.labelsCache.GetLabelsId(cache.NewLabelKey(series.MetricName(), names[i], values[i]))
-						labelMap[key] = labelInfo
-						if cached {
-							info.cachedLabels = append(info.cachedLabels, key)
-							continue
-						}
-						if err := info.labelsToFetch.Add(names[i], values[i]); err != nil {
-							return fmt.Errorf("failed to add label to labelList: %w", err)
+				if series.StoredSeries() == nil && series.UnresolvedSeries() != nil {
+					names, values := series.UnresolvedSeries().NameValues()
+					for i := range names {
+						key := cache.LabelKey{MetricName: series.UnresolvedSeries().MetricName(), Name: names[i], Value: values[i]}
+						_, added := labelMap[key]
+						if !added {
+							labelInfo, cached := h.labelsCache.GetLabelsId(cache.NewLabelKey(series.UnresolvedSeries().MetricName(), names[i], values[i]))
+							labelMap[key] = labelInfo
+							if cached {
+								info.cachedLabels = append(info.cachedLabels, key)
+								continue
+							}
+							if err := info.labelsToFetch.Add(names[i], values[i]); err != nil {
+								return fmt.Errorf("failed to add label to labelList: %w", err)
+							}
 						}
 					}
 				}
@@ -143,7 +147,7 @@ func (h *seriesWriter) PopulateOrCreateSeries(ctx context.Context, sv SeriesVisi
 
 		// transaction per metric to avoid cross-metric locks
 		batch.Queue("BEGIN;")
-		batch.Queue(seriesInsertSQL, info.metricInfo.MetricID, info.metricInfo.TableName, info.labelArraySet)
+		batch.Queue(seriesCreateSQL, info.metricInfo.MetricID, info.metricInfo.TableName, info.labelArraySet)
 		batch.Queue("COMMIT;")
 		batchInfos = append(batchInfos, info)
 	}
@@ -175,7 +179,12 @@ func (h *seriesWriter) PopulateOrCreateSeries(ctx context.Context, sv SeriesVisi
 			if err != nil {
 				return fmt.Errorf("error setting series_id: cannot scan series_id: %w", err)
 			}
-			info.series[int(ordinality)-1].SetSeriesID(id, dbEpoch)
+			seriesElem := info.series[int(ordinality)-1]
+			key := seriesElem.CacheKey()
+			seriesElem.UnresolvedSeries().Resolve()
+			val := model.NewStoredSeries(id, dbEpoch)
+			seriesElem.SetSeries(val)
+			h.storedSeriesCache.PutSeries(key, val)
 			count++
 		}
 		if err := res.Err(); err != nil {
@@ -344,14 +353,11 @@ func createLabelArrays(series []*model.Series, labelMap map[cache.LabelKey]cache
 	labelArraySet := make([][]int32, 0, len(series))
 	dest := 0
 	for src := 0; src < len(series); src++ {
-		names, values, ok := series[src].NameValues()
-		if !ok {
-			continue
-		}
+		names, values := series[src].UnresolvedSeries().NameValues()
 		lArray := make([]int32, maxPos)
 		maxIndex := 0
 		for i := range names {
-			key := cache.LabelKey{MetricName: series[src].MetricName(), Name: names[i], Value: values[i]}
+			key := cache.LabelKey{MetricName: series[src].UnresolvedSeries().MetricName(), Name: names[i], Value: values[i]}
 			res, ok := labelMap[key]
 			if !ok {
 				return nil, nil, fmt.Errorf("error generating label array: missing key in map: %v", key)

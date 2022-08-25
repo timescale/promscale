@@ -37,8 +37,9 @@ var ErrDispatcherClosed = fmt.Errorf("dispatcher is closed")
 type pgxDispatcher struct {
 	conn                   pgxconn.PgxConn
 	metricTableNames       cache.MetricCache
-	scache                 cache.SeriesCache
 	invertedLabelsCache    *cache.InvertedLabelsCache
+	unresolvedSeriesCache  cache.UnresolvedSeriesCache
+	storedSeriesCache      cache.StoredSeriesCache
 	exemplarKeyPosCache    cache.PositionCache
 	batchers               sync.Map
 	completeMetricCreation chan struct{}
@@ -52,7 +53,7 @@ type pgxDispatcher struct {
 
 var _ model.Dispatcher = &pgxDispatcher{}
 
-func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*pgxDispatcher, error) {
+func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, unresolvedSeriesCache cache.UnresolvedSeriesCache, storedSeriesCache cache.StoredSeriesCache, eCache cache.PositionCache, cfg *Cfg) (*pgxDispatcher, error) {
 	numCopiers := cfg.NumCopiers
 	if numCopiers < 1 {
 		log.Warn("msg", "num copiers less than 1, setting to 1")
@@ -80,7 +81,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 	if err != nil {
 		return nil, err
 	}
-	sw := NewSeriesWriter(conn, labelArrayOID, labelsCache)
+	sw := NewSeriesWriter(conn, labelArrayOID, labelsCache, storedSeriesCache)
 	elf := NewExamplarLabelFormatter(conn, eCache)
 
 	for i := 0; i < numCopiers; i++ {
@@ -90,7 +91,8 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 	inserter := &pgxDispatcher{
 		conn:                   conn,
 		metricTableNames:       mCache,
-		scache:                 scache,
+		unresolvedSeriesCache:  unresolvedSeriesCache,
+		storedSeriesCache:      storedSeriesCache,
 		invertedLabelsCache:    labelsCache,
 		exemplarKeyPosCache:    eCache,
 		completeMetricCreation: make(chan struct{}, 1),
@@ -158,14 +160,14 @@ func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch *model.SeriesEpoch) (*m
 	if err != nil {
 		log.Info("msg", "An error occurred refreshing, will reset series and inverted labels caches")
 		// Trash the cache just in case an epoch change occurred, seems safer
-		p.scache.Reset()
+		p.storedSeriesCache.Reset()
 		// Also trash the inverted labels cache, which can also be invalidated when the series cache is
 		p.invertedLabelsCache.Reset()
 		return nil, err
 	}
 	if existingEpoch == nil || *dbEpoch != *existingEpoch {
 		log.Info("msg", "The local epoch is no longer up-to-date, will reset series and inverted labels caches")
-		p.scache.Reset()
+		p.storedSeriesCache.Reset()
 		// If the series cache needs to be invalidated, so does the inverted labels cache
 		p.invertedLabelsCache.Reset()
 	}

@@ -332,7 +332,7 @@ func TestPgxSeriesSet(t *testing.T) {
 				var ok bool
 
 				if ss, ok = s.(*pgxSeries); !ok {
-					t.Fatal("unexpected type for storage.Series")
+					t.Fatal("unexpected type for storage.UnresolvedSeries")
 				}
 
 				expectedLabels := make([]labels.Label, 0, len(c.labels))

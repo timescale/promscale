@@ -4,7 +4,48 @@
 
 package model
 
-import "github.com/timescale/promscale/pkg/prompb"
+import (
+	"github.com/timescale/promscale/pkg/prompb"
+	"sync"
+)
+
+type SeriesCacheKey string
+
+// Series represents a
+type Series struct {
+	lock             sync.RWMutex
+	key              *SeriesCacheKey
+	storedSeries     *StoredSeries
+	unresolvedSeries *UnresolvedSeries
+}
+
+func NewSeries(key *SeriesCacheKey, unresolvedSeries *UnresolvedSeries, storedSeries *StoredSeries) *Series {
+	return &Series{
+		key:              key,
+		storedSeries:     storedSeries,
+		unresolvedSeries: unresolvedSeries,
+	}
+}
+
+func (s *Series) StoredSeries() *StoredSeries {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	return s.storedSeries
+}
+
+func (s *Series) UnresolvedSeries() *UnresolvedSeries {
+	return s.unresolvedSeries
+}
+
+func (s *Series) SetSeries(series *StoredSeries) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.storedSeries = series
+}
+
+func (s *Series) CacheKey() *SeriesCacheKey {
+	return s.key
+}
 
 type promSamples struct {
 	series  *Series

@@ -564,7 +564,7 @@ func (m *MockMetricCache) Set(schema, metric string, mInfo MetricInfo, isExempla
 }
 
 type MockInserter struct {
-	InsertedSeries  map[string]SeriesID
+	InsertedSeries  map[*SeriesCacheKey]SeriesID
 	InsertedData    []map[string][]Insertable
 	InsertSeriesErr error
 	InsertDataErr   error
@@ -584,13 +584,16 @@ func (m *MockInserter) InsertTs(_ context.Context, data Data) (uint64, error) {
 	rows := data.Rows
 	for _, v := range rows {
 		for i, si := range v {
-			seriesStr := si.Series().String()
+			key := si.Series().CacheKey()
+			seriesStr := key
 			id, ok := m.InsertedSeries[seriesStr]
 			if !ok {
 				id = SeriesID(len(m.InsertedSeries))
 				m.InsertedSeries[seriesStr] = id
 			}
-			v[i].Series().seriesID = id
+			// TODO (james) not correctly initializing seriesEpoch is lazy
+			var seriesEpoch SeriesEpoch
+			v[i].Series().SetSeries(NewStoredSeries(id, &seriesEpoch))
 		}
 	}
 	if m.InsertSeriesErr != nil {
