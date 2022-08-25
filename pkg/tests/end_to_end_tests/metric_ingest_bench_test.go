@@ -73,7 +73,7 @@ func BenchmarkMetricIngest(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 		b.StartTimer()
-		sampleLoader.Run(metricsIngestor.Ingest)
+		sampleLoader.Run(metricsIngestor.IngestMetrics)
 		b.StopTimer()
 	})
 }
@@ -129,7 +129,7 @@ func BenchmarkNewSeriesIngestion(b *testing.B) {
 					b.ReportAllocs()
 					b.ResetTimer()
 					for _, t := range ts {
-						_, _, _ = metricsIngestor.Ingest(context.Background(), &prompb.WriteRequest{Timeseries: t})
+						_, _, _ = metricsIngestor.IngestMetrics(context.Background(), &prompb.WriteRequest{Timeseries: t})
 					}
 					b.StopTimer()
 

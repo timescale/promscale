@@ -110,7 +110,7 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, _, err := ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
+		if _, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
 			t.Fatal(err)
 		}
 		err = ingestor.CompleteMetricCreation(context.Background())
@@ -219,7 +219,7 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, _, err := ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
+		if _, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
 			t.Fatal(err)
 		}
 		err = ingestor.CompleteMetricCreation(context.Background())
@@ -325,7 +325,7 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, _, err := ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
+		if _, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
 			t.Fatal(err)
 		}
 		err = ingestor.CompleteMetricCreation(context.Background())
@@ -475,7 +475,7 @@ func TestDeleteMixins(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, _, err := ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
+		if _, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
 			t.Fatal(err)
 		}
 		err = ingestor.CompleteMetricCreation(context.Background())

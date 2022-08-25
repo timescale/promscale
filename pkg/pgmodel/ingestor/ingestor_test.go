@@ -272,7 +272,7 @@ func TestDBIngestorIngest(t *testing.T) {
 			wr := NewWriteRequest()
 			wr.Timeseries = c.metrics
 			wr.Metadata = c.metadata
-			countSamples, countMetadata, err := i.Ingest(ctx, wr)
+			countSamples, countMetadata, err := i.IngestMetrics(ctx, wr)
 
 			if err != nil {
 				if c.insertSeriesErr != nil && err != c.insertSeriesErr {

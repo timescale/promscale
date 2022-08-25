@@ -83,7 +83,7 @@ func TestDatabaseMetricsAfterCompression(t *testing.T) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		require.NoError(t, err)
 		err = ingestor.CompleteMetricCreation(context.Background())
 		if err != nil {

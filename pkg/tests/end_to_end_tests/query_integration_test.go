@@ -715,7 +715,7 @@ func ingestQueryTestDataset(db *pgxpool.Pool, t testing.TB, metrics []prompb.Tim
 		t.Fatal(err)
 	}
 	defer ingestor.Close()
-	cnt, _, err := ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(metrics)))
+	cnt, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(metrics)))
 
 	if err != nil {
 		t.Fatalf("unexpected error while ingesting test dataset: %s", err)
@@ -1185,7 +1185,7 @@ func TestMetricNameResolutionFromMultipleSchemas(t *testing.T) {
 		}
 
 		// Ingest metric with same name as metric view.
-		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs([]prompb.TimeSeries{
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs([]prompb.TimeSeries{
 			{
 				Labels: []prompb.Label{
 					{Name: pgmodel.MetricNameLabelName, Value: "metric_view"},

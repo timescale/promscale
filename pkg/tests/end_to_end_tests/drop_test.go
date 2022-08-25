@@ -58,7 +58,7 @@ func TestSQLRetentionPeriod(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +172,7 @@ func TestSQLDropChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Error(err)
 		}
@@ -261,7 +261,7 @@ func TestSQLDropChunkWithLocked(t *testing.T) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		require.NoError(t, err)
 
 		var tableName string
@@ -364,7 +364,7 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Error(err)
 		}
@@ -480,7 +480,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Error(err)
 		}
@@ -666,7 +666,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			},
 		}
 
-		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(resurrected)))
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(resurrected)))
 		if err == nil {
 			t.Error("expected ingest to fail due to old epoch")
 		}
@@ -680,7 +680,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		}
 		defer ingestor2.Close()
 
-		_, _, err = ingestor2.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(resurrected)))
+		_, _, err = ingestor2.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(resurrected)))
 		if err != nil {
 			t.Error(err)
 		}
@@ -734,7 +734,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Error(err)
 		}
@@ -808,7 +808,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 		}
 
 		defer ingestor2.Close()
-		_, _, err = ingestor2.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
+		_, _, err = ingestor2.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
 		if err != nil {
 			t.Fatal(err)
 		}

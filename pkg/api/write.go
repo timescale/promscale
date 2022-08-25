@@ -238,7 +238,7 @@ func ingest(
 			return false
 		}
 
-		numSamples, _, err := inserter.Ingest(ctx, req)
+		numSamples, _, err := inserter.IngestMetrics(ctx, req)
 		if err != nil {
 			statusCode = "500"
 			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)

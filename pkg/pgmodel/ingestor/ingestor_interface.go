@@ -14,9 +14,9 @@ import (
 // DBInserter is responsible for ingesting the TimeSeries protobuf structs and
 // storing them in the database.
 type DBInserter interface {
-	// Ingest takes an array of TimeSeries and attepts to store it into the database.
+	// IngestMetrics takes an array of TimeSeries and attempts to store it into the database.
 	// Returns the number of metrics ingested and any error encountered before finishing.
-	Ingest(context.Context, *prompb.WriteRequest) (uint64, uint64, error)
+	IngestMetrics(context.Context, *prompb.WriteRequest) (uint64, uint64, error)
 	IngestTraces(context.Context, ptrace.Traces) error
 	Close()
 }
