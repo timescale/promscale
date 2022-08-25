@@ -33,14 +33,14 @@ func TestMetricMetadataIngestion(t *testing.T) {
 		// Ingest just metadata.
 		wr := ingstr.NewWriteRequest()
 		wr.Metadata = copyMetadata(metadata)
-		numSamples, numMetadata, err := ingestor.Ingest(context.Background(), wr)
+		numSamples, numMetadata, err := ingestor.IngestMetrics(context.Background(), wr)
 		require.NoError(t, err)
 		require.Equal(t, 0, int(numSamples))
 		require.Equal(t, 20, int(numMetadata))
 
 		// Ingest just time-series.
 		wr = newWriteRequestWithTs(copyMetrics(ts))
-		numSamples, numMetadata, err = ingestor.Ingest(context.Background(), wr)
+		numSamples, numMetadata, err = ingestor.IngestMetrics(context.Background(), wr)
 		require.NoError(t, err)
 		require.Equal(t, 10, int(numSamples))
 		require.Equal(t, 0, int(numMetadata))
@@ -52,7 +52,7 @@ func TestMetricMetadataIngestion(t *testing.T) {
 		wr = ingstr.NewWriteRequest()
 		wr.Timeseries = copyMetrics(ts)
 		wr.Metadata = copyMetadata(metadata)
-		numSamples, numMetadata, err = ingestor.Ingest(context.Background(), wr)
+		numSamples, numMetadata, err = ingestor.IngestMetrics(context.Background(), wr)
 		require.NoError(t, err)
 		require.Equal(t, 10, int(numSamples))
 		require.Equal(t, 20, int(numMetadata))
@@ -76,7 +76,7 @@ func TestFetchMetricMetadataAPI(t *testing.T) {
 		wr.Timeseries = copyMetrics(ts)
 		wr.Metadata = copyMetadata(metadata)
 
-		numSamples, numMetadata, err := ingestor.Ingest(context.Background(), wr)
+		numSamples, numMetadata, err := ingestor.IngestMetrics(context.Background(), wr)
 		require.NoError(t, err)
 		require.Equal(t, 10, int(numSamples))
 		require.Equal(t, 20, int(numMetadata))

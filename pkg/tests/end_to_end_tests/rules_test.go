@@ -50,7 +50,7 @@ func TestRecordingRulesEval(t *testing.T) {
 
 		ingestor := pgClient.Inserter()
 		ts := tsToSeconds(generateSmallTimeseries(), time.Second) // Converts ts of samples into seconds.
-		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(ts))
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(ts))
 		require.NoError(t, err)
 
 		rulesCfg := rules.DefaultConfig

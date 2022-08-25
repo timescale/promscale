@@ -79,7 +79,7 @@ func TestSQLStaleNaN(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		_, _, err = ingestor.Ingest(context.Background(), newWriteRequestWithTs(copyMetrics(metrics)))
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(metrics)))
 
 		if err != nil {
 			t.Fatalf("unexpected error while ingesting test dataset: %s", err)
