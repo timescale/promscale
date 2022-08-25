@@ -7,6 +7,7 @@ package pgclient
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/tmpcache"
 	"net/url"
 
 	"github.com/jackc/pgx/v4"
@@ -53,7 +54,7 @@ type Client struct {
 	queryable    promql.Queryable
 	metricCache  cache.MetricCache
 	labelsCache  cache.LabelsCache
-	seriesCache  cache.SeriesCache
+	seriesCache  cache.UnresolvedSeriesCache
 	closePool    bool
 	sigClose     chan struct{}
 	haService    *ha.Service
@@ -195,7 +196,8 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 	sigClose := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
-	seriesCache := cache.NewSeriesCache(cfg.CacheConfig, sigClose)
+	unresolvedSeriesCache := tmpcache.NewUnresolvedSeriesCache()
+	storedSeriesCache := cache.NewStoredSeriesCache(cfg.CacheConfig, sigClose)
 	c := ingestor.Cfg{
 		NumCopiers:              numCopiers,
 		IgnoreCompressedChunks:  cfg.IgnoreCompressedChunks,
@@ -220,7 +222,7 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 	if !readOnly {
 		var err error
 		writerConn = pgxconn.NewPgxConn(writerPool)
-		dbIngestor, err = ingestor.NewPgxIngestor(writerConn, metricsCache, seriesCache, exemplarKeyPosCache, &c)
+		dbIngestor, err = ingestor.NewPgxIngestor(writerConn, metricsCache, unresolvedSeriesCache, storedSeriesCache, exemplarKeyPosCache, &c)
 		if err != nil {
 			log.Error("msg", "err starting the ingestor", "err", err)
 			return nil, err
@@ -236,7 +238,7 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 		queryable:   queryable,
 		metricCache: metricsCache,
 		labelsCache: labelsCache,
-		seriesCache: seriesCache,
+		seriesCache: unresolvedSeriesCache,
 		sigClose:    sigClose,
 	}
 

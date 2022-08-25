@@ -6,6 +6,7 @@ package end_to_end_tests
 
 import (
 	"context"
+	"github.com/timescale/promscale/pkg/pgmodel/tmpcache"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -119,12 +120,13 @@ func prepareWriterWithHa(db *pgxpool.Pool, t testing.TB) (*util.ManualTicker, ht
 	leaseClient := haClient.NewLeaseClient(pgxconn.NewPgxConn(db))
 	haService := ha.NewServiceWith(leaseClient, ticker, tooFarInTheFutureNowFn)
 	sigClose := make(chan struct{})
-	sCache := cache.NewSeriesCache(cache.DefaultConfig, sigClose)
+	sCache := tmpcache.NewUnresolvedSeriesCache()
+	asCache := cache.NewStoredSeriesCache(cache.DefaultConfig, sigClose)
 	dataParser := parser.NewParser()
 	dataParser.AddPreprocessor(ha.NewFilter(haService))
 	mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 
-	ing, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db), mCache, sCache, nil, &ingestor.Cfg{
+	ing, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db), mCache, sCache, asCache, nil, &ingestor.Cfg{
 		InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize, NumCopiers: 2,
 	})
 	if err != nil {

@@ -4,7 +4,9 @@
 
 package model
 
-import "github.com/timescale/promscale/pkg/prompb"
+import (
+	"github.com/timescale/promscale/pkg/prompb"
+)
 
 type InsertableType uint8
 

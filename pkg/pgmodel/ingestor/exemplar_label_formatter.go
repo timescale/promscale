@@ -39,7 +39,7 @@ func (t *ExemplarLabelFormatter) orderExemplarLabelValues(ev ExemplarVisitor) er
 	)
 
 	err := ev.VisitExemplar(func(info *model.MetricInfo, row *model.PromExemplars) error {
-		labelKeyIndex, entryExists := t.exemplarKeyPosCache.GetLabelPositions(row.Series().MetricName())
+		labelKeyIndex, entryExists := t.exemplarKeyPosCache.GetLabelPositions(row.Series().UnresolvedSeries().MetricName())
 		if entryExists {
 			//make sure all positions exist
 			if positionExists := row.OrderExemplarLabels(labelKeyIndex); positionExists {
@@ -52,10 +52,10 @@ func (t *ExemplarLabelFormatter) orderExemplarLabelValues(ev ExemplarVisitor) er
 				// Allocate a batch only if required. If the cache does the job, why to waste on allocs.
 				batch = t.conn.NewBatch()
 			}
-			batch.Queue(getExemplarLabelPositions, row.Series().MetricName(), info.TableName, unorderedLabelKeys)
+			batch.Queue(getExemplarLabelPositions, row.Series().UnresolvedSeries().MetricName(), info.TableName, unorderedLabelKeys)
 			pendingIndexes = append(pendingIndexes, positionPending{ // One-to-One relation with queries
 				exemplarRef: row,
-				metricName:  row.Series().MetricName(),
+				metricName:  row.Series().UnresolvedSeries().MetricName(),
 				labelKeys:   unorderedLabelKeys,
 			})
 		}

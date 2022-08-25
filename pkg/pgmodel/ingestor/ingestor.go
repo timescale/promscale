@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/tmpcache"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,16 +38,17 @@ type Cfg struct {
 
 // DBIngestor ingest the TimeSeries data into Timescale database.
 type DBIngestor struct {
-	sCache     cache.SeriesCache
-	dispatcher model.Dispatcher
-	tWriter    trace.Writer
-	closed     *atomic.Bool
+	unresolvedSeriesCache cache.UnresolvedSeriesCache
+	storedSeriesCache     cache.StoredSeriesCache
+	dispatcher            model.Dispatcher
+	tWriter               trace.Writer
+	closed                *atomic.Bool
 }
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*DBIngestor, error) {
-	dispatcher, err := newPgxDispatcher(conn, cache, sCache, eCache, cfg)
+func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, unresolvedSeriesCache cache.UnresolvedSeriesCache, storedSeriesCache cache.StoredSeriesCache, eCache cache.PositionCache, cfg *Cfg) (*DBIngestor, error) {
+	dispatcher, err := newPgxDispatcher(conn, cache, unresolvedSeriesCache, storedSeriesCache, eCache, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -58,10 +60,11 @@ func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.
 	}
 	traceWriter := trace.NewWriter(conn)
 	return &DBIngestor{
-		sCache:     sCache,
-		dispatcher: dispatcher,
-		tWriter:    trace.NewDispatcher(traceWriter, cfg.TracesAsyncAcks, batcherConfg),
-		closed:     atomic.NewBool(false),
+		unresolvedSeriesCache: unresolvedSeriesCache,
+		storedSeriesCache:     storedSeriesCache,
+		dispatcher:            dispatcher,
+		tWriter:               trace.NewDispatcher(traceWriter, cfg.TracesAsyncAcks, batcherConfg),
+		closed:                atomic.NewBool(false),
 	}, nil
 }
 
@@ -73,9 +76,10 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error)
 	}
 	cacheConfig := cache.DefaultConfig
 	c := cache.NewMetricCache(cacheConfig)
-	s := cache.NewSeriesCache(cacheConfig, nil)
+	s := tmpcache.NewUnresolvedSeriesCache()
+	as := cache.NewStoredSeriesCache(cacheConfig, nil)
 	e := cache.NewExemplarLabelsPosCache(cacheConfig)
-	return NewPgxIngestor(conn, c, s, e, cfg)
+	return NewPgxIngestor(conn, c, s, as, e, cfg)
 }
 
 const (
@@ -195,24 +199,34 @@ func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []p
 
 	for i := range timeseries {
 		var (
-			err        error
-			series     *model.Series
-			metricName string
+			err              error
+			unresolvedSeries *model.UnresolvedSeries
+			metricName       string
 
 			ts = &timeseries[i]
 		)
 		if len(ts.Labels) == 0 {
 			continue
 		}
-		// Normalize and canonicalize ts.Labels.
-		// After this point ts.Labels should never be used again.
-		series, metricName, err = ingestor.sCache.GetSeriesFromProtos(ts.Labels)
+		// Normalize and canonicalize t.Labels.
+		// After this point t.Labels should never be used again.
+		key, metricName, err := cache.GenerateKey(ts.Labels)
 		if err != nil {
 			return 0, err
+		}
+		storedSeries, ok := ingestor.storedSeriesCache.GetSeries(key)
+
+		if !ok {
+			unresolvedSeries, err = ingestor.unresolvedSeriesCache.GetSeries(key, ts.Labels)
+			if err != nil {
+				return 0, err
+			}
 		}
 		if metricName == "" {
 			return 0, errors.ErrNoMetricName
 		}
+
+		series := model.NewSeries(key, unresolvedSeries, storedSeries)
 
 		if len(ts.Samples) > 0 {
 			samples, count, err := ingestor.samples(series, ts)
@@ -244,12 +258,12 @@ func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []p
 	return numInsertablesIngested, errSamples
 }
 
-func (ingestor *DBIngestor) samples(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
-	return model.NewPromSamples(l, ts.Samples), len(ts.Samples), nil
+func (ingestor *DBIngestor) samples(s *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
+	return model.NewPromSamples(s, ts.Samples), len(ts.Samples), nil
 }
 
-func (ingestor *DBIngestor) exemplars(l *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
-	return model.NewPromExemplars(l, ts.Exemplars), len(ts.Exemplars), nil
+func (ingestor *DBIngestor) exemplars(s *model.Series, ts *prompb.TimeSeries) (model.Insertable, int, error) {
+	return model.NewPromExemplars(s, ts.Exemplars), len(ts.Exemplars), nil
 }
 
 // ingestMetadata ingests metric metadata received from Prometheus. It runs as a secondary routine, independent from
@@ -280,8 +294,12 @@ func (ingestor *DBIngestor) Dispatcher() model.Dispatcher {
 	return ingestor.dispatcher
 }
 
-func (ingestor *DBIngestor) SeriesCache() cache.SeriesCache {
-	return ingestor.sCache
+func (ingestor *DBIngestor) UnresolvedSeriesCache() cache.UnresolvedSeriesCache {
+	return ingestor.unresolvedSeriesCache
+}
+
+func (ingestor *DBIngestor) StoredSeriesCache() cache.StoredSeriesCache {
+	return ingestor.storedSeriesCache
 }
 
 // Parts of metric creation not needed to insert data

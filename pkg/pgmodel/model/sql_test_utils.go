@@ -583,13 +583,16 @@ func (m *MockInserter) InsertTs(_ context.Context, data Data) (uint64, error) {
 	rows := data.Rows
 	for _, v := range rows {
 		for i, si := range v {
-			seriesStr := si.Series().String()
+			key := si.Series().CacheKey()
+			seriesStr := key.String()
 			id, ok := m.InsertedSeries[seriesStr]
 			if !ok {
 				id = SeriesID(len(m.InsertedSeries))
 				m.InsertedSeries[seriesStr] = id
 			}
-			v[i].Series().seriesID = id
+			// TODO (james) not correctly initializing seriesEpoch is lazy
+			var seriesEpoch SeriesEpoch
+			v[i].Series().SetSeries(NewStoredSeries(id, &seriesEpoch))
 		}
 	}
 	if m.InsertSeriesErr != nil {

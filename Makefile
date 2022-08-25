@@ -29,8 +29,8 @@ e2e: CURRENT_BRANCH?=$(shell git branch --show-current | sed 's#/#-#')
 e2e: EXTENSION_VERSION=$(shell cat EXTENSION_VERSION | tr -d '[:space:]')
 e2e: DOCKER_IMAGE?=$(shell ./scripts/fallback-docker.sh $(LOCAL_DOCKER_BASE):head-ts2-pg14 $(GHCR_DOCKER_BASE):$(CURRENT_BRANCH)-ts2-pg14 $(GHCR_DOCKER_BASE):$(EXTENSION_VERSION)-ts2-pg14)
 e2e: pkg/tests/testdata/traces-dataset.sz generate
-	go test -v ./pkg/tests/end_to_end_tests/ -timescale-docker-image=$(DOCKER_IMAGE)
-	go test -v ./pkg/tests/end_to_end_tests/ -use-timescaledb=false -timescale-docker-image=$(DOCKER_IMAGE)
+	go test -timeout=20m -v ./pkg/tests/end_to_end_tests/ -timescale-docker-image=$(DOCKER_IMAGE)
+	go test -timeout=20m -v ./pkg/tests/end_to_end_tests/ -use-timescaledb=false -timescale-docker-image=$(DOCKER_IMAGE)
 	# TODO: Skipping multinode because tests are broken for now
 	# go test -v ./pkg/tests/end_to_end_tests/ -use-multinode -timescale-docker-image=$(DOCKER_IMAGE)
 

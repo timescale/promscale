@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/pgmodel/tmpcache"
 	"os"
 	"testing"
 	"time"
@@ -45,15 +46,17 @@ func init() {
 
 type sVisitor []model.Insertable
 
-func (c sVisitor) VisitSeries(cb func(info *pgmodel.MetricInfo, s *pgmodel.Series) error) error {
+func (c sVisitor) VisitSeries(cb func(info *pgmodel.MetricInfo, s *model.Series) error) error {
 	info := &pgmodel.MetricInfo{
 		MetricID:  metricID,
 		TableName: tableName,
 	}
 	for _, insertable := range c {
-		err := cb(info, insertable.Series())
-		if err != nil {
-			return err
+		if insertable.Series() != nil {
+			err := cb(info, insertable.Series())
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -106,7 +109,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{Sql: "COMMIT;"},
 				{Sql: "BEGIN;"},
 				{
-					Sql: seriesInsertSQL,
+					Sql: seriesCreateSQL,
 					Args: []interface{}{
 						metricID,
 						tableName,
@@ -156,7 +159,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{Sql: "COMMIT;"},
 				{Sql: "BEGIN;"},
 				{
-					Sql: seriesInsertSQL,
+					Sql: seriesCreateSQL,
 					Args: []interface{}{
 						metricID,
 						tableName,
@@ -208,7 +211,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{Sql: "COMMIT;"},
 				{Sql: "BEGIN;"},
 				{
-					Sql: seriesInsertSQL,
+					Sql: seriesCreateSQL,
 					Args: []interface{}{
 						metricID,
 						tableName,
@@ -275,18 +278,27 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				}
 			}
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
-			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
+			scache := cache.NewStoredSeriesCache(cache.DefaultConfig, nil)
 			scache.Reset()
+			unresolvedSeriesCache := tmpcache.NewUnresolvedSeriesCache()
 			lCache, _ := cache.NewInvertedLabelsCache(10)
-			sw := NewSeriesWriter(mock, 0, lCache)
+			sw := NewSeriesWriter(mock, 0, lCache, scache)
 
 			lsi := make([]model.Insertable, 0)
 			for _, ser := range c.series {
-				ls, err := scache.GetSeriesFromLabels(ser)
+				pbLabels := ConvertLabels(ser)
+				key, _, err := cache.GenerateKey(pbLabels)
 				if err != nil {
-					t.Errorf("invalid labels %+v, %v", ls, err)
+					t.Errorf("invalid labels %+v, %v", ser, err)
 				}
-				lsi = append(lsi, model.NewPromExemplars(ls, nil))
+				ls, present := scache.GetSeries(key)
+				var unresolvedSeries *model.UnresolvedSeries
+				if !present {
+					unresolvedSeries, err = unresolvedSeriesCache.GetSeries(key, pbLabels)
+					require.NoError(t, err)
+				}
+				series := model.NewSeries(key, unresolvedSeries, ls)
+				lsi = append(lsi, model.NewPromExemplars(series, nil))
 			}
 
 			err := sw.PopulateOrCreateSeries(context.Background(), sVisitor(lsi))
@@ -306,8 +318,9 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			}
 
 			if err == nil {
-				for _, si := range lsi {
-					si, se, err := si.Series().GetSeriesID()
+				for _, item := range lsi {
+					si := item.Series().StoredSeries().SeriesID()
+					se := item.Series().StoredSeries().Epoch()
 					require.NoError(t, err)
 					require.True(t, si > 0, "series id not set")
 					require.True(t, se.Time().Equal(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)), "epoch not set")
@@ -360,7 +373,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{Sql: "COMMIT;"},
 		{Sql: "BEGIN;"},
 		{
-			Sql: seriesInsertSQL,
+			Sql: seriesCreateSQL,
 			Args: []interface{}{
 				metricID,
 				tableName,
@@ -413,7 +426,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{Sql: "COMMIT;"},
 		{Sql: "BEGIN;"},
 		{
-			Sql: seriesInsertSQL,
+			Sql: seriesCreateSQL,
 			Args: []interface{}{
 				metricID,
 				tableName,
@@ -437,23 +450,29 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	mock := model.NewSqlRecorder(sqlQueries, t)
-	scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
+	scache := cache.NewStoredSeriesCache(cache.DefaultConfig, nil)
 	lcache, _ := cache.NewInvertedLabelsCache(10)
-	sw := NewSeriesWriter(mock, 0, lcache)
+	sw := NewSeriesWriter(mock, 0, lcache, scache)
 	inserter := pgxDispatcher{
-		conn:                mock,
-		scache:              scache,
-		invertedLabelsCache: lcache,
+		conn:                  mock,
+		unresolvedSeriesCache: tmpcache.NewUnresolvedSeriesCache(),
+		storedSeriesCache:     scache,
+		invertedLabelsCache:   lcache,
 	}
 
-	makeSamples := func(series []labels.Labels) []model.Insertable {
+	makeSamples := func(seriesLabels []labels.Labels) []model.Insertable {
 		lsi := make([]model.Insertable, 0)
-		for _, ser := range series {
-			ls, err := scache.GetSeriesFromLabels(ser)
+		for _, ser := range seriesLabels {
+			key, _, err := cache.GenerateKey(ConvertLabels(ser))
 			if err != nil {
+				t.Errorf("invalid labels %+v, %v", ser, err)
+			}
+			ls, present := scache.GetSeries(key)
+			if !present {
 				t.Errorf("invalid labels %+v, %v", ls, err)
 			}
-			lsi = append(lsi, model.NewPromSamples(ls, nil))
+			series := model.NewSeries(key, nil, ls)
+			lsi = append(lsi, model.NewPromSamples(series, nil))
 		}
 		return lsi
 	}
@@ -470,10 +489,9 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for index, si := range samples {
-		_, _, ok := si.Series().NameValues()
-		require.False(t, ok)
+		require.NotNil(t, si.Series().StoredSeries())
 		expectedId := expectedIds[index]
-		gotId, _, err := si.Series().GetSeriesID()
+		gotId := si.Series().StoredSeries().SeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
@@ -491,10 +509,9 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for index, si := range samples {
-		_, _, ok := si.Series().NameValues()
-		require.False(t, ok)
+		require.NotNil(t, si.Series().StoredSeries())
 		expectedId := expectedIds[index]
-		gotId, _, err := si.Series().GetSeriesID()
+		gotId := si.Series().StoredSeries().SeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
@@ -518,10 +535,9 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	for index, si := range samples {
-		_, _, ok := si.Series().NameValues()
-		require.False(t, ok)
+		require.NotNil(t, si.Series().StoredSeries())
 		expectedId := expectedIds[index]
-		gotId, _, err := si.Series().GetSeriesID()
+		gotId := si.Series().StoredSeries().SeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
@@ -535,9 +551,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 	}
 	testTime := time.Now()
 	makeLabel := func() *model.Series {
-		l := &model.Series{}
-		l.SetSeriesID(1, model.NewSeriesEpoch(testTime))
-		return l
+		return model.NewSeries(nil, nil, model.NewStoredSeries(pgmodel.SeriesID(1), model.NewSeriesEpoch(testTime)))
 	}
 
 	testCases := []struct {
@@ -920,8 +934,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 		c := co
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
-			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
-
+			scache := cache.NewStoredSeriesCache(cache.DefaultConfig, nil)
+			unresolvedSeriesCache := tmpcache.NewUnresolvedSeriesCache()
 			mockMetrics := &model.MockMetricCache{
 				MetricCache:  make(map[string]model.MetricInfo),
 				GetMetricErr: c.metricsGetErr,
@@ -937,7 +951,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error setting up mock cache: %s", err.Error())
 			}
-			inserter, err := newPgxDispatcher(mock, mockMetrics, scache, nil, &Cfg{DisableEpochSync: true, InvertedLabelsCacheSize: 10, NumCopiers: 2})
+			inserter, err := newPgxDispatcher(mock, mockMetrics, unresolvedSeriesCache, scache, nil, &Cfg{DisableEpochSync: true, InvertedLabelsCacheSize: 10, NumCopiers: 2})
 			if err != nil {
 				t.Fatal(err)
 			}
