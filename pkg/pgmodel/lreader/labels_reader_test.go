@@ -169,14 +169,14 @@ func TestLabelsReaderLabelsValues(t *testing.T) {
 			name: "Tenant values are filtered when tenant is configured",
 			sqlQueries: []model.SqlQuery{
 				{
-					Sql:     "SELECT value from _prom_catalog.label WHERE key = $1",
-					Args:    []interface{}{tenancy.TenantLabelKey},
-					Results: model.RowResults{{"a"}, {"b"}},
+					Sql:     "SELECT array_agg(distinct a.value) FROM (SELECT * FROM _prom_catalog.label l WHERE EXISTS( SELECT 1 FROM _prom_catalog.series WHERE ( labels @> array[l.id] AND labels @> ( SELECT array_agg(id :: INTEGER) FROM _prom_catalog.label WHERE key = '__tenant__' AND value = $1 )::int[] ) ) ) a WHERE a.key = $2",
+					Args:    []interface{}{"a", "__tenant__"},
+					Results: model.RowResults{{[]string{"a"}}},
 				},
 			},
 			expectedRes: []string{"a"},
 			labelName:   tenancy.TenantLabelKey,
-			tenant:      tenancy.NewSelectiveTenancyConfig([]string{"a"}, false),
+			tenant:      tenancy.NewSelectiveTenancyConfig([]string{"a"}, false, true),
 		},
 	}
 

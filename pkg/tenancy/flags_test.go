@@ -13,13 +13,16 @@ import (
 
 func TestParseFlags(t *testing.T) {
 	config := fullyParse(t, []string{"-metrics.multi-tenancy", fmt.Sprintf("-metrics.multi-tenancy.valid-tenants=%s", AllowAllTenants)})
-	require.Equal(t, Config{EnableMultiTenancy: true, ValidTenantsStr: AllowAllTenants, SkipTenantValidation: true}, config)
+	require.Equal(t, Config{EnableMultiTenancy: true, ValidTenantsStr: AllowAllTenants, SkipTenantValidation: true, UseExperimentalLabelQueries: true}, config)
 
 	config = fullyParse(t, []string{"-metrics.multi-tenancy", "-metrics.multi-tenancy.valid-tenants=tenant-a,tenant-b,tenant-c"})
-	require.Equal(t, Config{EnableMultiTenancy: true, ValidTenantsStr: "tenant-a,tenant-b,tenant-c", ValidTenantsList: []string{"tenant-a", "tenant-b", "tenant-c"}}, config)
+	require.Equal(t, Config{EnableMultiTenancy: true, ValidTenantsStr: "tenant-a,tenant-b,tenant-c", ValidTenantsList: []string{"tenant-a", "tenant-b", "tenant-c"}, UseExperimentalLabelQueries: true}, config)
 
 	config = fullyParse(t, []string{fmt.Sprintf("-metrics.multi-tenancy.valid-tenants=%s", AllowAllTenants)})
-	require.Equal(t, Config{ValidTenantsStr: AllowAllTenants, SkipTenantValidation: false}, config)
+	require.Equal(t, Config{ValidTenantsStr: AllowAllTenants, SkipTenantValidation: false, UseExperimentalLabelQueries: true}, config)
+
+	config = fullyParse(t, []string{fmt.Sprintf("-metrics.multi-tenancy.valid-tenants=%s", AllowAllTenants), "-metrics.multi-tenancy.experimental.label-queries=false"})
+	require.Equal(t, Config{ValidTenantsStr: AllowAllTenants, SkipTenantValidation: false, UseExperimentalLabelQueries: false}, config)
 }
 
 func fullyParse(t *testing.T, args []string) Config {

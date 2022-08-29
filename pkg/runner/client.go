@@ -156,7 +156,7 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 	if cfg.TenancyCfg.EnableMultiTenancy {
 		multiTenancyConfig := tenancy.NewAllowAllTenantsConfig(cfg.TenancyCfg.AllowNonMTWrites)
 		if !cfg.TenancyCfg.SkipTenantValidation {
-			multiTenancyConfig = tenancy.NewSelectiveTenancyConfig(cfg.TenancyCfg.ValidTenantsList, cfg.TenancyCfg.AllowNonMTWrites)
+			multiTenancyConfig = tenancy.NewSelectiveTenancyConfig(cfg.TenancyCfg.ValidTenantsList, cfg.TenancyCfg.AllowNonMTWrites, cfg.TenancyCfg.UseExperimentalLabelQueries)
 		}
 		multiTenancy, err = tenancy.NewAuthorizer(multiTenancyConfig)
 		if err != nil {

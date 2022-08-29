@@ -21,7 +21,7 @@ func TestMultiTenancyRead(t *testing.T) {
 	)
 
 	// With valid tenants.
-	conf := NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, false)
+	conf := NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, false, true)
 	authr, err := NewReadAuthorizer(conf)
 	require.NoError(t, err)
 	newMatchers := authr.AppendTenantMatcher(matchers)
@@ -40,7 +40,7 @@ func TestMultiTenancyRead(t *testing.T) {
 
 	// Non-tenants.
 	// With valid tenants.
-	conf = NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, true)
+	conf = NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, true, true)
 	authr, err = NewReadAuthorizer(conf)
 	require.NoError(t, err)
 	newMatchers = authr.AppendTenantMatcher(matchers)

@@ -14,7 +14,6 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -66,6 +65,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 					{Name: "foo", Value: "bar"},
 					{Name: "common", Value: "tag"},
 					{Name: "empty", Value: ""},
+					{Name: "shared", Value: "first"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-a"},
 				},
 				Samples: []prompb.Sample{
@@ -104,6 +104,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-a"},
 				},
 				Samples: []prompb.Sample{
@@ -117,6 +118,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-c"},
 				},
 				Samples: []prompb.Sample{
@@ -155,6 +157,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-a"},
 				},
 				Samples: []prompb.Sample{
@@ -168,6 +171,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-b"},
 				},
 				Samples: []prompb.Sample{
@@ -181,6 +185,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-c"},
 				},
 				Samples: []prompb.Sample{
@@ -213,7 +218,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 	ts, tenants := generateSmallMultiTenantTimeseries()
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// With valid tenants.
-		cfg := tenancy.NewSelectiveTenancyConfig(tenants[:2], false) // valid tenant-a & tenant-b.
+		cfg := tenancy.NewSelectiveTenancyConfig(tenants[:2], false, true) // valid tenant-a & tenant-b.
 		mt, err := tenancy.NewAuthorizer(cfg)
 		require.NoError(t, err)
 
@@ -258,6 +263,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-a"},
 				},
 				Samples: []prompb.Sample{
@@ -319,6 +325,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-a"},
 				},
 				Samples: []prompb.Sample{
@@ -332,6 +339,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-b"},
 				},
 				Samples: []prompb.Sample{
@@ -367,7 +375,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		//
 		// eg: tenant-a and tenant-b is ingested. Now, a reader who is just authorized to read tenant-a,
 		// tries tenant-b should get empty result.
-		cfg = tenancy.NewSelectiveTenancyConfig(tenants[:1], false) // valid tenant-a only.
+		cfg = tenancy.NewSelectiveTenancyConfig(tenants[:1], false, true) // valid tenant-a only.
 		mt, err = tenancy.NewAuthorizer(cfg)
 		require.NoError(t, err)
 
@@ -398,7 +406,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 	ts, tenants := generateSmallMultiTenantTimeseries()
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// With valid tenants and non-tenant operations are allowed.
-		cfg := tenancy.NewSelectiveTenancyConfig(tenants[:2], true) // valid tenant-a & tenant-b.
+		cfg := tenancy.NewSelectiveTenancyConfig(tenants[:2], true, true) // valid tenant-a & tenant-b.
 		mt, err := tenancy.NewAuthorizer(cfg)
 		require.NoError(t, err)
 
@@ -491,6 +499,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-a"},
 				},
 				Samples: []prompb.Sample{
@@ -504,6 +513,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-b"},
 				},
 				Samples: []prompb.Sample{
@@ -532,7 +542,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 
 		// query-test: ingested by one org with NonMT true, and being queried by some other org with NonMT false,
 		// so result should contain MT writes of valid tenants by the later org.
-		cfg = tenancy.NewSelectiveTenancyConfig(tenants[:2], false) // valid tenant-a & tenant-b.
+		cfg = tenancy.NewSelectiveTenancyConfig(tenants[:2], false, true) // valid tenant-a & tenant-b.
 		mt, err = tenancy.NewAuthorizer(cfg)
 		require.NoError(t, err)
 
@@ -546,6 +556,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 					{Name: tenancy.TenantLabelKey, Value: "tenant-a"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 				},
 				Samples: []prompb.Sample{
 					{Timestamp: 2, Value: 2.2},
@@ -559,6 +570,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 					{Name: tenancy.TenantLabelKey, Value: "tenant-b"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 				},
 				Samples: []prompb.Sample{
 					{Timestamp: 2, Value: 2.2},
@@ -607,7 +619,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 	ts, tenants := generateSmallMultiTenantTimeseries()
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// With valid tenants.
-		cfg := tenancy.NewSelectiveTenancyConfig(tenants[:2], false) // valid tenant-a & tenant-b.
+		cfg := tenancy.NewSelectiveTenancyConfig(tenants[:2], false, true) // valid tenant-a & tenant-b.
 		mt, err := tenancy.NewAuthorizer(cfg)
 		require.NoError(t, err)
 
@@ -653,6 +665,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 					{Name: tenancy.TenantLabelKey, Value: "tenant-b"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 				},
 				Samples: []prompb.Sample{
 					{Timestamp: 2, Value: 2.2},
@@ -690,6 +703,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-a"},
 				},
 				Samples: []prompb.Sample{
@@ -703,6 +717,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 					{Name: model.MetricNameLabelName, Value: "secondMetric"},
 					{Name: "job", Value: "baz"},
 					{Name: "ins", Value: "tag"},
+					{Name: "shared", Value: "second"},
 					{Name: tenancy.TenantLabelKey, Value: "tenant-b"},
 				},
 				Samples: []prompb.Sample{
@@ -736,9 +751,9 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 	})
 }
 
-func TestMultiTenancyLabelNames(t *testing.T) {
+func TestMultiTenancyLabelNamesValues(t *testing.T) {
 	ts, _ := generateSmallMultiTenantTimeseries()
-	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
+	withDB(t, *testDatabase, func(db *pgxpool.Pool, tb testing.TB) {
 		getClient := func(auth tenancy.Authorizer) *pgclient.Client {
 			client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, auth, false)
 			require.NoError(t, err)
@@ -748,84 +763,88 @@ func TestMultiTenancyLabelNames(t *testing.T) {
 		tsForTenantA := applyTenantAsExternalLabel("tenant-a", []prompb.TimeSeries{ts[0]})
 		tsForTenantB := applyTenantAsExternalLabel("tenant-b", []prompb.TimeSeries{ts[1]})
 
-		auth := tenancy.NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, false)
+		auth := tenancy.NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, false, true)
 		authr, err := tenancy.NewAuthorizer(auth)
 		require.NoError(t, err)
 
 		client := getClient(authr)
 		ingstr := client.Inserter()
-		_, _, err = ingstr.Ingest(context.Background(), newWriteRequestWithTs(tsForTenantA))
+		_, _, err = ingstr.IngestMetrics(context.Background(), newWriteRequestWithTs(tsForTenantA))
 		require.NoError(t, err)
-		_, _, err = ingstr.Ingest(context.Background(), newWriteRequestWithTs(tsForTenantB))
+		_, _, err = ingstr.IngestMetrics(context.Background(), newWriteRequestWithTs(tsForTenantB))
 		require.NoError(t, err)
-
-		// Case 1 -> Label names when both tenant-a and tenant-b are authorized.
-		qr, err := client.Queryable().SamplesQuerier(context.Background(), 1, 5)
-		require.NoError(t, err)
-
-		labelNames, _, err := qr.LabelNames() // Label names should be sorted by default.
-		require.NoError(t, err)
-		require.Equal(t, []string{"__name__", "__tenant__", "common", "empty", "foo", "ins", "job"}, labelNames)
-
-		values, _, err := qr.LabelValues("__tenant__")
-		require.NoError(t, err)
-		require.Equal(t, []string{"tenant-a", "tenant-b"}, values)
 		client.Close()
 
-		// Case 2 -> Label names when only tenant-a is authorized.
-		auth = tenancy.NewSelectiveTenancyConfig([]string{"tenant-a"}, false)
-		authr, err = tenancy.NewAuthorizer(auth)
-		require.NoError(t, err)
+		tcs := []struct {
+			name                              string
+			validTenants                      []string
+			allowNonTenants                   bool
+			expectedLabelNames                []string
+			expectedLabelValuesForTenantLabel []string
+			expectedLabelValuesForSharedLabel []string
+		}{
+			{
+				name:                              `both tenant-a and tenant-b are authorized`,
+				validTenants:                      []string{"tenant-a", "tenant-b"},
+				expectedLabelNames:                []string{"__name__", "__tenant__", "common", "empty", "foo", "ins", "job", "shared"},
+				expectedLabelValuesForTenantLabel: []string{"tenant-a", "tenant-b"},
+				expectedLabelValuesForSharedLabel: []string{"first", "second"},
+			},
+			{
+				name:                              `only tenant-a is authorized`,
+				validTenants:                      []string{"tenant-a"},
+				expectedLabelNames:                []string{"__name__", "__tenant__", "common", "empty", "foo", "shared"},
+				expectedLabelValuesForTenantLabel: []string{"tenant-a"},
+				expectedLabelValuesForSharedLabel: []string{"first"},
+			},
+			{
+				name:                              `no tenant is authorized`,
+				validTenants:                      []string{},
+				expectedLabelNames:                []string{},
+				expectedLabelValuesForTenantLabel: []string{},
+				expectedLabelValuesForSharedLabel: []string{},
+			},
+			{
+				name:                              `non-tenants are allowed, but, only tenant-b is authorized`,
+				validTenants:                      []string{"tenant-b"},
+				allowNonTenants:                   true,
+				expectedLabelNames:                []string{"__name__", "__tenant__", "common", "empty", "foo", "ins", "job", "shared"},
+				expectedLabelValuesForTenantLabel: []string{"tenant-b"},
+				expectedLabelValuesForSharedLabel: []string{"first", "second"},
+			},
+		}
 
-		client = getClient(authr)
-		qr, err = client.Queryable().SamplesQuerier(context.Background(), 1, 5)
-		require.NoError(t, err)
+		for _, tc := range tcs {
+			t.Run(tc.name, func(t *testing.T) {
+				// Inline func so that we can defer client.Close()
+				auth = tenancy.NewSelectiveTenancyConfig(tc.validTenants, tc.allowNonTenants, true)
+				authr, err = tenancy.NewAuthorizer(auth)
+				require.NoError(t, err)
 
-		labelNames, _, err = qr.LabelNames()
-		require.NoError(t, err)
-		require.Equal(t, []string{"__name__", "__tenant__", "common", "empty", "foo"}, labelNames)
+				client = getClient(authr)
+				defer client.Close()
 
-		// Ensure that we do not leak the tenant `tenant-b` name.
-		values, _, err = qr.LabelValues("__tenant__")
-		require.NoError(t, err)
-		require.Equal(t, []string{"tenant-a"}, values)
-		client.Close()
+				qr, err := client.Queryable().SamplesQuerier(context.Background(), 1, 5)
+				require.NoError(t, err)
 
-		// Case 3 -> Label names when no tenant is authorized.
-		auth = tenancy.NewSelectiveTenancyConfig([]string{""}, false)
-		authr, err = tenancy.NewAuthorizer(auth)
-		require.NoError(t, err)
+				labelNames, _, err := qr.LabelNames()
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedLabelNames, labelNames)
 
-		client = getClient(authr)
-		qr, err = client.Queryable().SamplesQuerier(context.Background(), 1, 5)
-		require.NoError(t, err)
+				// Ensure that we do not leak the tenant names.
+				labelValues, _, err := qr.LabelValues("__tenant__")
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedLabelValuesForTenantLabel, labelValues)
 
-		labelNames, _, err = qr.LabelNames()
-		require.NoError(t, err)
-		require.Equal(t, []string{}, labelNames)
+				labelValues, _, err = qr.LabelValues("shared")
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedLabelValuesForSharedLabel, labelValues)
+			})
+		}
 
-		values, _, err = qr.LabelValues("__tenant__")
-		require.NoError(t, err)
-		require.Equal(t, []string{}, values)
-		client.Close()
-
-		// Case 4 -> Label names when non-tenants are allowed, but, only tenant-b is authorized.
-		auth = tenancy.NewSelectiveTenancyConfig([]string{"tenant-b"}, true)
-		authr, err = tenancy.NewAuthorizer(auth)
-		require.NoError(t, err)
-
-		client = getClient(authr)
-		defer client.Close()
-		qr, err = client.Queryable().SamplesQuerier(context.Background(), 1, 5)
-		require.NoError(t, err)
-
-		labelNames, _, err = qr.LabelNames()
-		require.NoError(t, err)
-		require.Equal(t, []string{"__name__", "__tenant__", "ins", "job"}, labelNames)
-
-		values, _, err = qr.LabelValues("__tenant__")
-		require.NoError(t, err)
-		require.Equal(t, []string{"tenant-b"}, values)
+		// Ensure that all-tenants config (a.k.a. allow-non-tenants)
+		auth = tenancy.NewAllowAllTenantsConfig(true)
+		require.False(t, auth.AllowAuthorizedTenantsOnly())
 	})
 }
 

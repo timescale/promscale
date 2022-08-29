@@ -55,13 +55,13 @@ func TestTenantAllowed(t *testing.T) {
 
 func TestGetTenantSafetyMatcher(t *testing.T) {
 	// Test selective config with non-MT ops.
-	conf := NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, false)
+	conf := NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, false, true)
 	matcher, err := conf.getTenantSafetyMatcher()
 	require.NoError(t, err)
 	require.Equal(t, `__tenant__=~"tenant-a|tenant-b"`, matcher.String())
 
 	// Test selective config with MT ops.
-	conf = NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, true)
+	conf = NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, true, true)
 	matcher, err = conf.getTenantSafetyMatcher()
 	require.NoError(t, err)
 	require.Equal(t, `__tenant__=~"tenant-a|tenant-b|^$"`, matcher.String())
