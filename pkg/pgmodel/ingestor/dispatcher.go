@@ -59,8 +59,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 		numCopiers = 1
 	}
 
-	//the copier read request channel keep the queue order
-	//between metrucs
+	// the copier read request channel retains the queue order between metrics
 	maxMetrics := 10000
 	copierReadRequestCh := make(chan readRequest, maxMetrics)
 
