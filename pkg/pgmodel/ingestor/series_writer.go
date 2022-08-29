@@ -50,9 +50,11 @@ type perMetricInfo struct {
 	metricInfo             *pgmodel.MetricInfo
 }
 
-// Set all seriesIds for a samples, fetching any missing ones from the DB,
-// and repopulating the cache accordingly.
-func (h *seriesWriter) WriteSeries(ctx context.Context, sv SeriesVisitor) error {
+// PopulateOrCreateSeries examines all series in SeriesVisitor, checking if the labels or
+// series are present in the inverted label or series caches. If not present,
+// it creates them in the database (if they have not been created), or fetches
+// their IDs if already created populating the respective caches.
+func (h *seriesWriter) PopulateOrCreateSeries(ctx context.Context, sv SeriesVisitor) error {
 	ctx, span := tracer.Default().Start(ctx, "write-series")
 	defer span.End()
 	infos := make(map[string]*perMetricInfo)

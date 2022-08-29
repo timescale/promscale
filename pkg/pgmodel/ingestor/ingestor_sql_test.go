@@ -288,7 +288,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				lsi = append(lsi, model.NewPromExemplars(ls, nil))
 			}
 
-			err := sw.WriteSeries(context.Background(), sVisitor(lsi))
+			err := sw.PopulateOrCreateSeries(context.Background(), sVisitor(lsi))
 			if err != nil {
 				foundErr := false
 				for _, q := range c.sqlQueries {
@@ -455,7 +455,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	samples := makeSamples(series)
-	err := sw.WriteSeries(context.Background(), sVisitor(samples))
+	err := sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,7 +481,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	require.NoError(t, err)
 
 	samples = makeSamples(series)
-	err = sw.WriteSeries(context.Background(), sVisitor(samples))
+	err = sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,7 +503,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 
 	// retrying rechecks the DB and uses the new IDs
 	samples = makeSamples(series)
-	err = sw.WriteSeries(context.Background(), sVisitor(samples))
+	err = sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}
