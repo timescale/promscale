@@ -83,12 +83,12 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf 
 			numSeries int
 		)
 
-		//fetch the batch of request upfront to make sure all of the
-		//requests fetched are for unique metrics. This is insured
-		//by the fact that the batcher only has one outstanding readRequest
-		//at a time and the fact that we fetch the entire batch before
-		//executing any of the reads. This guarantees that we never
-		//need to batch the same metrics together in the copier
+		// fetch a batch of read requests upfront to make sure that all the
+		// requests fetched are for unique metrics. This is ensured by the fact
+		// that the batcher only has one outstanding readRequest at a time and
+		// the fact that we fetch the entire batch before executing any of the
+		// reads. This guarantees that we never need to batch the same metrics
+		// together in the copier.
 		requestBatch, ok = copierGetBatch(ctx, requestBatch, in)
 		if !ok {
 			span.End()
