@@ -49,7 +49,7 @@ const (
 EXISTS(
     SELECT 1 FROM _prom_catalog.series WHERE (
         labels @> array[l.id] AND 
-          labels @> 
+          labels && 
           (
              SELECT array_agg(id :: INTEGER) 
              FROM _prom_catalog.label 
@@ -59,7 +59,7 @@ EXISTS(
 )
 `
 	getLabelNamesForTenant  = `SELECT array_agg(distinct l.key) FROM _prom_catalog.label l WHERE %s`
-	getLabelValuesForTenant = `SELECT array_agg(distinct a.value) FROM (SELECT * FROM _prom_catalog.label l WHERE %s) a WHERE a.key = %s`
+	getLabelValuesForTenant = `SELECT array_agg(distinct value) FROM (SELECT * FROM _prom_catalog.label l WHERE key = $1 AND ( %s )) a`
 )
 
 type labelsReader struct {
@@ -78,13 +78,12 @@ func (lr *labelsReader) LabelValues(labelName string) ([]string, error) {
 			log.Debug("msg", "no tenants found for LabelValues()")
 			return []string{}, nil
 		}
-		existsClause, args := []string{}, []interface{}{}
-		for i, tenantName := range validTenants {
-			existsClause = append(existsClause, fmt.Sprintf(tenantExists, i+1))
+		existsClause, args := []string{}, []interface{}{labelName}
+		for _, tenantName := range validTenants {
 			args = append(args, tenantName)
+			existsClause = append(existsClause, fmt.Sprintf(tenantExists, len(args)))
 		}
-		args = append(args, labelName)
-		labelValuesQuery := fmt.Sprintf(getLabelValuesForTenant, strings.Join(existsClause, " OR "), fmt.Sprint("$", len(args)))
+		labelValuesQuery := fmt.Sprintf(getLabelValuesForTenant, strings.Join(existsClause, " OR "))
 		var labelValues []string
 		if err := lr.conn.QueryRow(context.Background(), labelValuesQuery, args...).Scan(&labelValues); err != nil {
 			return nil, fmt.Errorf("error reading label values belonging to a tenant id: %w", err)
