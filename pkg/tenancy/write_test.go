@@ -15,7 +15,7 @@ import (
 
 func TestVerifyAndApplyTenantLabel(t *testing.T) {
 	// ----- Test with non-MT being false -----.
-	conf := NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, false)
+	conf := NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, false, true)
 	authr := NewWriteAuthorizer(conf)
 	tenantName := "tenant-a"
 
@@ -49,7 +49,7 @@ func TestVerifyAndApplyTenantLabel(t *testing.T) {
 	require.Error(t, err)
 
 	// ----- Test with allow non-MT being true -----.
-	conf = NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, true)
+	conf = NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, true, true)
 	authr = NewWriteAuthorizer(conf)
 
 	// Test with tenant name from header.
@@ -82,7 +82,7 @@ func TestLabelsWithoutTenants(t *testing.T) {
 	)
 
 	// With valid tenants.
-	conf := NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, false)
+	conf := NewSelectiveTenancyConfig([]string{"tenant-a", "tenant-b"}, false, true)
 	authr := NewWriteAuthorizer(conf)
 	require.NoError(t, authr.isAuthorized(tenantName))
 
@@ -93,7 +93,7 @@ func TestLabelsWithoutTenants(t *testing.T) {
 	}
 
 	// Should not verify.
-	conf = NewSelectiveTenancyConfig([]string{"tenant-b"}, false)
+	conf = NewSelectiveTenancyConfig([]string{"tenant-b"}, false, true)
 	authr = NewWriteAuthorizer(conf)
 	err := authr.isAuthorized(tenantName)
 	if expected := fmt.Sprintf("authorization error for tenant tenant-a: %s", ErrUnauthorizedTenant.Error()); err.Error() != expected {
@@ -127,7 +127,7 @@ func TestLabelsWithTenants(t *testing.T) {
 		lblsArrWithTenants = getlblsWithTenants()
 		tenantName         = "tenant-a" // Assume from TENANT header.
 		tenantRandom       = "tenant-random"
-		conf               = NewSelectiveTenancyConfig([]string{"tenant-a"}, false)
+		conf               = NewSelectiveTenancyConfig([]string{"tenant-a"}, false, true)
 		authr              = NewWriteAuthorizer(conf)
 	)
 	require.NoError(t, authr.isAuthorized(tenantName))

@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -43,6 +44,24 @@ func NewLabelsReader(conn pgxconn.PgxConn, labels cache.LabelsCache, mt tenancy.
 	return &labelsReader{conn: conn, labels: labels, authConfig: authConfig}
 }
 
+const (
+	tenantExists = `
+EXISTS(
+    SELECT 1 FROM _prom_catalog.series WHERE (
+        labels @> array[l.id] AND 
+          labels @> 
+          (
+             SELECT array_agg(id :: INTEGER) 
+             FROM _prom_catalog.label 
+             WHERE key = '__tenant__' AND value = $%d
+          )::int[]
+    )
+)
+`
+	getLabelNamesForTenant  = `SELECT array_agg(distinct l.key) FROM _prom_catalog.label l WHERE %s`
+	getLabelValuesForTenant = `SELECT array_agg(distinct a.value) FROM (SELECT * FROM _prom_catalog.label l WHERE %s) a WHERE a.key = %s`
+)
+
 type labelsReader struct {
 	conn       pgxconn.PgxConn
 	labels     cache.LabelsCache
@@ -52,6 +71,29 @@ type labelsReader struct {
 // LabelValues implements the LabelsReader interface. It returns all distinct values
 // for a specified label name.
 func (lr *labelsReader) LabelValues(labelName string) ([]string, error) {
+	if lr.authConfig != nil && lr.authConfig.AllowAuthorizedTenantsOnly() {
+		// For comments, see LabelNames().
+		validTenants := lr.authConfig.ValidTenants()
+		if len(validTenants) == 0 {
+			log.Debug("msg", "no tenants found for LabelValues()")
+			return []string{}, nil
+		}
+		existsClause, args := []string{}, []interface{}{}
+		for i, tenantName := range validTenants {
+			existsClause = append(existsClause, fmt.Sprintf(tenantExists, i+1))
+			args = append(args, tenantName)
+		}
+		args = append(args, labelName)
+		labelValuesQuery := fmt.Sprintf(getLabelValuesForTenant, strings.Join(existsClause, " OR "), fmt.Sprint("$", len(args)))
+		var labelValues []string
+		if err := lr.conn.QueryRow(context.Background(), labelValuesQuery, args...).Scan(&labelValues); err != nil {
+			return nil, fmt.Errorf("error reading label values belonging to a tenant id: %w", err)
+		}
+		if labelValues == nil {
+			labelValues = []string{}
+		}
+		return labelValues, nil
+	}
 	rows, err := lr.conn.Query(context.Background(), getLabelValuesSQL, labelName)
 	if err != nil {
 		return nil, err
@@ -79,47 +121,33 @@ func (lr *labelsReader) LabelValues(labelName string) ([]string, error) {
 	return labelValues, nil
 }
 
-const getLabelNamesBelongingToTenantNames = `
-SELECT ARRAY_AGG(a.key) FROM
-(
-	SELECT 
-	  key 
-	FROM 
-	  _prom_catalog.label WHERE id IN (
-		SELECT 
-		  UNNEST(labels) as valid_label_ids 
-		FROM 
-		  "_prom_catalog".series 
-		WHERE 
-		  labels && (SELECT array_agg(id :: INTEGER) FROM _prom_catalog.label WHERE key = '__tenant__' AND value = ANY($1)) -- List of valid tenant names goes here.
-	  ) GROUP BY 1 ORDER BY 1
-) a
-`
-
 // LabelNames implements the LabelReader interface. It returns all distinct
 // label names available in the database.
 func (lr *labelsReader) LabelNames() ([]string, error) {
-	if lr.authConfig != nil {
-		// Multi-tenancy is enabled. Hence, we have to use a different LabelNames() query
-		// only when some tenants are authorized, i.e., when using NewSelectiveTenancyConfig().
-		//
+	if lr.authConfig != nil && lr.authConfig.AllowAuthorizedTenantsOnly() {
+		// Multi-tenancy is enabled.
 		// Note: Label names of non-tenants will not be sent. Only label names belonging to
-		// authorized tenants will be sent. This means, if -metrics.multi-tenancy.allow-non-tenants
-		// is enabled, the non-tenant labels will not be answered ATM.
-		validTenants, allTenantsValid := lr.authConfig.ValidTenants()
+		// authorized tenants will be sent.
+		validTenants := lr.authConfig.ValidTenants()
 		if len(validTenants) == 0 {
+			log.Debug("msg", "no tenants found for LabelNames()")
 			return []string{}, nil
 		}
-		if !allTenantsValid {
-			var labelNames []string
-			if err := lr.conn.QueryRow(context.Background(), getLabelNamesBelongingToTenantNames, validTenants).Scan(&labelNames); err != nil {
-				return nil, fmt.Errorf("error reading label names belonging to a tenant id: %w", err)
-			}
-			if labelNames == nil {
-				labelNames = []string{}
-			}
-			return labelNames, nil
+		var existsClause []string
+		var args []interface{}
+		for i, tenantName := range validTenants {
+			existsClause = append(existsClause, fmt.Sprintf(tenantExists, i+1))
+			args = append(args, tenantName)
 		}
+		query := fmt.Sprintf(getLabelNamesForTenant, strings.Join(existsClause, " OR "))
+		var labelNames []string
+		if err := lr.conn.QueryRow(context.Background(), query, args...).Scan(&labelNames); err != nil {
+			return nil, fmt.Errorf("error reading label names belonging to a tenant id: %w", err)
+		}
+		if labelNames == nil {
+			labelNames = []string{}
+		}
+		return labelNames, nil
 	}
 
 	rows, err := lr.conn.Query(context.Background(), getLabelNamesSQL)

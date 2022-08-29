@@ -24,21 +24,26 @@ type AuthConfig interface {
 	// IsTenantAllowed returns true if the given tenantName is allowed to be ingested.
 	IsTenantAllowed(string) bool
 	// ValidTenants returns a list of tenants that are authorized in the current session of Promscale.
-	// If -metrics.multi-tenancy.allow-non-tenants is applied, then []tenantName is empty and allTenantsValid is true.
-	ValidTenants() (tenantName []string, allTenantsValid bool)
+	ValidTenants() []string
+	// AllowAuthorizedTenantsOnly returns true if experimental queries are enabled in CLI configuration in
+	// multi-tenancy environments.
+	// Note: AllowAuthorizedTenantsOnly returns false if -allow-non-tenants is enabled.
+	AllowAuthorizedTenantsOnly() bool
 }
 
 // selectiveConfig defines the configuration for tenancy where only valid tenants are allowed.
 type selectiveConfig struct {
-	nonTenants      bool
-	validTenantsMap map[string]struct{}
+	nonTenants                  bool
+	useExperimentalLabelQueries bool
+	validTenantsMap             map[string]struct{}
 }
 
 // NewSelectiveTenancyConfig creates a new config for tenancy where only valid tenants are allowed.
-func NewSelectiveTenancyConfig(validTenants []string, allowNonTenants bool) AuthConfig {
+func NewSelectiveTenancyConfig(validTenants []string, allowNonTenants bool, useExperimentalLabelQueries bool) AuthConfig {
 	cfg := &selectiveConfig{
-		validTenantsMap: make(map[string]struct{}),
-		nonTenants:      allowNonTenants,
+		validTenantsMap:             make(map[string]struct{}),
+		nonTenants:                  allowNonTenants,
+		useExperimentalLabelQueries: useExperimentalLabelQueries,
 	}
 	for _, tname := range validTenants {
 		cfg.validTenantsMap[tname] = struct{}{}
@@ -72,11 +77,11 @@ func (cfg *selectiveConfig) IsTenantAllowed(tenantName string) bool {
 	return false
 }
 
-func (cfg *selectiveConfig) ValidTenants() (tenantName []string, allTenantsValid bool) {
+func (cfg *selectiveConfig) ValidTenants() (tenantName []string) {
 	for name := range cfg.validTenantsMap {
 		tenantName = append(tenantName, name)
 	}
-	return tenantName, false
+	return tenantName
 }
 
 func (cfg *selectiveConfig) getTenantSafetyMatcher() (*labels.Matcher, error) {
@@ -92,6 +97,10 @@ func (cfg *selectiveConfig) getTenantSafetyMatcher() (*labels.Matcher, error) {
 		matcher = modifiedMatcher
 	}
 	return matcher, nil
+}
+
+func (cfg *selectiveConfig) AllowAuthorizedTenantsOnly() bool {
+	return cfg.useExperimentalLabelQueries && !cfg.allowNonTenants()
 }
 
 type AllowAllTenantsConfig struct {
@@ -121,8 +130,8 @@ func (cfg *AllowAllTenantsConfig) IsTenantAllowed(tenantName string) bool {
 	return true
 }
 
-func (cfg *AllowAllTenantsConfig) ValidTenants() (tenantName []string, allTenantsValid bool) {
-	return []string{}, true
+func (cfg *AllowAllTenantsConfig) ValidTenants() []string {
+	return []string{}
 }
 
 func (cfg *AllowAllTenantsConfig) getTenantSafetyMatcher() (*labels.Matcher, error) {
@@ -144,4 +153,8 @@ func getMTSafeLabelMatcher(validTenants []string) (*labels.Matcher, error) {
 		return nil, fmt.Errorf("init safety label-matcher: %w", err)
 	}
 	return mtSafetyLabelMatcher, nil
+}
+
+func (cfg *AllowAllTenantsConfig) AllowAuthorizedTenantsOnly() bool {
+	return false
 }

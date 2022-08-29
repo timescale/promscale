@@ -9,11 +9,12 @@ import (
 const AllowAllTenants = "allow-all"
 
 type Config struct {
-	SkipTenantValidation bool
-	EnableMultiTenancy   bool
-	AllowNonMTWrites     bool
-	ValidTenantsStr      string
-	ValidTenantsList     []string
+	SkipTenantValidation        bool
+	EnableMultiTenancy          bool
+	AllowNonMTWrites            bool
+	UseExperimentalLabelQueries bool
+	ValidTenantsStr             string
+	ValidTenantsList            []string
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) {
@@ -24,6 +25,9 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) {
 	fs.StringVar(&cfg.ValidTenantsStr, "metrics.multi-tenancy.valid-tenants", AllowAllTenants, "Sets valid tenants that are allowed to be ingested/queried from Promscale. "+
 		fmt.Sprintf("This can be set as: '%s' (default) or a comma separated tenant names. '%s' makes Promscale ingest or query any tenant from itself. ", AllowAllTenants, AllowAllTenants)+
 		"A comma separated list will indicate only those tenants that are authorized for operations from Promscale.")
+	fs.BoolVar(&cfg.UseExperimentalLabelQueries, "metrics.multi-tenancy.experimental.label-queries", true, "[EXPERIMENTAL] Use label queries "+
+		"that returns labels of authorized tenants only. This may affect system performance while running PromQL queries. "+
+		"By default this is enabled in -metrics.multi-tenancy mode.")
 }
 
 func Validate(cfg *Config) error {

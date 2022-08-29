@@ -355,6 +355,7 @@ func generateSmallMultiTenantTimeseries() ([]prompb.TimeSeries, []string) {
 				{Name: "foo", Value: "bar"},
 				{Name: "common", Value: "tag"},
 				{Name: "empty", Value: ""},
+				{Name: "shared", Value: "first"},
 			},
 			Samples: []prompb.Sample{
 				{Timestamp: 1, Value: 0.1},
@@ -369,6 +370,7 @@ func generateSmallMultiTenantTimeseries() ([]prompb.TimeSeries, []string) {
 				{Name: model.MetricNameLabelName, Value: "secondMetric"},
 				{Name: "job", Value: "baz"},
 				{Name: "ins", Value: "tag"},
+				{Name: "shared", Value: "second"},
 			},
 			Samples: []prompb.Sample{
 				{Timestamp: 1, Value: 2.1},
