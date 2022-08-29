@@ -101,7 +101,6 @@ func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces ptrace.Trac
 
 // IngestMetrics transforms and ingests the timeseries data into Timescale database.
 // input:
-//     tts the []Timeseries to insert
 //     req the WriteRequest backing tts. It will be added to our WriteRequest
 //         pool when it is no longer needed.
 func (ingestor *DBIngestor) IngestMetrics(ctx context.Context, r *prompb.WriteRequest) (numInsertablesIngested uint64, numMetadataIngested uint64, err error) {
