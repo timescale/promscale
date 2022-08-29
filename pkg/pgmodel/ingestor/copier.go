@@ -143,7 +143,7 @@ func persistBatch(ctx context.Context, conn pgxconn.PgxConn, sw *seriesWriter, e
 	ctx, span := tracer.Default().Start(ctx, "persist-batch")
 	defer span.End()
 	batch := copyBatch(insertBatch)
-	err := sw.WriteSeries(ctx, batch)
+	err := sw.PopulateOrCreateSeries(ctx, batch)
 	if err != nil {
 		return fmt.Errorf("copier: writing series: %w", err)
 	}
@@ -366,7 +366,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 		req := &reqs[r]
 		// Since seriesId order is not guaranteed we need to sort it to avoid row deadlock when duplicates are sent (eg. Prometheus retry)
 		// Samples inside series should be sorted by Prometheus
-		// We sort after WriteSeries call because we now have guarantees that all seriesIDs have been populated
+		// We sort after PopulateOrCreateSeries call because we now have guarantees that all seriesIDs have been populated
 		sort.Sort(&req.data.batch)
 		numSamples, numExemplars := req.data.batch.Count()
 		metrics.IngestorRowsPerInsert.With(labelsCopier).Observe(float64(numSamples + numExemplars))
