@@ -65,7 +65,7 @@ func TestParseFlags(t *testing.T) {
 			name: "enable disabled-features",
 			args: []string{"-enable-feature", "promql-at-modifier,tracing", "-tracing.otlp.server-address", ":8080"},
 			result: func(c Config) Config {
-				c.OTLPGRPCListenAddr = ":8080"
+				c.TracingGRPCListenAddr = ":8080"
 				c.PromQLCfg.PromscaleEnabledFeatureList = []string{"promql-at-modifier", "tracing"}
 				c.PromQLCfg.EnabledFeatureMap = map[string]struct{}{
 					"promql-at-modifier": {},
@@ -157,7 +157,7 @@ func TestParseFlags(t *testing.T) {
 			name: "enable feature should populate map of enabled features",
 			args: []string{"-enable-feature", "tracing,promql-at-modifier,promql-negative-offset,promql-per-step-stats", "-tracing.otlp.server-address", "someaddress"},
 			result: func(c Config) Config {
-				c.OTLPGRPCListenAddr = "someaddress"
+				c.TracingGRPCListenAddr = "someaddress"
 				c.PromQLCfg.EnabledFeatureMap = map[string]struct{}{
 					"promql-at-modifier":     {},
 					"promql-negative-offset": {},

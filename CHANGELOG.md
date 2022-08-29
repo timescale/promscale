@@ -23,6 +23,7 @@ We use the following categories for changes:
 ### Changed
 
 - Helm chart code was migrated to https://github.com/timescale/helm-charts [#1562]
+- Deprecate flag `tracing.otlp.server-address` in favour of `tracing.grpc.server-address` [#1588]
 
 ### Fixed
 - Make Jaeger Event queryable using name and tags [#1553]

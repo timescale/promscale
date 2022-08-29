@@ -28,7 +28,7 @@ import (
 type Config struct {
 	ListenAddr                  string
 	ThanosStoreAPIListenAddr    string
-	OTLPGRPCListenAddr          string
+	TracingGRPCListenAddr       string
 	PgmodelCfg                  pgclient.Config
 	LogCfg                      log.Config
 	TracerCfg                   tracer.Config
@@ -136,7 +136,8 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web.listen-address", ":9201", "Address to listen on for web endpoints.")
 	fs.StringVar(&cfg.ThanosStoreAPIListenAddr, "thanos.store-api.server-address", "", "Address to listen on for Thanos Store API endpoints.")
-	fs.StringVar(&cfg.OTLPGRPCListenAddr, "tracing.otlp.server-address", ":9202", "Address to listen on for OpenTelemetry OTLP GRPC server.")
+	fs.StringVar(&cfg.TracingGRPCListenAddr, "tracing.otlp.server-address", ":9202", "GRPC server address to listen on for Jaeger and OTEL traces(DEPRECATED: use `tracing.grpc.server-address` instead).") //TODO: remove this flag at some point
+	fs.StringVar(&cfg.TracingGRPCListenAddr, "tracing.grpc.server-address", ":9202", "GRPC server address to listen on for Jaeger and OTEL traces.")
 	fs.StringVar(&corsOriginFlag, "web.cors-origin", ".*", `Regex for CORS origin. It is fully anchored. Example: 'https?://(domain1|domain2)\.com'`)
 	fs.DurationVar(&cfg.ThroughputInterval, "telemetry.log.throughput-report-interval", time.Second, "Duration interval at which throughput should be reported. Setting duration to `0` will disable reporting throughput, otherwise, an interval with unit must be provided, e.g. `10s` or `3m`.")
 	fs.StringVar(&cfg.DatasetConfig, "startup.dataset.config", "", "Dataset configuration in YAML format for Promscale. It is used for setting various dataset configuration like default metric chunk interval")

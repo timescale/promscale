@@ -241,15 +241,15 @@ func Run(cfg *Config) error {
 
 	group.Add(
 		func() error {
-			listener, err := net.Listen("tcp", cfg.OTLPGRPCListenAddr)
+			listener, err := net.Listen("tcp", cfg.TracingGRPCListenAddr)
 			if err != nil {
-				log.Error("msg", "Listening for OpenTelemetry OTLP GRPC server failed", "err", err)
+				log.Error("msg", "Failed creating server listener for Jaeger and OTEL traces", "err", err)
 				return err
 			}
-			log.Info("msg", "Started OpenTelemetry OTLP GRPC server", "listening-port", cfg.OTLPGRPCListenAddr)
+			log.Info("msg", "Started GRPC server for Jaeger and OTEL traces", "listening-port", cfg.TracingGRPCListenAddr)
 			return grpcServer.Serve(listener)
 		}, func(error) {
-			log.Info("msg", "Stopping OpenTelemetry OTLP GRPC server")
+			log.Info("msg", "Stopping GRPC server for Jaeger and OTEL traces")
 			grpcServer.Stop()
 		},
 	)
