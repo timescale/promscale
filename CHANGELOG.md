@@ -13,7 +13,7 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
-## Unreleased
+## [0.14.0] - 2022-08-30
 
 ### Added
 - Implement Jaeger gRPC remote storage writer interface [#1543]
