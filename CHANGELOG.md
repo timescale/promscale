@@ -16,10 +16,12 @@ We use the following categories for changes:
 ## [Unreleased]
 
 ### Added
-
 - prom-migrator: Support for passing custom HTTP headers via command line arguments for both
   reader and writer [#1020].
 - Run timescaledb-tune with the promscale profile [#1615]
+
+### Fixed
+- Fix broken cache eviction in clockcache [#1603]
 
 ## [0.14.0] - 2022-08-30
 
