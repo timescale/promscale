@@ -13,6 +13,12 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## [Unreleased]
+
+### Added
+
+- Run timescaledb-tune with the promscale profile [#1601]
+
 ## [0.14.0] - 2022-08-30
 
 ### Added
