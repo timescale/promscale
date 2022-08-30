@@ -144,6 +144,7 @@ will be supported.
 | reader-tls-insecure-skip-verify | boolean  |  false   |   `false`   | TLS insecure skip verify for remote-read component.                                                                       |
 |       reader-tls-key-file       |  string  |  false   |    `""`     | TLS key file for remote-read component.                                                                                   |
 |     reader-tls-server-name      |  string  |  false   |    `""`     | TLS server name for remote-read component.                                                                                |
+|     reader-http-header          |  string  |  false   |    `""`     | HTTP header to send with all the reader requests. It uses the format `key:value`, for example `-reader-http-header="X-Scope-OrgID:42"`. Can be set multiple times to define several headers or multiple values for the same header. |
 
 #### Writer
 
@@ -160,6 +161,7 @@ will be supported.
 | writer-tls-insecure-skip-verify | boolean |  false   | `false` | TLS insecure skip verify for remote-writer component.                                                                                                                                                                               |
 |       writer-tls-key-file       | string  |  false   |  `""`   | TLS key file for remote-writer component.                                                                                                                                                                                           |
 |     writer-tls-server-name      | string  |  false   |  `""`   | TLS server name for remote-writer component.                                                                                                                                                                                        |
+|     writer-http-header          | string  |  false   |  `""`   | HTTP header to send with all the writer requests. It uses the format `key:value`, for example `-writer-http-header="X-Scope-OrgID:42"`. Can be set multiple times to define several headers or multiple values for the same header. |
 
 ## Contributing
 
