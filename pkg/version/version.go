@@ -38,7 +38,7 @@ var (
 	// It is customary to bump the version by incrementing the numeral after
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
 
-	Promscale                  = "0.14.0-dev.0"
+	Promscale                  = "0.14.0"
 	PrevReleaseVersion         = "0.13.0"
 	CommitHash                 = ""      // Comes from -ldflags settings
 	Branch                     = ""      // Comes from -ldflags settings

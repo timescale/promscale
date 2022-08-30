@@ -8,11 +8,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.13.0
+    chart: promscale-0.14.0
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale"
-    app.kubernetes.io/version: 0.13.0
+    app.kubernetes.io/version: 0.14.0
     app.kubernetes.io/component: "connector"
 ---
 # Source: promscale/templates/secret-connection.yaml
@@ -23,11 +23,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.13.0
+    chart: promscale-0.14.0
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale"
-    app.kubernetes.io/version: 0.13.0
+    app.kubernetes.io/version: 0.14.0
     app.kubernetes.io/component: "connector"
 stringData:
   PROMSCALE_DB_PORT: "5432"
@@ -43,11 +43,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.13.0
+    chart: promscale-0.14.0
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale"
-    app.kubernetes.io/version: 0.13.0
+    app.kubernetes.io/version: 0.14.0
     app.kubernetes.io/component: "connector"
 spec:
   selector:
@@ -74,11 +74,11 @@ metadata:
   labels:
 
     app: promscale
-    chart: promscale-0.13.0
+    chart: promscale-0.14.0
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale"
-    app.kubernetes.io/version: 0.13.0
+    app.kubernetes.io/version: 0.14.0
     app.kubernetes.io/component: "connector"
 spec:
   replicas: 1
@@ -92,11 +92,11 @@ spec:
     metadata:
       labels:
         app: promscale
-        chart: promscale-0.13.0
+        chart: promscale-0.14.0
         release: promscale
         heritage: Helm
         app.kubernetes.io/name: "promscale"
-        app.kubernetes.io/version: 0.13.0
+        app.kubernetes.io/version: 0.14.0
         app.kubernetes.io/component: "connector"
       annotations:
         checksum/connection: ff05ff54cbc0eadd9ce97781ed753f30c19ece1aa39b35d2eb5a70ad656daf69
@@ -106,7 +106,7 @@ spec:
         prometheus.io/scrape: "true"
     spec:
       containers:
-        - image: timescale/promscale:0.13.0
+        - image: timescale/promscale:0.14.0
           imagePullPolicy: IfNotPresent
           name: promscale
           args:
@@ -115,7 +115,7 @@ spec:
             - name: TOBS_TELEMETRY_INSTALLED_BY
               value: "promscale"
             - name: "TOBS_TELEMETRY_VERSION"
-              value: "0.13.0"
+              value: "0.14.0"
           envFrom:
           - secretRef:
               name: promscale
@@ -150,11 +150,11 @@ metadata:
   namespace: default
   labels:
     app: promscale
-    chart: promscale-0.13.0
+    chart: promscale-0.14.0
     release: promscale
     heritage: Helm
     app.kubernetes.io/name: "promscale"
-    app.kubernetes.io/version: 0.13.0
+    app.kubernetes.io/version: 0.14.0
     app.kubernetes.io/component: "connector"
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade,post-delete
