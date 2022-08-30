@@ -46,7 +46,9 @@ func (td *Dispatcher) InsertTraces(ctx context.Context, traces ptrace.Traces) (e
 		if err != nil {
 			code = "500"
 		}
-		metrics.IngestorRequests.With(prometheus.Labels{"type": "trace", "code": code}).Inc()
+		if !td.async {
+			metrics.IngestorRequests.With(prometheus.Labels{"type": "trace", "code": code}).Inc()
+		}
 	}()
 	_, span := tracer.Default().Start(ctx, "trace-dispatcher")
 	defer span.End()
@@ -68,7 +70,9 @@ func (td *Dispatcher) InsertTraces(ctx context.Context, traces ptrace.Traces) (e
 			if err != nil {
 				span.AddEvent("Error while processing async request")
 				log.Error("async", td.async, "error", err)
+				code = "500"
 			}
+			metrics.IngestorRequests.With(prometheus.Labels{"type": "trace", "code": code}).Inc()
 		}()
 		return nil
 	} else {
