@@ -174,7 +174,7 @@ func (self *Cache) evict() (insertPtr *element) {
 			}
 
 			if insertPtr != nil {
-				self.next = next + 1
+				self.next = (startLoc + next + 1) % self.Len()
 				return
 			}
 		}

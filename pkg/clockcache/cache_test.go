@@ -6,6 +6,7 @@ package clockcache
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"math/rand"
 	"reflect"
 	"sync"
@@ -319,5 +320,36 @@ func TestElementCacheAligned(t *testing.T) {
 	}
 	if elementSize != 64 {
 		t.Errorf("unexpected element size: %d", elementSize)
+	}
+}
+
+func TestCacheEvictionOnWraparound(t *testing.T) {
+	elems := 3
+	cache := WithMax(uint64(elems))
+	cachedItems := make([]int, elems)
+
+	// Prepopulate cache
+	for i := 0; i < 3; i++ {
+		cache.Insert(i, i, 1)
+		cachedItems[i%3] = i
+	}
+
+	assertCacheContains := func(cache *Cache, pseudoCache []int) {
+		cacheKeys := make([]int, elems)
+		i := 0
+		for k := range cache.elements {
+			cacheKeys[i] = k.(int)
+			i += 1
+		}
+		require.ElementsMatch(t, cacheKeys, pseudoCache)
+	}
+
+	// Let's cause a bunch of evictions
+	for i := 0; i < 100; i++ {
+		cache.Insert(i, i, 1)
+		// Track what we expect the cache to contain
+		cachedItems[i%3] = i
+		// Assert that our expectations are met
+		assertCacheContains(cache, cachedItems)
 	}
 }
