@@ -294,29 +294,29 @@ func decodeSnappyBody(r io.Reader) ([]byte, error, string) {
 
 func validateWriteHeaders(t *testing.T, r *http.Request) bool {
 	// validate headers from https://github.com/prometheus/prometheus/blob/2bd077ed9724548b6a631b6ddba48928704b5c34/storage/remote/client.go
-	if r.Method != "POST" {
-		t.Fatalf("HTTP Method %s instead of POST", r.Method)
-	}
+	assert.Equal(t, "POST", r.Method)
 
 	switch r.Header.Get("Content-Type") {
 	case "application/x-protobuf":
-		if !strings.Contains(r.Header.Get("Content-Encoding"), "snappy") {
-			t.Fatalf("non-snappy compressed data got: %s", r.Header.Get("Content-Encoding"))
-		}
+		assert.Contains(t, "snappy", r.Header.Get("Content-Encoding"))
 
 		remoteWriteVersion := r.Header.Get("X-Prometheus-Remote-Write-Version")
-		if remoteWriteVersion == "" {
-			t.Fatal("msg", "Missing X-Prometheus-Remote-Write-Version header")
-		}
-
-		if !strings.HasPrefix(remoteWriteVersion, "0.1.") {
-			t.Fatalf("unexpected Remote-Write-Version %s, expected 0.1.X", remoteWriteVersion)
+		if assert.NotEmpty(t, remoteWriteVersion) {
+			assert.True(
+				t,
+				strings.HasPrefix(remoteWriteVersion, "0.1."),
+				"unexpected Remote-Write-Version %s, expected 0.1.X",
+				remoteWriteVersion,
+			)
 		}
 	case "application/json":
 		// Don't need any other header checks for JSON content type.
 	default:
 		t.Fatal("unsupported data format (not protobuf or json)")
 	}
+
+	assert.Equal(t, "custom-header-value", r.Header.Get("Custom-Header-Single"))
+	assert.Equal(t, []string{"multiple-1", "multiple-2"}, r.Header.Values("Custom-Header-Multiple"))
 
 	return true
 }
