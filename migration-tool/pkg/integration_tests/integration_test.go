@@ -24,6 +24,10 @@ var (
 		OnErr:     utils.Retry,
 		Delay:     time.Millisecond * 10,
 		MaxRetry:  6,
+		CustomHeaders: map[string][]string{
+			"Custom-Header-Single":   {"custom-header-value"},
+			"Custom-Header-Multiple": {"multiple-1", "multiple-2"},
+		},
 	}
 )
 

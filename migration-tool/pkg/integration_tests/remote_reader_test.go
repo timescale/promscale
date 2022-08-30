@@ -15,6 +15,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/stretchr/testify/assert"
 )
 
 type remoteReadServer struct {
@@ -140,25 +141,22 @@ func getReadHandler(t *testing.T, series []prompb.TimeSeries, testRetry bool) ht
 
 func validateReadHeaders(t *testing.T, w http.ResponseWriter, r *http.Request) bool {
 	// validate headers from https://github.com/prometheus/prometheus/blob/2bd077ed9724548b6a631b6ddba48928704b5c34/storage/remote/client.go
-	if r.Method != "POST" {
-		t.Fatalf("HTTP Method %s instead of POST", r.Method)
-	}
-
-	if !strings.Contains(r.Header.Get("Content-Encoding"), "snappy") {
-		t.Fatalf("non-snappy compressed data got: %s", r.Header.Get("Content-Encoding"))
-	}
-
-	if r.Header.Get("Content-Type") != "application/x-protobuf" {
-		t.Fatal("non-protobuf data")
-	}
+	assert.Equal(t, "POST", r.Method)
+	assert.Equal(t, "snappy", r.Header.Get("Content-Encoding"))
+	assert.Equal(t, "application/x-protobuf", r.Header.Get("Content-Type"))
 
 	remoteReadVersion := r.Header.Get("X-Prometheus-Remote-Read-Version")
-	if remoteReadVersion == "" {
-		err := "missing X-Prometheus-Remote-Read-Version"
-		t.Fatal("msg", "Read header validation error", "err", err)
-	} else if !strings.HasPrefix(remoteReadVersion, "0.1.") {
-		t.Fatalf("unexpected Remote-Read-Version %s, expected 0.1.X", remoteReadVersion)
+	if assert.NotEmpty(t, remoteReadVersion) {
+		assert.True(
+			t,
+			strings.HasPrefix(remoteReadVersion, "0.1."),
+			"unexpected Remote-Read-Version %s, expected 0.1.X",
+			remoteReadVersion,
+		)
 	}
+
+	assert.Equal(t, "custom-header-value", r.Header.Get("Custom-Header-Single"))
+	assert.Equal(t, []string{"multiple-1", "multiple-2"}, r.Header.Values("Custom-Header-Multiple"))
 
 	return true
 }

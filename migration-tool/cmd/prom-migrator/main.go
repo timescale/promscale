@@ -181,6 +181,8 @@ loop:
 	log.Info("msg", "exiting!")
 }
 
+var headers utils.HeadersFlag
+
 func parseFlags(conf *config, args []string) {
 	// todo: update docs.
 	flag.StringVar(&conf.name, "migration-name", migrationJobName, "Name for the current migration that is to be carried out. "+
@@ -226,6 +228,10 @@ func parseFlags(conf *config, args []string) {
 		"Valid options: ['retry', 'skip', 'abort']. "+
 		"See 'reader-on-timeout' for more information on the above options. ")
 	flag.StringVar(&conf.readerMetricsMatcher, "reader-metrics-matcher", `{__name__=~".+"}`, "Metrics vector selector to read data for migration.")
+	if conf.readerClientConfig.CustomHeaders == nil {
+		conf.readerClientConfig.CustomHeaders = make(map[string][]string)
+	}
+	flag.Var(&utils.HeadersFlag{Headers: conf.readerClientConfig.CustomHeaders}, "reader-http-header", "HTTP header to send with all the reader requests. It uses the format `key:value`, for example `-reader-http-header=\"X-Scope-OrgID:42\"`. Can be set multiple times to define several headers or multiple values for the same header.")
 
 	flag.StringVar(&conf.writerClientConfig.URL, "writer-url", "", "URL address for the storage where the data migration is to be written.")
 	flag.DurationVar(&conf.writerClientConfig.Timeout, "writer-timeout", defaultTimeout, "Timeout for pushing data to write storage.")
@@ -242,6 +248,11 @@ func parseFlags(conf *config, args []string) {
 	flag.StringVar(&conf.writerClientConfig.OnErrStr, "writer-on-error", "abort", "When an error occurs during write process, how should the writer behave. "+
 		"Valid options: ['retry', 'skip', 'abort']. "+
 		"See 'writer-on-timeout' for more information on the above options. ")
+
+	if conf.writerClientConfig.CustomHeaders == nil {
+		conf.writerClientConfig.CustomHeaders = make(map[string][]string)
+	}
+	flag.Var(&utils.HeadersFlag{Headers: conf.writerClientConfig.CustomHeaders}, "writer-http-header", "HTTP header to send with all the writer requests. It uses the format `key:value`, for example `-writer-http-header=\"X-Scope-OrgID:42\"`. Can be set multiple times to define several headers or multiple values for the same header.")
 
 	flag.StringVar(&conf.progressMetricName, "progress-metric-name", progressMetricName, "Prometheus metric name for tracking the last maximum timestamp pushed to the remote-write storage. "+
 		"This is used to resume the migration process after a failure.")

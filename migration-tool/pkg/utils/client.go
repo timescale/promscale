@@ -68,7 +68,8 @@ type ClientConfig struct {
 	MaxRetry     int
 	// Delay defines the time we should wait before a retry. This can happen
 	// either in a timeout or after an error.
-	Delay time.Duration
+	Delay         time.Duration
+	CustomHeaders map[string][]string
 }
 
 func (c ClientConfig) shouldRetry(on eventType, retries int, message string) (retry bool) {
@@ -133,10 +134,19 @@ func ParseClientInfo(conf *ClientConfig) error {
 }
 
 type Client struct {
-	remoteName   string
-	url          *promConfig.URL
-	cHTTP        *http.Client
-	clientConfig ClientConfig
+	remoteName    string
+	url           *promConfig.URL
+	cHTTP         *http.Client
+	clientConfig  ClientConfig
+	customHeaders map[string][]string
+}
+
+func (c *Client) addCustomHeaders(h http.Header) {
+	for k, vs := range c.customHeaders {
+		for _, v := range vs {
+			h.Add(k, v)
+		}
+	}
 }
 
 // Config returns the client runtime.
@@ -162,10 +172,11 @@ func NewClient(remoteName string, clientConfig ClientConfig, httpConfig promConf
 	}
 
 	return &Client{
-		remoteName:   remoteName,
-		url:          &promConfig.URL{URL: parsedUrl},
-		cHTTP:        httpClient,
-		clientConfig: clientConfig,
+		remoteName:    remoteName,
+		url:           &promConfig.URL{URL: parsedUrl},
+		cHTTP:         httpClient,
+		clientConfig:  clientConfig,
+		customHeaders: clientConfig.CustomHeaders,
 	}, nil
 }
 
@@ -204,6 +215,8 @@ retry:
 	if err != nil {
 		return nil, -1, -1, errors.Wrap(err, "unable to create request")
 	}
+
+	c.addCustomHeaders(httpReq.Header)
 	httpReq.Header.Add("Content-Encoding", "snappy")
 	httpReq.Header.Add("Accept-Encoding", "snappy")
 	httpReq.Header.Set("Content-Type", "application/x-protobuf")
@@ -327,6 +340,8 @@ func (c *Client) Store(ctx context.Context, req []byte) error {
 		// recoverable.
 		return err
 	}
+
+	c.addCustomHeaders(httpReq.Header)
 	httpReq.Header.Add("Content-Encoding", "snappy")
 	httpReq.Header.Set("Content-Type", "application/x-protobuf")
 	httpReq.Header.Set("User-Agent", userAgent)
