@@ -662,6 +662,17 @@ promscale_cache_query_latency_microseconds_bucket{method="Get_Values",name="labe
 promscale_cache_query_latency_microseconds_bucket{method="Get_Values",name="label",type="metric",le="+Inf"} 4
 promscale_cache_query_latency_microseconds_sum{method="Get_Values",name="label",type="metric"} 13
 promscale_cache_query_latency_microseconds_count{method="Get_Values",name="label",type="metric"} 4
+# HELP promscale_cache_resets_total Total resets in a clockcache.
+# TYPE promscale_cache_resets_total counter
+promscale_cache_resets_total{name="exemplar_labels",type="metric"} 0
+promscale_cache_resets_total{name="instrumentation_lib",type="trace"} 0
+promscale_cache_resets_total{name="inverted_labels",type="metric"} 1
+promscale_cache_resets_total{name="label",type="metric"} 0
+promscale_cache_resets_total{name="metric_name",type="metric"} 0
+promscale_cache_resets_total{name="operation",type="trace"} 0
+promscale_cache_resets_total{name="schema",type="trace"} 0
+promscale_cache_resets_total{name="series",type="metric"} 1
+promscale_cache_resets_total{name="tag",type="trace"} 0
 # HELP promscale_cache_statement_per_connection_capacity Maximum number of statements in connection pool's statement cache
 # TYPE promscale_cache_statement_per_connection_capacity gauge
 promscale_cache_statement_per_connection_capacity 512

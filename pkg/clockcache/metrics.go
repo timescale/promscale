@@ -143,5 +143,16 @@ func registerMetrics(cacheName, moduleType string, c *Cache) {
 			return float64(c.Evictions())
 		},
 	)
-	r.MustRegister(enabled, count, size, capacity, evictions)
+	resets := prometheus.NewCounterFunc(
+		prometheus.CounterOpts{
+			Namespace:   util.PromNamespace,
+			Subsystem:   "cache",
+			Name:        "resets_total",
+			Help:        "Total resets in a clockcache.",
+			ConstLabels: map[string]string{"type": moduleType, "name": cacheName},
+		}, func() float64 {
+			return float64(c.Resets())
+		},
+	)
+	r.MustRegister(enabled, count, size, capacity, evictions, resets)
 }

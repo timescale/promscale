@@ -27,6 +27,8 @@ type Cache struct {
 	dataSize uint64
 	// number of evictions
 	evictions uint64
+	// number of resets
+	resets uint64
 
 	// guards next, and len(storage) and ensures that at most one eviction
 	// occurs at a time, always grabbed _before_ elementsLock
@@ -329,6 +331,7 @@ func (self *Cache) Reset() {
 	self.elements = newElements
 	self.storage = newStorage
 	self.evictions += uint64(oldLen)
+	self.resets++
 	self.next = 0
 }
 
@@ -342,6 +345,12 @@ func (self *Cache) Evictions() uint64 {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()
 	return self.evictions
+}
+
+func (self *Cache) Resets() uint64 {
+	self.elementsLock.RLock()
+	defer self.elementsLock.RUnlock()
+	return self.resets
 }
 
 func (self *Cache) SizeBytes() uint64 {
