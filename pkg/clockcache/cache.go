@@ -319,6 +319,7 @@ func (self *Cache) Reset() {
 	self.insertLock.Lock()
 	defer self.insertLock.Unlock()
 	oldSize := cap(self.storage)
+	oldLen := len(self.storage)
 
 	newElements := make(map[interface{}]*element, oldSize)
 	newStorage := make([]element, 0, oldSize)
@@ -327,6 +328,7 @@ func (self *Cache) Reset() {
 	defer self.elementsLock.Unlock()
 	self.elements = newElements
 	self.storage = newStorage
+	self.evictions += uint64(oldLen)
 	self.next = 0
 }
 

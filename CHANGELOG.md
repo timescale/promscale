@@ -13,6 +13,11 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## Unreleased
+
+### Added
+- Count cache resets towards cache invalidations [#1609]
+
 ## [0.14.0] - 2022-08-30
 
 ### Added
