@@ -6,6 +6,7 @@ package clockcache
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"math/rand"
 	"reflect"
 	"sync"
@@ -310,6 +311,8 @@ func TestReset(t *testing.T) {
 	if cache.Cap() != 3 {
 		t.Error("Incorrrect len")
 	}
+
+	require.Equal(t, uint64(3), cache.Resets())
 }
 
 func TestElementCacheAligned(t *testing.T) {

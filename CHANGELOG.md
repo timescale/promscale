@@ -13,6 +13,12 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## Unreleased
+
+### Added
+- Add `promscale_cache_resets_total` counter for cache resets [#1609]
+- Count cache resets towards cache invalidations [#1609]
+
 ## [0.14.0] - 2022-08-30
 
 ### Added
