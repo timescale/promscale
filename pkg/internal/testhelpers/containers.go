@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -93,8 +94,8 @@ func StopContainer(ctx context.Context, container testcontainers.Container, prin
 			fmt.Fprintln(os.Stderr, "couldn't stop log producer", err)
 		}
 	}
-
-	err := container.Terminate(ctx)
+	timeout := 10 * time.Second
+	err := container.Stop(ctx, &timeout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "couldn't terminate container", err)
 	}
