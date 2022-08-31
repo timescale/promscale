@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	constants "github.com/timescale/promscale/pkg/tests"
 
 	"github.com/blang/semver/v4"
@@ -85,6 +86,11 @@ func getDBImages(extensionState testhelpers.TestOptions, prevPromscaleVersion *s
 		//we don't want to use any features in a newer PG version that isn't available in an older one
 		//but migration code that works in an older PG version should generally work in a newer one.
 		panic("Only use pg12 for upgrade tests")
+	}
+
+	// From Promscale 0.14.0 onwards the minimum extension version is 0.6.0
+	if prevPromscaleVersion != nil && prevPromscaleVersion.GE(semver.MustParse("0.14.0")) {
+		return "timescale/timescaledb-ha:pg" + pgVersion + ".12-ts2.7.2-latest", dockerImageName, nil
 	}
 
 	// From Promscale 0.13.0 onwards the minimum extension version is 0.5.4
@@ -176,6 +182,29 @@ func TestUpgradeFromEarliestNoData(t *testing.T) {
 	}
 }
 
+func assertMetricSamplesCount(t *testing.T, metricName string, count int) {
+	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
+	db, err := pgxpool.Connect(context.Background(), connectURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	rows, err := db.Query(context.Background(), fmt.Sprintf("SELECT count(*) FROM prom_data.%s", metricName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	require.True(t, rows.Next())
+	var r int
+	err = rows.Scan(&r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.Equal(t, count, r)
+}
+
 func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionState testhelpers.TestOptions) (upgradedDbInfo dbSnapshot) {
 	// We test that upgrading from both the earliest and the directly-previous versions works
 	// While it may seem that the earliest version is sufficient, idempotent scripts are only
@@ -207,6 +236,11 @@ func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionSta
 			writeUrl := fmt.Sprintf("http://%s/write", net.JoinHostPort(connectorHost, connectorPort.Port()))
 
 			doWrite(t, &client, writeUrl, preUpgradeData1, preUpgradeData2)
+
+			// preUpgradeData1
+			assertMetricSamplesCount(t, "test", 2)
+			// preUpgradeData2
+			assertMetricSamplesCount(t, "test2", 1)
 		},
 		/* postUpgrade */
 		func(dbContainer testcontainers.Container, dbTmpDir string) {
@@ -228,6 +262,11 @@ func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionSta
 					doIngest(t, ing, postUpgradeData1, postUpgradeData2)
 
 					ing.Close()
+
+					// preUpgradeData1 + postUpgradeData1
+					assertMetricSamplesCount(t, "test", 4)
+					// postUpgradeData3
+					assertMetricSamplesCount(t, "test3", 1)
 				}()
 			}
 
