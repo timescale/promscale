@@ -102,7 +102,8 @@ func TestDroppedViewQuery(t *testing.T) {
 		// Ingest test dataset.
 		ingestQueryTestDataset(db, t, generateSmallTimeseries())
 		// Drop the view.
-		if _, err := db.Exec(context.Background(), `DROP VIEW prom_view.metric_view`); err != nil {
+		ctx := context.Background()
+		if _, err := db.Exec(ctx, `DROP VIEW prom_view.metric_view`); err != nil {
 			t.Fatalf("unexpected error while dropping metric view: %s", err)
 		}
 		// Getting a read-only connection to ensure read path is idempotent.
@@ -114,7 +115,7 @@ func TestDroppedViewQuery(t *testing.T) {
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
-		_, err := r.RemoteReadQuerier().Query(&prompb.Query{
+		_, err := r.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -694,7 +695,7 @@ func TestSQLQuery(t *testing.T) {
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
-				resp, err := r.RemoteReadQuerier().Query(c.query)
+				resp, err := r.RemoteReadQuerier(context.Background()).Query(c.query)
 
 				if err != nil && (c.expectErr == nil || err.Error() != c.expectErr.Error()) {
 					t.Fatalf("unexpected error returned:\ngot\n%s\nwanted\n%s", err, c.expectErr)
@@ -1101,7 +1102,7 @@ func TestPromQL(t *testing.T) {
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
-				connResp, connErr := r.RemoteReadQuerier().Query(c.query)
+				connResp, connErr := r.RemoteReadQuerier(context.Background()).Query(c.query)
 				promResp, promErr := promClient.Read(&prompb.ReadRequest{
 					Queries: []*prompb.Query{c.query},
 				})

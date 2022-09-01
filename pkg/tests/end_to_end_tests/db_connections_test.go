@@ -49,7 +49,8 @@ func TestDBConnectionHandling(t *testing.T) {
 		for _, m := range metrics[:2] {
 			count += len(m.Samples)
 		}
-		ingested, _, err := pgClient.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(metrics[:2])))
+		ctx := context.Background()
+		ingested, _, err := pgClient.IngestMetrics(ctx, newWriteRequestWithTs(copyMetrics(metrics[:2])))
 		if err != nil {
 			t.Fatalf("got an unexpected error %v", err)
 		}
@@ -58,7 +59,7 @@ func TestDBConnectionHandling(t *testing.T) {
 		}
 
 		// Check for Read response.
-		resp, err := pgClient.Read(readRequest)
+		resp, err := pgClient.Read(ctx, readRequest)
 		if err != nil {
 			t.Fatalf("got an unexpected error %v", err)
 		}
@@ -67,7 +68,7 @@ func TestDBConnectionHandling(t *testing.T) {
 		}
 
 		var user string
-		err = db.QueryRow(context.Background(), "SELECT current_user").Scan(&user)
+		err = db.QueryRow(ctx, "SELECT current_user").Scan(&user)
 		if err != nil {
 			t.Fatalf("got an unexpected error while getting DB user: %v", err)
 		}
@@ -79,11 +80,11 @@ func TestDBConnectionHandling(t *testing.T) {
 		}
 
 		// Try ingesting and reading from DB, expect to error.
-		_, _, err = pgClient.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(metrics[2:])))
+		_, _, err = pgClient.IngestMetrics(ctx, newWriteRequestWithTs(copyMetrics(metrics[2:])))
 		if ignoreBlockedConnectionError(err) != nil {
 			t.Fatalf("got an unexpected error: %v", err)
 		}
-		_, err = pgClient.Read(readRequest)
+		_, err = pgClient.Read(ctx, readRequest)
 		if ignoreBlockedConnectionError(err) != nil {
 			t.Fatalf("expected an error to occur: %+v", resp)
 		}
@@ -99,7 +100,7 @@ func TestDBConnectionHandling(t *testing.T) {
 		for _, m := range metrics[2:] {
 			count += len(m.Samples)
 		}
-		ingested, _, err = pgClient.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(metrics[2:])))
+		ingested, _, err = pgClient.IngestMetrics(ctx, newWriteRequestWithTs(copyMetrics(metrics[2:])))
 		if err != nil {
 			t.Fatalf("got an unexpected error: %v", err)
 		}
@@ -108,7 +109,7 @@ func TestDBConnectionHandling(t *testing.T) {
 		}
 
 		// Check for Read response.
-		resp, err = pgClient.Read(readRequest)
+		resp, err = pgClient.Read(ctx, readRequest)
 		if err != nil {
 			t.Fatalf("got an unexpected error %v", err)
 		}

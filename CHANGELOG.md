@@ -17,6 +17,8 @@ We use the following categories for changes:
 - prom-migrator: Support for passing custom HTTP headers via command line arguments for both
   reader and writer [#1020].
 - Run timescaledb-tune with the promscale profile [#1615]
+- Propagate the context from received HTTP read requests downstream to database
+  requests [#1205]. 
 
 ### Fixed
 - Fix broken cache eviction in clockcache [#1603]
@@ -30,7 +32,6 @@ We use the following categories for changes:
 - Helm chart now ships a JSON Schema for imposing a structure of the values.yaml file [#1551]
 
 ### Changed
-
 - Helm chart code was migrated to https://github.com/timescale/helm-charts [#1562]
 - Deprecate flag `tracing.otlp.server-address` in favour of `tracing.grpc.server-address` [#1588]
 

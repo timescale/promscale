@@ -24,7 +24,7 @@ type queryTools struct {
 
 // getMetricTableName gets the table name for a specific metric from internal
 // cache. If not found, fetches it from the database and updates the cache.
-func (tools *queryTools) getMetricTableName(metricSchema, metricName string, isExemplarQuery bool) (model.MetricInfo, error) {
+func (tools *queryTools) getMetricTableName(ctx context.Context, metricSchema, metricName string, isExemplarQuery bool) (model.MetricInfo, error) {
 	metricInfo, err := tools.metricTableNames.Get(metricSchema, metricName, isExemplarQuery)
 	if err == nil {
 		return metricInfo, nil
@@ -37,13 +37,13 @@ func (tools *queryTools) getMetricTableName(metricSchema, metricName string, isE
 		// The incoming query is for exemplar data. Let's change our parameters
 		// so that the operations with the database and cache is focused towards
 		// exemplars.
-		tableName, err := queryExemplarMetricTableName(tools.conn, metricName)
+		tableName, err := queryExemplarMetricTableName(ctx, tools.conn, metricName)
 		if err != nil {
 			return model.MetricInfo{}, err
 		}
 		metricInfo = model.MetricInfo{TableSchema: schema.PromDataExemplar, TableName: tableName}
 	} else {
-		metricInfo, err = querySampleMetricTableName(tools.conn, metricSchema, metricName)
+		metricInfo, err = querySampleMetricTableName(ctx, tools.conn, metricSchema, metricName)
 		if err != nil {
 			return model.MetricInfo{}, err
 		}
@@ -54,8 +54,8 @@ func (tools *queryTools) getMetricTableName(metricSchema, metricName string, isE
 }
 
 // queryExemplarMetricTableName returns table name for exemplars for the given metric.
-func queryExemplarMetricTableName(conn pgxconn.PgxConn, metric string) (string, error) {
-	res, err := conn.Query(context.Background(), getExemplarMetricTableSQL, metric)
+func queryExemplarMetricTableName(ctx context.Context, conn pgxconn.PgxConn, metric string) (string, error) {
+	res, err := conn.Query(ctx, getExemplarMetricTableSQL, metric)
 	if err != nil {
 		return "", err
 	}
@@ -74,9 +74,9 @@ func queryExemplarMetricTableName(conn pgxconn.PgxConn, metric string) (string, 
 	return tableName, nil
 }
 
-func querySampleMetricTableName(conn pgxconn.PgxConn, schema, metric string) (mInfo model.MetricInfo, err error) {
+func querySampleMetricTableName(ctx context.Context, conn pgxconn.PgxConn, schema, metric string) (mInfo model.MetricInfo, err error) {
 	row := conn.QueryRow(
-		context.Background(),
+		ctx,
 		getMetricTableSQL,
 		schema,
 		metric,

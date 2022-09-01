@@ -110,10 +110,11 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
+		ctx := context.Background()
+		if _, _, err := ingestor.IngestMetrics(ctx, newWriteRequestWithTs(copyMetrics(ts))); err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation(context.Background())
+		err = ingestor.CompleteMetricCreation(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -130,11 +131,11 @@ func TestDeleteWithMetricNameEQL(t *testing.T) {
 			require.NoError(t, err)
 			parsedEndTime, err := parseTime(m.end, model.MaxTime)
 			require.NoError(t, err)
-			err = db.QueryRow(context.Background(), fmt.Sprintf("select count(*) from prom_data.\"%s\"", m.name)).Scan(&countBeforeDelete)
+			err = db.QueryRow(ctx, fmt.Sprintf("select count(*) from prom_data.\"%s\"", m.name)).Scan(&countBeforeDelete)
 			require.NoError(t, err)
-			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
+			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(ctx, matcher, parsedStartTime, parsedEndTime)
 			require.NoError(t, err)
-			err = db.QueryRow(context.Background(), fmt.Sprintf("select count(*) from prom_data.\"%s\"", m.name)).Scan(&countAfterDelete)
+			err = db.QueryRow(ctx, fmt.Sprintf("select count(*) from prom_data.\"%s\"", m.name)).Scan(&countAfterDelete)
 			require.NoError(t, err)
 			require.Equal(t, m.expectedReturn, fmt.Sprintf("%v %v %v %v", touchedMetrics, len(deletedSeriesIDs), countBeforeDelete, countAfterDelete), "expected returns does not match in", m.name)
 			require.True(t, countBeforeDelete != countAfterDelete, "samples count should not be similar: before %d | after %d in", countBeforeDelete, countAfterDelete, m.name)
@@ -219,10 +220,11 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
+		ctx := context.Background()
+		if _, _, err := ingestor.IngestMetrics(ctx, newWriteRequestWithTs(copyMetrics(ts))); err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation(context.Background())
+		err = ingestor.CompleteMetricCreation(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -231,9 +233,9 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 		}
 		for _, m := range matchers {
 			var tableName string
-			err = dbOwner.QueryRow(context.Background(), "SELECT table_name from _prom_catalog.metric WHERE metric_name=$1", m.name).Scan(&tableName)
+			err = dbOwner.QueryRow(ctx, "SELECT table_name from _prom_catalog.metric WHERE metric_name=$1", m.name).Scan(&tableName)
 			require.NoError(t, err)
-			_, err = dbOwner.Exec(context.Background(), fmt.Sprintf("SELECT public.compress_chunk(i) from public.show_chunks('prom_data.\"%s\"') i;", tableName))
+			_, err = dbOwner.Exec(ctx, fmt.Sprintf("SELECT public.compress_chunk(i) from public.show_chunks('prom_data.\"%s\"') i;", tableName))
 			if err != nil {
 				if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == pgerrcode.DuplicateObject {
 					// Already compressed (could happen if policy already ran). This is fine.
@@ -248,7 +250,7 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 			require.NoError(t, err)
 			parsedEndTime, err := parseTime(m.end, model.MaxTime)
 			require.NoError(t, err)
-			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
+			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(ctx, matcher, parsedStartTime, parsedEndTime)
 			require.NoError(t, err)
 			sort.Strings(touchedMetrics)
 			require.Equal(t, m.expectedReturn, fmt.Sprintf("%v %v", touchedMetrics, len(deletedSeriesIDs)), "expected returns does not match in", m.name)
@@ -325,10 +327,11 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
+		ctx := context.Background()
+		if _, _, err := ingestor.IngestMetrics(ctx, newWriteRequestWithTs(copyMetrics(ts))); err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation(context.Background())
+		err = ingestor.CompleteMetricCreation(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -343,7 +346,7 @@ func TestDeleteWithMetricNameEQLRegex(t *testing.T) {
 			require.NoError(t, err)
 			parsedEndTime, err := parseTime(m.end, model.MaxTime)
 			require.NoError(t, err)
-			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
+			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(ctx, matcher, parsedStartTime, parsedEndTime)
 			require.NoError(t, err)
 			sort.Strings(touchedMetrics)
 			require.Equal(t, m.expectedReturn, fmt.Sprintf("%v %v", touchedMetrics, len(deletedSeriesIDs)), "expected returns does not match in", m.name)
@@ -475,10 +478,11 @@ func TestDeleteMixins(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer ingestor.Close()
-		if _, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts))); err != nil {
+		ctx := context.Background()
+		if _, _, err := ingestor.IngestMetrics(ctx, newWriteRequestWithTs(copyMetrics(ts))); err != nil {
 			t.Fatal(err)
 		}
-		err = ingestor.CompleteMetricCreation(context.Background())
+		err = ingestor.CompleteMetricCreation(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -494,7 +498,7 @@ func TestDeleteMixins(t *testing.T) {
 			require.NoError(t, err)
 			parsedEndTime, err := parseTime(m.end, model.MaxTime)
 			require.NoError(t, err)
-			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(matcher, parsedStartTime, parsedEndTime)
+			touchedMetrics, deletedSeriesIDs, _, err := pgDelete.DeleteSeries(ctx, matcher, parsedStartTime, parsedEndTime)
 			require.NoError(t, err)
 			sort.Strings(touchedMetrics)
 			require.Equal(t, m.expectedReturn, fmt.Sprintf("%v %v", touchedMetrics, len(deletedSeriesIDs)), "expected returns does not match in", m.name)

@@ -42,16 +42,16 @@ func NewQuerier(
 	return querier
 }
 
-func (q *pgxQuerier) RemoteReadQuerier() RemoteReadQuerier {
-	return newQueryRemoteRead(q)
+func (q *pgxQuerier) RemoteReadQuerier(ctx context.Context) RemoteReadQuerier {
+	return newQueryRemoteRead(ctx, q)
 }
 
-func (q *pgxQuerier) SamplesQuerier() SamplesQuerier {
-	return newQuerySamples(q)
+func (q *pgxQuerier) SamplesQuerier(ctx context.Context) SamplesQuerier {
+	return newQuerySamples(ctx, q)
 }
 
 func (q *pgxQuerier) ExemplarsQuerier(ctx context.Context) ExemplarQuerier {
-	return newQueryExemplars(q)
+	return newQueryExemplars(ctx, q)
 }
 
 // errorSeriesSet represents an error result in a form of a series set.

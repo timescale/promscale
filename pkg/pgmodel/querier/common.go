@@ -49,9 +49,9 @@ type QueryHints struct {
 	Lookback    time.Duration
 }
 
-func GetMetricNameSeriesIds(conn pgxconn.PgxConn, metadata *evalMetadata) (metrics, schemas []string, correspondingSeriesIDs [][]model.SeriesID, err error) {
+func GetMetricNameSeriesIds(ctx context.Context, conn pgxconn.PgxConn, metadata *evalMetadata) (metrics, schemas []string, correspondingSeriesIDs [][]model.SeriesID, err error) {
 	sqlQuery := buildMetricNameSeriesIDQuery(metadata.clauses)
-	rows, err := conn.Query(context.Background(), sqlQuery, metadata.values...)
+	rows, err := conn.Query(ctx, sqlQuery, metadata.values...)
 	if err != nil {
 		return nil, nil, nil, err
 	}

@@ -13,15 +13,15 @@ import (
 )
 
 // MetricQuery returns metadata corresponding to metric or metric_family.
-func MetricQuery(conn pgxconn.PgxConn, metric string, limit int) (map[string][]model.Metadata, error) {
+func MetricQuery(ctx context.Context, conn pgxconn.PgxConn, metric string, limit int) (map[string][]model.Metadata, error) {
 	var (
 		rows pgxconn.PgxRows
 		err  error
 	)
 	if metric != "" {
-		rows, err = conn.Query(context.Background(), "SELECT * from prom_api.get_metric_metadata($1)", metric)
+		rows, err = conn.Query(ctx, "SELECT * from prom_api.get_metric_metadata($1)", metric)
 	} else {
-		rows, err = conn.Query(context.Background(), "SELECT metric_family, type, unit, help from _prom_catalog.metadata ORDER BY metric_family, last_seen DESC")
+		rows, err = conn.Query(ctx, "SELECT metric_family, type, unit, help from _prom_catalog.metadata ORDER BY metric_family, last_seen DESC")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query metric metadata: %w", err)

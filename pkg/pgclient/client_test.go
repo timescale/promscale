@@ -26,7 +26,7 @@ type mockQuerier struct {
 
 var _ querier.Querier = (*mockQuerier)(nil)
 
-func (q *mockQuerier) SamplesQuerier() querier.SamplesQuerier {
+func (q *mockQuerier) SamplesQuerier(_ context.Context) querier.SamplesQuerier {
 	return mockSamplesQuerier{}
 }
 
@@ -36,7 +36,7 @@ func (q mockSamplesQuerier) Select(mint int64, maxt int64, sortSeries bool, hint
 	return nil, nil
 }
 
-func (q *mockQuerier) RemoteReadQuerier() querier.RemoteReadQuerier {
+func (q *mockQuerier) RemoteReadQuerier(_ context.Context) querier.RemoteReadQuerier {
 	return mockRemoteReadQuerier{
 		tts: q.tts,
 		err: q.err,
@@ -151,7 +151,7 @@ func TestDBReaderRead(t *testing.T) {
 
 			r := Client{querier: mq}
 
-			res, err := r.Read(c.req)
+			res, err := r.Read(context.Background(), c.req)
 
 			if err != nil {
 				if c.err == nil || err != c.err {

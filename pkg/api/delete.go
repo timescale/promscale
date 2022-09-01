@@ -72,7 +72,7 @@ func deleteHandler(config *Config, client *pgclient.Client) http.HandlerFunc {
 				continue
 			}
 			pgDelete := deletePkg.PgDelete{Conn: client.ReadOnlyConnection()}
-			touchedMetrics, deletedSeriesIDs, rowsDeleted, err := pgDelete.DeleteSeries(matchers, start, end)
+			touchedMetrics, deletedSeriesIDs, rowsDeleted, err := pgDelete.DeleteSeries(r.Context(), matchers, start, end)
 			if err != nil {
 				respondErrorWithMessage(w, http.StatusInternalServerError, err, "deleting_series",
 					fmt.Sprintf("partial delete: deleted %v series IDs from %v metrics, affecting %d rows in total.",

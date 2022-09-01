@@ -76,7 +76,8 @@ func TestFetchMetricMetadataAPI(t *testing.T) {
 		wr.Timeseries = copyMetrics(ts)
 		wr.Metadata = copyMetadata(metadata)
 
-		numSamples, numMetadata, err := ingestor.IngestMetrics(context.Background(), wr)
+		ctx := context.Background()
+		numSamples, numMetadata, err := ingestor.IngestMetrics(ctx, wr)
 		require.NoError(t, err)
 		require.Equal(t, 10, int(numSamples))
 		require.Equal(t, 20, int(numMetadata))
@@ -86,7 +87,7 @@ func TestFetchMetricMetadataAPI(t *testing.T) {
 		db = testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_reader")
 		defer db.Close()
 
-		result, err := metadataAPI.MetricQuery(pgxconn.NewPgxConn(db), "", 0)
+		result, err := metadataAPI.MetricQuery(ctx, pgxconn.NewPgxConn(db), "", 0)
 		require.NoError(t, err)
 		expected := getExpectedMap(metadata)
 		for metric, md := range result {
@@ -96,7 +97,7 @@ func TestFetchMetricMetadataAPI(t *testing.T) {
 		}
 
 		// -- fetch metadata with metric_name --
-		result, err = metadataAPI.MetricQuery(pgxconn.NewPgxConn(db), metadata[0].MetricFamilyName, 0)
+		result, err = metadataAPI.MetricQuery(ctx, pgxconn.NewPgxConn(db), metadata[0].MetricFamilyName, 0)
 		require.NoError(t, err)
 		expected = getExpectedMap(metadata[:1])
 		for metric, md := range result {
@@ -106,12 +107,12 @@ func TestFetchMetricMetadataAPI(t *testing.T) {
 		}
 
 		// -- fetch metadata with limit --
-		result, err = metadataAPI.MetricQuery(pgxconn.NewPgxConn(db), "", 5)
+		result, err = metadataAPI.MetricQuery(ctx, pgxconn.NewPgxConn(db), "", 5)
 		require.NoError(t, err)
 		require.Equal(t, 5, len(result))
 
 		// -- fetch metadata with both limit and metric_name --
-		result, err = metadataAPI.MetricQuery(pgxconn.NewPgxConn(db), metadata[0].MetricFamilyName, 1)
+		result, err = metadataAPI.MetricQuery(ctx, pgxconn.NewPgxConn(db), metadata[0].MetricFamilyName, 1)
 		require.NoError(t, err)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(result))
