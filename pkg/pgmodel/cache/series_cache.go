@@ -123,13 +123,15 @@ type StoredSeriesCache interface {
 }
 
 type StoredSeriesCacheImpl struct {
-	cache        *clockcache.Cache
+	cache        *clockcache.IndexedCache
+	seriesIndex  map[*model.SeriesID]int
 	maxSizeBytes uint64
 }
 
 func NewStoredSeriesCache(config Config, sigClose <-chan struct{}) *StoredSeriesCacheImpl {
 	cache := &StoredSeriesCacheImpl{
-		clockcache.WithMetrics("series", "metric", config.SeriesCacheInitialSize),
+		clockcache.IndexedCacheWithMetrics("series", "metric", config.SeriesCacheInitialSize),
+		make(map[*model.SeriesID]int, config.SeriesCacheInitialSize),
 		config.SeriesCacheMemoryMaxBytes,
 	}
 
