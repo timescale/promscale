@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -121,7 +122,7 @@ type mockReader struct {
 	err      error
 }
 
-func (m *mockReader) Read(r *prompb.ReadRequest) (*prompb.ReadResponse, error) {
+func (m *mockReader) Read(_ context.Context, r *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 	m.request = r
 	return m.response, m.err
 }

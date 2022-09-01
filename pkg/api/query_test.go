@@ -60,7 +60,7 @@ func (m mockQuerier) Query(*prompb.Query) ([]*prompb.TimeSeries, error) {
 	panic("implement me")
 }
 
-func (m mockQuerier) SamplesQuerier() querier.SamplesQuerier {
+func (m mockQuerier) SamplesQuerier(_ context.Context) querier.SamplesQuerier {
 	return m
 }
 
@@ -70,7 +70,7 @@ func (ms mockQuerier) Select(int64, int64, bool, *storage.SelectHints, *querier.
 	return &mockSeriesSet{err: ms.selectErr}, nil
 }
 
-func (m mockQuerier) RemoteReadQuerier() querier.RemoteReadQuerier {
+func (m mockQuerier) RemoteReadQuerier(_ context.Context) querier.RemoteReadQuerier {
 	return nil
 }
 

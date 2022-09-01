@@ -13,7 +13,7 @@ import (
 
 // Reader reads the data based on the provided read request.
 type Reader interface {
-	Read(*prompb.ReadRequest) (*prompb.ReadResponse, error)
+	Read(context.Context, *prompb.ReadRequest) (*prompb.ReadResponse, error)
 }
 
 // SeriesSet adds a Close method to storage.SeriesSet to provide a way to free memory/
@@ -26,9 +26,9 @@ type SeriesSet interface {
 // and exemplars.
 type Querier interface {
 	// RemoteReadQuerier returns a remote storage querier
-	RemoteReadQuerier() RemoteReadQuerier
+	RemoteReadQuerier(ctx context.Context) RemoteReadQuerier
 	// SamplesQuerier returns a sample querier.
-	SamplesQuerier() SamplesQuerier
+	SamplesQuerier(ctx context.Context) SamplesQuerier
 	// ExemplarsQuerier returns an exemplar querier.
 	ExemplarsQuerier(ctx context.Context) ExemplarQuerier
 }

@@ -5,7 +5,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"math"
 	"net/http"
@@ -34,7 +33,7 @@ func Labels(conf *Config, queryable promql.Queryable) http.Handler {
 
 func labelsHandler(queryable promql.Queryable) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		querier, err := queryable.SamplesQuerier(context.Background(), math.MinInt64, math.MaxInt64)
+		querier, err := queryable.SamplesQuerier(r.Context(), math.MinInt64, math.MaxInt64)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, err, "internal")
 			return
