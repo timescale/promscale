@@ -296,7 +296,7 @@ func (c *Client) IngestTraces(ctx context.Context, tr ptrace.Traces) error {
 }
 
 // Read returns the promQL query results
-func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
+func (c *Client) Read(ctx context.Context, req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 	if req == nil {
 		return nil, nil
 	}
@@ -305,7 +305,7 @@ func (c *Client) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
 		Results: make([]*prompb.QueryResult, len(req.Queries)),
 	}
 
-	qr := c.querier.RemoteReadQuerier()
+	qr := c.querier.RemoteReadQuerier(ctx)
 
 	for i, q := range req.Queries {
 		tts, err := qr.Query(q)

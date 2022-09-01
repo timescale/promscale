@@ -5,6 +5,7 @@
 package querier
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
@@ -723,7 +724,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			}
 			querier := pgxQuerier{&queryTools{conn: mock, metricTableNames: mockMetrics, labelsReader: lreader.NewLabelsReader(mock, clockcache.WithMax(0), tenancy.NewNoopAuthorizer().ReadAuthorizer())}}
 
-			result, err := querier.RemoteReadQuerier().Query(c.query)
+			result, err := querier.RemoteReadQuerier(context.Background()).Query(c.query)
 
 			if err != nil {
 				switch {

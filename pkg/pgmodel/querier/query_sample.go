@@ -15,10 +15,11 @@ import (
 
 type querySamples struct {
 	*pgxQuerier
+	ctx context.Context
 }
 
-func newQuerySamples(qr *pgxQuerier) *querySamples {
-	return &querySamples{qr}
+func newQuerySamples(ctx context.Context, qr *pgxQuerier) *querySamples {
+	return &querySamples{qr, ctx}
 }
 
 // Select implements the SamplesQuerier interface. It is the entry point for our
@@ -41,7 +42,7 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 	filter := metadata.timeFilter
 	if metadata.isSingleMetric {
 		// Single vector selector case.
-		mInfo, err := q.tools.getMetricTableName(filter.schema, filter.metric, false)
+		mInfo, err := q.tools.getMetricTableName(q.ctx, filter.schema, filter.metric, false)
 		if err != nil {
 			if err == errors.ErrMissingTableName {
 				return nil, nil, nil
@@ -52,7 +53,7 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 		metadata.timeFilter.schema = mInfo.TableSchema
 		metadata.timeFilter.seriesTable = mInfo.SeriesTable
 
-		sampleRows, topNode, err := fetchSingleMetricSamples(q.tools, metadata)
+		sampleRows, topNode, err := fetchSingleMetricSamples(q.ctx, q.tools, metadata)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -60,7 +61,7 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 		return sampleRows, topNode, nil
 	}
 	// Multiple vector selector case.
-	sampleRows, err := fetchMultipleMetricsSamples(q.tools, metadata)
+	sampleRows, err := fetchMultipleMetricsSamples(q.ctx, q.tools, metadata)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -72,13 +73,13 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 // try to push down query functions where possible. When a pushdown is
 // successfully applied, the new top node is returned together with the metric
 // rows. For more information about top nodes, see `engine.populateSeries`.
-func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]sampleRow, parser.Node, error) {
+func fetchSingleMetricSamples(ctx context.Context, tools *queryTools, metadata *evalMetadata) ([]sampleRow, parser.Node, error) {
 	sqlQuery, values, topNode, tsSeries, err := buildSingleMetricSamplesQuery(metadata)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, err := tools.conn.Query(context.Background(), sqlQuery, values...)
+	rows, err := tools.conn.Query(ctx, sqlQuery, values...)
 	if err != nil {
 		if e, ok := err.(*pgconn.PgError); ok {
 			switch e.Code {
@@ -114,9 +115,9 @@ func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]samp
 
 // fetchMultipleMetricsSamples returns all the result rows for across multiple
 // metrics using the supplied query parameters.
-func fetchMultipleMetricsSamples(tools *queryTools, metadata *evalMetadata) ([]sampleRow, error) {
+func fetchMultipleMetricsSamples(ctx context.Context, tools *queryTools, metadata *evalMetadata) ([]sampleRow, error) {
 	// First fetch series IDs per metric.
-	metrics, schemas, series, err := GetMetricNameSeriesIds(tools.conn, metadata)
+	metrics, schemas, series, err := GetMetricNameSeriesIds(ctx, tools.conn, metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +130,7 @@ func fetchMultipleMetricsSamples(tools *queryTools, metadata *evalMetadata) ([]s
 	// Generate queries for each metric and send them in a single batch.
 	for i := range metrics {
 		//TODO batch getMetricTableName
-		metricInfo, err := tools.getMetricTableName(schemas[i], metrics[i], false)
+		metricInfo, err := tools.getMetricTableName(ctx, schemas[i], metrics[i], false)
 		if err != nil {
 			// If the metric table is missing, there are no results for this query.
 			if err == errors.ErrMissingTableName {
@@ -160,7 +161,7 @@ func fetchMultipleMetricsSamples(tools *queryTools, metadata *evalMetadata) ([]s
 		numQueries += 1
 	}
 
-	batchResults, err := tools.conn.SendBatch(context.Background(), batch)
+	batchResults, err := tools.conn.SendBatch(ctx, batch)
 	if err != nil {
 		return nil, err
 	}

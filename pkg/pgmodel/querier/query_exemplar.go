@@ -17,10 +17,11 @@ import (
 
 type queryExemplars struct {
 	*pgxQuerier
+	ctx context.Context
 }
 
-func newQueryExemplars(qr *pgxQuerier) *queryExemplars {
-	return &queryExemplars{qr}
+func newQueryExemplars(ctx context.Context, qr *pgxQuerier) *queryExemplars {
+	return &queryExemplars{qr, ctx}
 }
 
 func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.Matcher) ([]model.ExemplarQueryResult, error) {
@@ -40,7 +41,7 @@ func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.
 		metadata.isExemplarQuery = true
 
 		if metadata.isSingleMetric {
-			metricInfo, err := q.tools.getMetricTableName("", metadata.metric, true)
+			metricInfo, err := q.tools.getMetricTableName(q.ctx, "", metadata.metric, true)
 			if err != nil {
 				if err == errors.ErrMissingTableName {
 					// The received metric does not have exemplars. Skip the remaining part and continue with
@@ -51,7 +52,7 @@ func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.
 			}
 			metadata.timeFilter.metric = metricInfo.TableName
 
-			exemplarRows, err := fetchSingleMetricExemplars(q.tools, metadata)
+			exemplarRows, err := fetchSingleMetricExemplars(q.ctx, q.tools, metadata)
 			if err != nil {
 				return nil, fmt.Errorf("fetch single metric exemplars: %w", err)
 			}
@@ -66,7 +67,7 @@ func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.
 			continue
 		}
 		// Multiple metric exemplar query.
-		exemplarRows, err := fetchMultipleMetricsExemplars(q.tools, metadata)
+		exemplarRows, err := fetchMultipleMetricsExemplars(q.ctx, q.tools, metadata)
 		if err != nil {
 			return nil, fmt.Errorf("fetch multiple metrics exemplars: %w", err)
 		}
@@ -86,10 +87,10 @@ func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.
 
 // fetchSingleMetricExemplars returns all exemplar rows for a single metric
 // using the query metadata and tools.
-func fetchSingleMetricExemplars(tools *queryTools, metadata *evalMetadata) ([]exemplarSeriesRow, error) {
+func fetchSingleMetricExemplars(ctx context.Context, tools *queryTools, metadata *evalMetadata) ([]exemplarSeriesRow, error) {
 	sqlQuery := buildSingleMetricExemplarsQuery(metadata)
 
-	rows, err := tools.conn.Query(context.Background(), sqlQuery)
+	rows, err := tools.conn.Query(ctx, sqlQuery)
 	if err != nil {
 		// If we are getting undefined table error, it means the query
 		// is looking for a metric which doesn't exist in the system.
@@ -108,9 +109,9 @@ func fetchSingleMetricExemplars(tools *queryTools, metadata *evalMetadata) ([]ex
 
 // fetchMultipleMetricsExemplars returns all the result rows across multiple metrics
 // using the supplied query parameters.
-func fetchMultipleMetricsExemplars(tools *queryTools, metadata *evalMetadata) ([]exemplarSeriesRow, error) {
+func fetchMultipleMetricsExemplars(ctx context.Context, tools *queryTools, metadata *evalMetadata) ([]exemplarSeriesRow, error) {
 	// First fetch series IDs per metric.
-	metrics, _, correspondingSeriesIds, err := GetMetricNameSeriesIds(tools.conn, metadata)
+	metrics, _, correspondingSeriesIds, err := GetMetricNameSeriesIds(ctx, tools.conn, metadata)
 	if err != nil {
 		return nil, fmt.Errorf("get metric-name series-ids: %w", err)
 	}
@@ -126,7 +127,7 @@ func fetchMultipleMetricsExemplars(tools *queryTools, metadata *evalMetadata) ([
 	// Generate queries for each metric and send them in a single batch.
 	for i := range metrics {
 		//TODO batch getMetricTableName
-		metricInfo, err := tools.getMetricTableName("", metrics[i], true)
+		metricInfo, err := tools.getMetricTableName(ctx, "", metrics[i], true)
 		if err != nil {
 			if err == errors.ErrMissingTableName {
 				// If the metric table is missing, there are no results for this query.
@@ -148,7 +149,7 @@ func fetchMultipleMetricsExemplars(tools *queryTools, metadata *evalMetadata) ([
 		numQueries += 1
 	}
 
-	batchResults, err := tools.conn.SendBatch(context.Background(), batch)
+	batchResults, err := tools.conn.SendBatch(ctx, batch)
 	if err != nil {
 		return nil, err
 	}

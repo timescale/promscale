@@ -40,13 +40,14 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 		require.NoError(t, err)
 		defer client.Close()
 
+		ctx := context.Background()
 		for _, tenant := range tenants {
 			request := newWriteRequestWithTs(copyMetrics(ts))
 			// Pre-processing.
 			wauth := mt.WriteAuthorizer()
 			err = wauth.Process(requestWithHeaderTenant(tenant), request)
 			require.NoError(t, err)
-			_, _, err = client.IngestMetrics(context.Background(), request)
+			_, _, err = client.IngestMetrics(ctx, request)
 			require.NoError(t, err)
 		}
 
@@ -76,7 +77,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 			},
 		}
 
-		result, err := qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err := qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -129,7 +130,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 			},
 		}
 
-		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -196,7 +197,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 			},
 		}
 
-		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -232,14 +233,15 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		request := newWriteRequestWithTs(copyMetrics(ts))
 		err = wauth.Process(requestWithHeaderTenant(tenants[0]), request)
 		require.NoError(t, err)
-		_, _, err = client.IngestMetrics(context.Background(), request)
+		ctx := context.Background()
+		_, _, err = client.IngestMetrics(ctx, request)
 		require.NoError(t, err)
 
 		// Ingest tenant-b.
 		request = newWriteRequestWithTs(copyMetrics(ts))
 		err = wauth.Process(requestWithHeaderTenant(tenants[1]), request)
 		require.NoError(t, err)
-		_, _, err = client.IngestMetrics(context.Background(), request)
+		_, _, err = client.IngestMetrics(ctx, request)
 		require.NoError(t, err)
 		require.NoError(t, err)
 
@@ -273,7 +275,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 				},
 			},
 		}
-		result, err := qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err := qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -297,7 +299,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		// ----- query-test: querying an invalid tenant (tenant-c) -----
 		expectedResult = []prompb.TimeSeries{}
 
-		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -350,7 +352,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 			},
 		}
 
-		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -384,7 +386,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 
 		expectedResult = []prompb.TimeSeries{}
 
-		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_RE,
@@ -420,7 +422,8 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		request := newWriteRequestWithTs(copyMetrics(ts))
 		err = wauth.Process(requestWithHeaderTenant(tenants[0]), request)
 		require.NoError(t, err)
-		_, _, err = client.IngestMetrics(context.Background(), request)
+		ctx := context.Background()
+		_, _, err = client.IngestMetrics(ctx, request)
 		require.NoError(t, err)
 
 		// Ingest tenant-b.
@@ -476,7 +479,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 			},
 		}
 
-		result, err := qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err := qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -524,7 +527,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 			},
 		}
 
-		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -580,7 +583,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 			},
 		}
 
-		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -597,7 +600,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		verifyResults(t, expectedResult, result)
 
 		expectedResult = []prompb.TimeSeries{}
-		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -633,14 +636,15 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 		request := newWriteRequestWithTs(applyTenantAsExternalLabel(tenants[0], copyMetrics(ts)))
 		err = wauth.Process(&http.Request{}, request)
 		require.NoError(t, err)
-		_, _, err = client.IngestMetrics(context.Background(), request)
+		ctx := context.Background()
+		_, _, err = client.IngestMetrics(ctx, request)
 		require.NoError(t, err)
 
 		// Ingest tenant-b.
 		request = newWriteRequestWithTs(applyTenantAsExternalLabel(tenants[1], copyMetrics(ts)))
 		err = wauth.Process(&http.Request{}, request)
 		require.NoError(t, err)
-		_, _, err = client.IngestMetrics(context.Background(), request)
+		_, _, err = client.IngestMetrics(ctx, request)
 		require.NoError(t, err)
 		require.NoError(t, err)
 
@@ -675,7 +679,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 			},
 		}
 
-		result, err := qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err := qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -728,7 +732,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 			},
 		}
 
-		result, err = qr.RemoteReadQuerier().Query(&prompb.Query{
+		result, err = qr.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,

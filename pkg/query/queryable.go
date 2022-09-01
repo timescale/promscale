@@ -66,7 +66,7 @@ func (q *samplesQuerier) Close() {
 }
 
 func (q *samplesQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *pgQuerier.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
-	qry := q.metricsReader.SamplesQuerier()
+	qry := q.metricsReader.SamplesQuerier(q.ctx)
 	ss, n := qry.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
 	q.seriesSets = append(q.seriesSets, ss)
 	return ss, n

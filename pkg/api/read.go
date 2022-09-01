@@ -54,7 +54,7 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics, updateMetrics
 		metrics.RemoteReadReceivedQueries.Add(float64(len(req.Queries)))
 
 		// Drop __replica__ labelSet when
-		// Promscale is running is HA mode
+		// Promscale is running in HA mode
 		// as the same lebelSet is dropped during ingestion.
 		if config.HighAvailability {
 			for _, q := range req.Queries {
@@ -67,7 +67,7 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics, updateMetrics
 		}
 
 		var resp *prompb.ReadResponse
-		resp, err = reader.Read(&req)
+		resp, err = reader.Read(r.Context(), &req)
 		if err != nil {
 			statusCode = "500"
 			log.Warn("msg", "Error executing query", "query", req, "storage", "PostgreSQL", "err", err)

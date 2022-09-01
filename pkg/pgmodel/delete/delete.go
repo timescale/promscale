@@ -24,14 +24,14 @@ type PgDelete struct {
 }
 
 // DeleteSeries deletes the series that matches the provided label_matchers.
-func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) ([]string, []model.SeriesID, int, error) {
+func (pgDel *PgDelete) DeleteSeries(ctx context.Context, matchers []*labels.Matcher, _, _ time.Time) ([]string, []model.SeriesID, int, error) {
 	var (
 		deletedSeriesIDs []model.SeriesID
 		totalRowsDeleted int
 		err              error
 		metricsTouched   = make(map[string]struct{})
 	)
-	metricNames, seriesIDMatrix, err := getMetricNameSeriesIDFromMatchers(pgDel.Conn, matchers)
+	metricNames, seriesIDMatrix, err := getMetricNameSeriesIDFromMatchers(ctx, pgDel.Conn, matchers)
 	if err != nil {
 		return nil, nil, -1, fmt.Errorf("delete-series: %w", err)
 	}
@@ -39,7 +39,7 @@ func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) 
 		seriesIDs := seriesIDMatrix[metricIndex]
 		var rowsDeleted int
 		if err = pgDel.Conn.QueryRow(
-			context.Background(),
+			ctx,
 			queryDeleteSeries,
 			metricName,
 			convertSeriesIDsToInt64s(seriesIDs),
@@ -57,7 +57,7 @@ func (pgDel *PgDelete) DeleteSeries(matchers []*labels.Matcher, _, _ time.Time) 
 
 // getMetricNameSeriesIDFromMatchers returns the metric name list and the corresponding series ID array
 // as a matrix.
-func getMetricNameSeriesIDFromMatchers(conn pgxconn.PgxConn, matchers []*labels.Matcher) ([]string, [][]model.SeriesID, error) {
+func getMetricNameSeriesIDFromMatchers(ctx context.Context, conn pgxconn.PgxConn, matchers []*labels.Matcher) ([]string, [][]model.SeriesID, error) {
 	cb, err := querier.BuildSubQueries(matchers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("delete series build subqueries: %w", err)
@@ -66,7 +66,7 @@ func getMetricNameSeriesIDFromMatchers(conn pgxconn.PgxConn, matchers []*labels.
 	if err != nil {
 		return nil, nil, fmt.Errorf("delete series build clauses: %w", err)
 	}
-	metrics, schemas, correspondingSeriesIDs, err := querier.GetMetricNameSeriesIds(conn, querier.GetMetadata(clauses, values))
+	metrics, schemas, correspondingSeriesIDs, err := querier.GetMetricNameSeriesIds(ctx, conn, querier.GetMetadata(clauses, values))
 	if err != nil {
 		return nil, nil, fmt.Errorf("get metric-name series-ids: %w", err)
 	}

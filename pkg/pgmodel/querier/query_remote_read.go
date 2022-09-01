@@ -1,6 +1,7 @@
 package querier
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/timescale/promscale/pkg/prompb"
@@ -8,10 +9,11 @@ import (
 
 type queryRemoteRead struct {
 	*pgxQuerier
+	ctx context.Context
 }
 
-func newQueryRemoteRead(qr *pgxQuerier) *queryRemoteRead {
-	return &queryRemoteRead{qr}
+func newQueryRemoteRead(ctx context.Context, qr *pgxQuerier) *queryRemoteRead {
+	return &queryRemoteRead{qr, ctx}
 }
 
 // Query implements the RemoteReadQuerier interface. It is the entrypoint for
@@ -26,7 +28,7 @@ func (q *queryRemoteRead) Query(query *prompb.Query) ([]*prompb.TimeSeries, erro
 		return nil, err
 	}
 
-	qrySamples := newQuerySamples(q.pgxQuerier)
+	qrySamples := newQuerySamples(q.ctx, q.pgxQuerier)
 	sampleRows, _, err := qrySamples.fetchSamplesRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, nil, matchers)
 	if err != nil {
 		return nil, err

@@ -45,17 +45,18 @@ func TestOperationWithNullChars(t *testing.T) {
 		require.NoError(t, err)
 		defer ingestor.Close()
 
-		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
+		ctx := context.Background()
+		_, _, err = ingestor.IngestMetrics(ctx, newWriteRequestWithTs(copyMetrics(ts)))
 		require.NoError(t, err)
 
 		// Verify sanitization is ingested in the db.
 		var key string
-		err = db.QueryRow(context.Background(), fmt.Sprintf("select key from _prom_catalog.label where key='%s'", testNullLabelValReplacement)).Scan(&key)
+		err = db.QueryRow(ctx, fmt.Sprintf("select key from _prom_catalog.label where key='%s'", testNullLabelValReplacement)).Scan(&key)
 		require.NoError(t, err)
 		if key != testNullLabelValReplacement {
 			require.Fail(t, "sanitization does not exist in the db")
 		}
-		err = db.QueryRow(context.Background(), "select value from _prom_catalog.label where key='common'").Scan(&key)
+		err = db.QueryRow(ctx, "select value from _prom_catalog.label where key='common'").Scan(&key)
 		require.NoError(t, err)
 		if key != testNullTagValReplacement {
 			require.Fail(t, "sanitization does not exist in the db")
@@ -67,7 +68,7 @@ func TestOperationWithNullChars(t *testing.T) {
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
-		resp, err := r.RemoteReadQuerier().Query(&prompb.Query{
+		resp, err := r.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,

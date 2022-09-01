@@ -38,7 +38,7 @@ func metricMetadataHandler(client *pgclient.Client) http.HandlerFunc {
 				return
 			}
 		}
-		data, err := metadata.MetricQuery(client.ReadOnlyConnection(), metric, int(limit))
+		data, err := metadata.MetricQuery(r.Context(), client.ReadOnlyConnection(), metric, int(limit))
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, err, "fetching metric metadata")
 			return
