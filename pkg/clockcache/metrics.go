@@ -16,6 +16,11 @@ func WithMetrics(cacheName, module string, max uint64) *Cache {
 	registerMetrics(cacheName, module, cache)
 	return cache
 }
+func IndexedCacheWithMetrics(cacheName, module string, max uint64) *IndexedCache {
+	cache := IndexedCacheWithMax(max)
+	registerIndexedMetrics(cacheName, module, cache)
+	return cache
+}
 
 type perfMetrics struct {
 	isApplied      bool
@@ -71,6 +76,81 @@ func (pm *perfMetrics) Observe(method string, d time.Duration) {
 
 // Note: the moduleType refers to which module the cache belongs. Valid options: ["metric", "trace"].
 func registerMetrics(cacheName, moduleType string, c *Cache) {
+	if !(moduleType == "metric" || moduleType == "trace") {
+		panic("moduleType can only be either 'metric' or 'trace'")
+	}
+
+	r := prometheus.DefaultRegisterer
+	if isTest := os.Getenv("IS_TEST"); isTest == "true" {
+		// Use new registry for each cache creation in e2e tests to
+		// avoid duplicate prometheus.MustRegister() calls.
+		r = prometheus.NewRegistry()
+	}
+
+	perf := new(perfMetrics)
+	perf.createAndRegister(r, cacheName, moduleType)
+	c.applyPerfMetric(perf)
+
+	enabled := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "cache",
+			Name:      "enabled",
+			Help:      "Cache is enabled or not.",
+			ConstLabels: map[string]string{ // type => ["trace" or "metric"] and name => name of the cache i.e., metric cache, series cache, schema cache, etc.
+				"type": moduleType,
+				"name": cacheName,
+			},
+		},
+	)
+	enabled.Set(1)
+	count := prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace:   util.PromNamespace,
+			Subsystem:   "cache",
+			Name:        "elements",
+			Help:        "Number of elements in cache in terms of elements count.",
+			ConstLabels: map[string]string{"type": moduleType, "name": cacheName},
+		}, func() float64 {
+			return float64(c.Len())
+		},
+	)
+	size := prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace:   util.PromNamespace,
+			Subsystem:   "cache",
+			Name:        "bytes",
+			Help:        "Cache size in bytes.",
+			ConstLabels: map[string]string{"type": moduleType, "name": cacheName},
+		}, func() float64 {
+			return float64(c.SizeBytes())
+		},
+	)
+	capacity := prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace:   util.PromNamespace,
+			Subsystem:   "cache",
+			Name:        "capacity_elements",
+			Help:        "Total cache capacity in terms of elements count.",
+			ConstLabels: map[string]string{"type": moduleType, "name": cacheName},
+		}, func() float64 {
+			return float64(c.Cap())
+		},
+	)
+	evictions := prometheus.NewCounterFunc(
+		prometheus.CounterOpts{
+			Namespace:   util.PromNamespace,
+			Subsystem:   "cache",
+			Name:        "evictions_total",
+			Help:        "Total evictions in a clockcache.",
+			ConstLabels: map[string]string{"type": moduleType, "name": cacheName},
+		}, func() float64 {
+			return float64(c.Evictions())
+		},
+	)
+	r.MustRegister(enabled, count, size, capacity, evictions)
+}
+func registerIndexedMetrics(cacheName, moduleType string, c *IndexedCache) {
 	if !(moduleType == "metric" || moduleType == "trace") {
 		panic("moduleType can only be either 'metric' or 'trace'")
 	}
