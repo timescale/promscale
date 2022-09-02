@@ -142,6 +142,7 @@ type UnresolvedSeriesCache interface {
 type StoredSeriesCache interface {
 	PutSeries(key *model.SeriesCacheKey, series *model.StoredSeries)
 	GetSeries(key *model.SeriesCacheKey) (series *model.StoredSeries, ok bool)
+	EvictWithIndex(idxKey model.SeriesID)
 	Reset()
 	Len() int
 	Cap() int
@@ -177,6 +178,10 @@ func (t *StoredSeriesCacheImpl) GetSeries(key *model.SeriesCacheKey) (series *mo
 		return nil, false
 	}
 	return elem.(*model.StoredSeries), true
+}
+
+func (t *StoredSeriesCacheImpl) EvictWithIndex(idxKey model.SeriesID) {
+	t.cache.EvictWithIndex(idxKey)
 }
 
 func (t *StoredSeriesCacheImpl) runSizeCheck(sigClose <-chan struct{}) {
