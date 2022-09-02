@@ -79,7 +79,7 @@ func New(config ProxyConfig, logger hclog.Logger) (*Proxy, error) {
 }
 
 func (p *Proxy) Close(ctx context.Context, _ *storage_v1.CloseWriterRequest) (*storage_v1.CloseWriterResponse, error) {
-	errChan := make(chan error)
+	errChan := make(chan error, 1)
 	go func() {
 		errChan <- p.conn.Close()
 		close(errChan)

@@ -13,8 +13,6 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
-## [Unreleased]
-
 ### Added
 - prom-migrator: Support for passing custom HTTP headers via command line arguments for both
   reader and writer [#1020].
@@ -22,6 +20,7 @@ We use the following categories for changes:
 
 ### Fixed
 - Fix broken cache eviction in clockcache [#1603]
+- Possible goroutine leak due to unbuffered channel in select block [#1604]
 
 ## [0.14.0] - 2022-08-30
 
