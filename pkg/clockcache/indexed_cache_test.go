@@ -4,12 +4,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"testing"
+	"time"
 )
 
 func TestBuildIndex(t *testing.T) {
 	cache := IndexedCacheWithMax(1)
+
 	seriesId := model.SeriesID(1)
-	value := model.NewStoredSeries(seriesId, 1)
+	value := model.NewStoredSeries(seriesId, model.NewSeriesEpoch(time.Now()))
 	cache.Insert(1, value, 20)
 
 	_, present := cache.index[seriesId]
@@ -21,7 +23,7 @@ func TestIndexEvictionRemovesElement(t *testing.T) {
 	for i := 1; i < 10; i++ {
 		key := i
 		seriesId := model.SeriesID(i)
-		value := model.NewStoredSeries(seriesId, 1)
+		value := model.NewStoredSeries(seriesId, model.NewSeriesEpoch(time.Now()))
 		cache.Insert(key, value, 20)
 
 		_, present := cache.index[seriesId]
@@ -43,7 +45,7 @@ func TestCapacityEvictionHandlesIndex(t *testing.T) {
 	for i := 1; i < 10; i++ {
 		key := i
 		seriesId := model.SeriesID(i)
-		value := model.NewStoredSeries(seriesId, 1)
+		value := model.NewStoredSeries(seriesId, model.NewSeriesEpoch(time.Now()))
 		cache.Insert(key, value, 20)
 	}
 	for i := 1; i < 9; i++ {

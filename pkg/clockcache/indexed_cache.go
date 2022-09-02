@@ -283,26 +283,26 @@ func (self *IndexedCache) get(key interface{}) (interface{}, bool) {
 	return elem.value, true
 }
 
-func (self *IndexedCache) unmark(key string) bool {
-	self.elementsLock.RLock()
-	defer self.elementsLock.RUnlock()
-
-	elem, present := self.elements[key]
-	if !present {
-		return false
-	}
-
-	// While logically this is a CompareAndSwap, this code has an important
-	// advantage: in the common case of the element already being marked as used,
-	// this is a read-only operation, and doesn't trash the cache line that used
-	// is stored on. The lack of atomicity of the update doesn't matter for our
-	// use case.
-	if atomic.LoadUint32(&elem.used) != 0 {
-		atomic.StoreUint32(&elem.used, 0)
-	}
-
-	return true
-}
+//func (self *IndexedCache) unmark(key string) bool {
+//	self.elementsLock.RLock()
+//	defer self.elementsLock.RUnlock()
+//
+//	elem, present := self.elements[key]
+//	if !present {
+//		return false
+//	}
+//
+//	// While logically this is a CompareAndSwap, this code has an important
+//	// advantage: in the common case of the element already being marked as used,
+//	// this is a read-only operation, and doesn't trash the cache line that used
+//	// is stored on. The lack of atomicity of the update doesn't matter for our
+//	// use case.
+//	if atomic.LoadUint32(&elem.used) != 0 {
+//		atomic.StoreUint32(&elem.used, 0)
+//	}
+//
+//	return true
+//}
 
 func (self *IndexedCache) ExpandTo(newMax int) {
 	self.insertLock.Lock()
@@ -379,13 +379,13 @@ func (self *IndexedCache) Cap() int {
 	return cap(self.storage)
 }
 
-func (self *IndexedCache) debugString() string {
-	self.elementsLock.RLock()
-	defer self.elementsLock.RUnlock()
-	str := "["
-	for i := range self.storage {
-		elem := &self.storage[i]
-		str = fmt.Sprintf("%s%v: %v, ", str, elem.key, elem.value)
-	}
-	return fmt.Sprintf("%s]", str)
-}
+//func (self *IndexedCache) debugString() string {
+//	self.elementsLock.RLock()
+//	defer self.elementsLock.RUnlock()
+//	str := "["
+//	for i := range self.storage {
+//		elem := &self.storage[i]
+//		str = fmt.Sprintf("%s%v: %v, ", str, elem.key, elem.value)
+//	}
+//	return fmt.Sprintf("%s]", str)
+//}
