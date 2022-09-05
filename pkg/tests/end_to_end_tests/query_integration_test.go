@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -79,7 +79,7 @@ func (c *PromClient) Read(rr *prompb.ReadRequest) (*prompb.ReadResponse, error) 
 		return nil, fmt.Errorf("Prometheus returned status: %s", httpResp.Status)
 	}
 
-	compressed, err = ioutil.ReadAll(httpResp.Body)
+	compressed, err = io.ReadAll(httpResp.Body)
 	if err != nil {
 		return nil, err
 	}

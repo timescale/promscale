@@ -3,7 +3,6 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"runtime"
 
@@ -30,7 +29,7 @@ func generatePrometheusWAL(withExemplars bool) ([]prompb.TimeSeries, string, err
 	if withExemplars {
 		dbStoragePath = dbStoragePath + "_with_exemplars"
 	}
-	dbPath, err := ioutil.TempDir(tmpDir, dbStoragePath)
+	dbPath, err := os.MkdirTemp(tmpDir, dbStoragePath)
 	if err != nil {
 		return nil, "", err
 	}
@@ -38,7 +37,7 @@ func generatePrometheusWAL(withExemplars bool) ([]prompb.TimeSeries, string, err
 	if !withExemplars {
 		// Take snapshots only when exemplars are not to be inserted.
 		// Otherwise, snapshots will remove them.
-		snapPath, err = ioutil.TempDir(tmpDir, "prom_snaptest_storage")
+		snapPath, err = os.MkdirTemp(tmpDir, "prom_snaptest_storage")
 		if err != nil {
 			return nil, "", err
 		}

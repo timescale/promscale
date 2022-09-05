@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -243,7 +242,7 @@ retry:
 		return nil, 0, 0, err
 	}
 	defer func() {
-		_, _ = io.Copy(ioutil.Discard, httpResp.Body)
+		_, _ = io.Copy(io.Discard, httpResp.Body)
 		_ = httpResp.Body.Close()
 	}()
 
@@ -258,7 +257,7 @@ retry:
 		// This case belongs to when the client is used to fetch the progress metric from progress-metric url.
 		_, _ = io.Copy(&reader, httpResp.Body)
 	}
-	compressed, err = ioutil.ReadAll(bytes.NewReader(reader.Bytes()))
+	compressed, err = io.ReadAll(bytes.NewReader(reader.Bytes()))
 	if err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("error reading response. HTTP status code: %s", httpResp.Status))
 		if c.clientConfig.shouldRetry(onError, numAttempts, fmt.Sprintf("error:\n%s\n", err.Error())) {
@@ -358,7 +357,7 @@ func (c *Client) Store(ctx context.Context, req []byte) error {
 		return RecoverableError{err}
 	}
 	defer func() {
-		_, _ = io.Copy(ioutil.Discard, httpResp.Body)
+		_, _ = io.Copy(io.Discard, httpResp.Body)
 		_ = httpResp.Body.Close()
 	}()
 

@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"runtime"
 	"time"
@@ -110,5 +109,5 @@ func TempDir(name string) (string, error) {
 		// so switch to cross-user tmp dir
 		tmpDir = "/tmp"
 	}
-	return ioutil.TempDir(tmpDir, name)
+	return os.MkdirTemp(tmpDir, name)
 }

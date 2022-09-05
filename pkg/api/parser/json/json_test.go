@@ -5,7 +5,7 @@
 package json
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -164,7 +164,7 @@ func TestParseRequest(t *testing.T) {
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 			req := &http.Request{
-				Body: ioutil.NopCloser(strings.NewReader(c.body)),
+				Body: io.NopCloser(strings.NewReader(c.body)),
 			}
 			response := ingestor.NewWriteRequest()
 			defer ingestor.FinishWriteRequest(response)

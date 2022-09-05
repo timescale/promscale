@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -107,7 +106,7 @@ func getDBImages(extensionState testhelpers.TestOptions, prevPromscaleVersion *s
 }
 
 func writeToFiles(t *testing.T, upgradedDbInfo, pristineDbInfo dbSnapshot) error {
-	dir, err := ioutil.TempDir("", "upgrade_test")
+	dir, err := os.MkdirTemp("", "upgrade_test")
 	if err != nil {
 		return err
 	}
@@ -571,7 +570,7 @@ func doWrite(t *testing.T, client *http.Client, url string, data ...[]prompb.Tim
 			t.Fatal("non-ok status:", resp.Status)
 		}
 
-		_, _ = io.Copy(ioutil.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 	}
 }

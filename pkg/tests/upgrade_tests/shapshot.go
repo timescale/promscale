@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -335,7 +334,7 @@ func getPsqlInfo(t *testing.T, container testcontainers.Container, dbName string
 
 func readOutput(t *testing.T, outputDir string) string {
 	outputFile := outputDir + "/output.out"
-	output, err := ioutil.ReadFile(filepath.Clean(outputFile))
+	output, err := os.ReadFile(filepath.Clean(outputFile))
 	if err != nil {
 		t.Errorf("error reading psql output: %v", err)
 	}

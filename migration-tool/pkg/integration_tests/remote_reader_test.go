@@ -5,7 +5,7 @@
 package integration_tests
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -63,7 +63,7 @@ func getReadHandler(t *testing.T, series []prompb.TimeSeries, testRetry bool) ht
 			t.Fatal("invalid read headers")
 		}
 
-		compressed, err := ioutil.ReadAll(r.Body)
+		compressed, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Fatal("msg", "read header validation error", "err", err.Error())
 		}

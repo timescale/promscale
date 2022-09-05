@@ -7,7 +7,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -122,7 +122,7 @@ func sendWriteRequest(t testing.TB, router http.Handler, ts []prompb.TimeSeries)
 		return
 	}
 
-	_, err = ioutil.ReadAll(tsResp.Body)
+	_, err = io.ReadAll(tsResp.Body)
 	if err != nil {
 		t.Errorf("unexpected error returned when reading connector response body:\n%s\n", err.Error())
 		return

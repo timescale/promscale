@@ -7,7 +7,6 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"sync"
@@ -121,7 +120,7 @@ func waitForAlertWithName(expected string) error {
 // The aim of this function is to abstract out the code of setting up alertmanager that is copied from alertmanager repo
 // from the actual test.
 func setupAM(expected string) (*api.API, *sync.WaitGroup, *fakeAlerts, error) {
-	f, err := ioutil.TempFile(os.TempDir(), "*.alerts.test")
+	f, err := os.CreateTemp(os.TempDir(), "*.alerts.test")
 	if err != nil {
 		return nil, nil, nil, err
 	}

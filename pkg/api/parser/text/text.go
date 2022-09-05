@@ -3,7 +3,6 @@ package text
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -18,7 +17,7 @@ var timeProvider = time.Now
 
 // ParseRequest parses an incoming HTTP request as a Prometheus text format.
 func ParseRequest(r *http.Request, wr *prompb.WriteRequest) error {
-	b, err := ioutil.ReadAll(r.Body)
+	b, err := io.ReadAll(r.Body)
 	if err != nil {
 		return fmt.Errorf("error reading request body: %w", err)
 	}

@@ -8,12 +8,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	constants "github.com/timescale/promscale/pkg/tests"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	constants "github.com/timescale/promscale/pkg/tests"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -77,7 +77,7 @@ func runMain(m *testing.M) int {
 			// so switch to cross-user tmp dir
 			tmpDir = "/tmp"
 		}
-		path, err := ioutil.TempDir(tmpDir, "prom_test")
+		path, err := os.MkdirTemp(tmpDir, "prom_test")
 		if err != nil {
 			fmt.Println("Error getting temp dir for Prometheus storage", err)
 			os.Exit(1)

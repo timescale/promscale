@@ -6,7 +6,7 @@ package api
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -30,7 +30,7 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics, updateMetrics
 			return
 		}
 
-		compressed, err := ioutil.ReadAll(r.Body)
+		compressed, err := io.ReadAll(r.Body)
 		if err != nil {
 			log.Error("msg", "Read header validation error", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)

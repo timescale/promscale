@@ -6,7 +6,7 @@ package api
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -99,7 +99,7 @@ func TestQueryExemplar(t *testing.T) {
 		r := doExemplarQuery(t, "GET", preparedURL, handler)
 		require.Equal(t, tc.statusCode, r.Code, fmt.Sprintf("received code %d, expected %d", r.Code, tc.statusCode), tc.name)
 		if tc.shouldErr {
-			b, err := ioutil.ReadAll(r.Body)
+			b, err := io.ReadAll(r.Body)
 			require.NoError(t, err)
 			require.Equal(t, tc.err, string(b), tc.name)
 		}

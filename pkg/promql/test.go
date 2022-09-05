@@ -16,7 +16,6 @@ package promql
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
 	"strconv"
@@ -61,7 +60,7 @@ type TestStorage struct {
 // New returns a new TestStorage for testing purposes
 // that removes all associated files on closing.
 func NewTestStorage(t testutil.T) *TestStorage {
-	dir, err := ioutil.TempDir("", "test_storage")
+	dir, err := os.MkdirTemp("", "test_storage")
 	assert.NoError(t, err, "opening test dir failed")
 
 	// Tests just load data for a series sequentially. Thus we
@@ -150,7 +149,7 @@ func NewTest(t testutil.T, input string) (*Test, error) {
 }
 
 func newTestFromFile(t testutil.T, filename string) (*Test, error) {
-	content, err := ioutil.ReadFile(filename)
+	content, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}

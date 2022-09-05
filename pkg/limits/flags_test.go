@@ -6,7 +6,7 @@ package limits
 
 import (
 	"flag"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
@@ -85,7 +85,7 @@ func TestString(t *testing.T) {
 
 func fullyParse(t *testing.T, args []string, expectError bool) Config {
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
-	fs.SetOutput(ioutil.Discard)
+	fs.SetOutput(io.Discard)
 	config := &Config{}
 	ParseFlags(fs, config)
 	err := ff.Parse(fs, args)

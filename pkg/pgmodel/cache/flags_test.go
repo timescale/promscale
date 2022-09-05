@@ -6,7 +6,7 @@ package cache
 
 import (
 	"flag"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
@@ -17,7 +17,7 @@ import (
 
 func fullyParse(t *testing.T, args []string, lcfg *limits.Config, expectError bool) Config {
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
-	fs.SetOutput(ioutil.Discard)
+	fs.SetOutput(io.Discard)
 	config := &Config{}
 	ParseFlags(fs, config)
 	err := ff.Parse(fs, args)

@@ -7,7 +7,6 @@ package runner
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -276,7 +275,7 @@ func TestParseFlagsConfigPrecedence(t *testing.T) {
 
 			var configFilePath string
 			if c.configFileContents != "" {
-				f, err := ioutil.TempFile("", "promscale.yml")
+				f, err := os.CreateTemp("", "promscale.yml")
 				if err != nil {
 					t.Fatalf("unexpected error when creating config file: %s", err)
 				}
@@ -389,7 +388,7 @@ func TestRemovedFlagUsage(t *testing.T) {
 			}
 
 			if c.configFileContents != "" {
-				f, err := ioutil.TempFile("", "promscale.yml")
+				f, err := os.CreateTemp("", "promscale.yml")
 				if err != nil {
 					t.Fatalf("unexpected error when creating config file: %s", err)
 				}

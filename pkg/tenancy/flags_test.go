@@ -3,7 +3,7 @@ package tenancy
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
@@ -27,7 +27,7 @@ func TestParseFlags(t *testing.T) {
 
 func fullyParse(t *testing.T, args []string) Config {
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
-	fs.SetOutput(ioutil.Discard)
+	fs.SetOutput(io.Discard)
 	config := &Config{}
 	ParseFlags(fs, config)
 	require.NoError(t, ff.Parse(fs, args))

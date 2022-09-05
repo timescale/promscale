@@ -7,7 +7,6 @@ package integration_tests
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -199,7 +198,7 @@ func getProgressHandler(t *testing.T, rws *remoteWriteServer, labels string) htt
 			t.Fatal("invalid read headers")
 		}
 
-		compressed, err := ioutil.ReadAll(r.Body)
+		compressed, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Fatal("msg", "read header validation error", "err", err.Error())
 		}
@@ -279,7 +278,7 @@ func FinishWriteRequest(wr *prompb.WriteRequest) {
 }
 
 func decodeSnappyBody(r io.Reader) ([]byte, error, string) {
-	compressed, err := ioutil.ReadAll(r)
+	compressed, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err, "Read error"
 	}
