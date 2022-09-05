@@ -49,19 +49,26 @@ type QueryHints struct {
 	Lookback    time.Duration
 }
 
-func GetMetricNameSeriesIds(ctx context.Context, conn pgxconn.PgxConn, metadata *evalMetadata) (metrics, schemas []string, correspondingSeriesIDs [][]model.SeriesID, err error) {
+func GetMetricNameSeriesIds(
+	ctx context.Context,
+	conn pgxconn.PgxConn,
+	metadata *evalMetadata,
+) (metrics, schemas []string, correspondingSeriesIDs [][]model.SeriesID, err error) {
+
 	sqlQuery := buildMetricNameSeriesIDQuery(metadata.clauses)
-	rows, err := conn.Query(ctx, sqlQuery, metadata.values...)
+	rows, closeFn, err := pgxconn.QueryWithTimeoutFromCtx(ctx, conn, sqlQuery, metadata.values...)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = closeFn()
+	}()
 
 	metrics, schemas, correspondingSeriesIDs, err = getSeriesPerMetric(rows)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return
+	return metrics, schemas, correspondingSeriesIDs, nil
 }
 
 func getSeriesPerMetric(rows pgxconn.PgxRows) ([]string, []string, [][]model.SeriesID, error) {

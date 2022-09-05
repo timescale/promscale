@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/model/timestamp"
-
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -40,6 +40,15 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
+					// The query will be checked with model.isStatementTimeout from
+					// pkg/pgmodel/model/sql_test_utils.go by regex matching so
+					// the value is not important.
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
@@ -65,6 +74,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
@@ -89,6 +104,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
@@ -98,6 +119,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"ORDER BY m.metric_name, m.table_schema",
 					Args:    []interface{}{"foo", "bar"},
 					Results: model.RowResults{{"prom_data", "foo", []int64{1}}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
 					Err:     error(nil),
 				},
 				{
@@ -120,6 +147,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			result: []*prompb.TimeSeries{},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
@@ -132,9 +165,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "foo"},
 					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
 					Err:     error(nil),
 				},
 				{
@@ -160,6 +205,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
 				{
 					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
@@ -191,6 +242,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			result: []*prompb.TimeSeries{},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
@@ -216,6 +273,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			result: []*prompb.TimeSeries{},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "bar"},
 					Results: model.RowResults{nil},
@@ -240,6 +303,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
@@ -252,9 +321,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "foo"},
 					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
 					Err:     error(nil),
 				},
 				{
@@ -270,6 +351,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Results: model.RowResults{{[]int64{1}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
+				// lreader.fetchMissingLabels executes the following query without a
+				// statement_timeout because the context is not propagated to it
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:    []interface{}{[]int64{1}},
@@ -295,9 +378,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "bar"},
 					Results: model.RowResults{{int64(1), "prom_data", "bar", "bar"}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
 					Err:     error(nil),
 				},
 				{
@@ -314,6 +409,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
+				// lreader.fetchMissingLabels executes the following query without a
+				// statement_timeout because the context is not propagated to it
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:    []interface{}{[]int64{2}},
@@ -342,9 +439,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "custom"},
 					Results: model.RowResults{{int64(1), "custom_schema", "custom", "bar"}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
 					Err:     error(nil),
 				},
 				{
@@ -361,6 +470,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
+				// lreader.fetchMissingLabels executes the following query without a
+				// statement_timeout because the context is not propagated to it
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:    []interface{}{[]int64{2}},
@@ -390,9 +501,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "bar"},
 					Results: model.RowResults{{int64(1), "prom_data", "bar", "bar"}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
 					Err:     error(nil),
 				},
 				{
@@ -409,6 +532,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
+				// lreader.fetchMissingLabels executes the following query without a
+				// statement_timeout because the context is not propagated to it
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:    []interface{}{[]int64{2}},
@@ -438,6 +563,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
@@ -450,15 +581,35 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "foo"},
 					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
 					Err:     error(nil),
 				},
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "bar"},
 					Results: model.RowResults{{int64(1), "prom_data", "bar", "bar"}},
+					Err:     error(nil),
+				},
+				// The following 3 queries go through the same batch that's why there's
+				// no timeout statement between them.
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
 					Err:     error(nil),
 				},
 				{
@@ -487,6 +638,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Results: model.RowResults{{[]int64{4}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
+				// lreader.fetchMissingLabels executes the following query without a
+				// statement_timeout because the context is not propagated to it
 				{
 					Sql:           "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:          []interface{}{[]int64{3, 4}},
@@ -509,9 +662,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 			result: []*prompb.TimeSeries{},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"", "foo"},
 					Results: model.RowResults{{int64(1), "prom_data", "foo", "foo"}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
 					Err:     error(nil),
 				},
 				{
@@ -542,6 +707,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
@@ -554,9 +725,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "metric"},
 					Results: model.RowResults{{int64(1), "prom_data", "metric", "metric"}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
 					Err:     error(nil),
 				},
 				{
@@ -572,6 +755,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Results: model.RowResults{{[]int64{7}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
+				// lreader.fetchMissingLabels executes the following query without a
+				// statement_timeout because the context is not propagated to it
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:    []interface{}{[]int64{7}},
@@ -603,6 +788,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
@@ -615,9 +806,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "metric"},
 					Results: model.RowResults{{int64(1), "prom_data", "metric", "metric"}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
 					Err:     error(nil),
 				},
 				{
@@ -633,6 +836,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Results: model.RowResults{{[]int64{8, 9}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
+				// lreader.fetchMissingLabels executes the following query without a
+				// statement_timeout because the context is not propagated to it
 				{
 					Sql:           "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:          []interface{}{[]int64{9, 8}},
@@ -664,6 +869,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 			sqlQueries: []model.SqlQuery{
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql: "SELECT m.table_schema, m.metric_name, array_agg(s.id)\n\t" +
 						"FROM _prom_catalog.series s\n\t" +
 						"INNER JOIN _prom_catalog.metric m\n\t" +
@@ -676,9 +887,21 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
+					Err:     error(nil),
+				},
+				{
 					Sql:     "SELECT id, table_schema, table_name, series_table FROM _prom_catalog.get_metric_table_name_if_exists($1, $2)",
 					Args:    []interface{}{"prom_data", "metric"},
 					Results: model.RowResults{{int64(1), "prom_data", "metric", "metric"}},
+					Err:     error(nil),
+				},
+				{
+					Sql:     "set local statement_timeout = 42",
+					Args:    []interface{}{},
+					Results: model.RowResults{{pgconn.CommandTag{}}},
 					Err:     error(nil),
 				},
 				{
@@ -694,6 +917,8 @@ func TestPGXQuerierQuery(t *testing.T) {
 					Results: model.RowResults{{[]int64{10}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
+				// lreader.fetchMissingLabels executes the following query without a
+				// statement_timeout because the context is not propagated to it
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
 					Args:    []interface{}{[]int64{10}},
@@ -724,7 +949,9 @@ func TestPGXQuerierQuery(t *testing.T) {
 			}
 			querier := pgxQuerier{&queryTools{conn: mock, metricTableNames: mockMetrics, labelsReader: lreader.NewLabelsReader(mock, clockcache.WithMax(0), tenancy.NewNoopAuthorizer().ReadAuthorizer())}}
 
-			result, err := querier.RemoteReadQuerier(context.Background()).Query(c.query)
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+			defer cancel()
+			result, err := querier.RemoteReadQuerier(ctx).Query(c.query)
 
 			if err != nil {
 				switch {

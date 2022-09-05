@@ -2,11 +2,12 @@ package querier
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
+	pgmodelErrors "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -29,7 +30,7 @@ func (tools *queryTools) getMetricTableName(ctx context.Context, metricSchema, m
 	if err == nil {
 		return metricInfo, nil
 	}
-	if err != errors.ErrEntryNotFound {
+	if !errors.Is(err, pgmodelErrors.ErrEntryNotFound) {
 		return model.MetricInfo{}, fmt.Errorf("fetching metric info from cache: %w", err)
 	}
 
@@ -54,17 +55,18 @@ func (tools *queryTools) getMetricTableName(ctx context.Context, metricSchema, m
 }
 
 // queryExemplarMetricTableName returns table name for exemplars for the given metric.
-func queryExemplarMetricTableName(ctx context.Context, conn pgxconn.PgxConn, metric string) (string, error) {
-	res, err := conn.Query(ctx, getExemplarMetricTableSQL, metric)
+func queryExemplarMetricTableName(ctx context.Context, conn pgxconn.PgxConn, metric string) (tableName string, err error) {
+	res, closeFn, err := pgxconn.QueryWithTimeoutFromCtx(ctx, conn, getExemplarMetricTableSQL, metric)
 	if err != nil {
 		return "", err
 	}
 
-	var tableName string
-	defer res.Close()
+	defer func() {
+		_ = closeFn()
+	}()
 
 	if !res.Next() {
-		return "", errors.ErrMissingTableName
+		return "", pgmodelErrors.ErrMissingTableName
 	}
 
 	if err := res.Scan(&tableName); err != nil {
@@ -75,16 +77,24 @@ func queryExemplarMetricTableName(ctx context.Context, conn pgxconn.PgxConn, met
 }
 
 func querySampleMetricTableName(ctx context.Context, conn pgxconn.PgxConn, schema, metric string) (mInfo model.MetricInfo, err error) {
-	row := conn.QueryRow(
+	row, closeFn, err := pgxconn.QueryRowWithTimeoutFromCtx(
 		ctx,
+		conn,
 		getMetricTableSQL,
 		schema,
 		metric,
 	)
 
+	if err != nil {
+		return mInfo, err
+	}
+	defer func() {
+		_ = closeFn()
+	}()
+
 	if err = row.Scan(&mInfo.MetricID, &mInfo.TableSchema, &mInfo.TableName, &mInfo.SeriesTable); err != nil {
-		if err == pgx.ErrNoRows {
-			err = errors.ErrMissingTableName
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = pgmodelErrors.ErrMissingTableName
 		}
 		return mInfo, err
 	}

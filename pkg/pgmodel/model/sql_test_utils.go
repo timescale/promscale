@@ -136,6 +136,12 @@ func (r *SqlRecorder) SendBatch(ctx context.Context, b pgxconn.PgxBatch) (pgx.Ba
 	return &MockBatchResult{queries: r.queries[start:r.nextQuery]}, nil
 }
 
+var statementTimeoutRegex = regexp.MustCompile(`set local statement_timeout = \d+`)
+
+func isStatementTimeout(sql string) bool {
+	return statementTimeoutRegex.MatchString(sql)
+}
+
 func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, error) {
 	row, idx, err := r.next()
 	if err != nil {
@@ -145,7 +151,7 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 	sql = space.ReplaceAllString(sql, " ")
 	row.Sql = space.ReplaceAllString(row.Sql, " ")
 
-	if sql != row.Sql {
+	if sql != row.Sql && !(isStatementTimeout(sql) && isStatementTimeout(row.Sql)) {
 		dmp := diffmatchpatch.New()
 		diffs := dmp.DiffMain(sql, row.Sql, false)
 		r.t.Errorf("@ %d unexpected query:\ngot:\n\t'%s'\nexpected:\n\t'%s'\ndiff:\n\t%v", idx, sql, row.Sql, dmp.DiffPrettyText(diffs))

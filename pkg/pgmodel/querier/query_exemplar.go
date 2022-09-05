@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 type queryExemplars struct {
@@ -90,7 +91,7 @@ func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.
 func fetchSingleMetricExemplars(ctx context.Context, tools *queryTools, metadata *evalMetadata) ([]exemplarSeriesRow, error) {
 	sqlQuery := buildSingleMetricExemplarsQuery(metadata)
 
-	rows, err := tools.conn.Query(ctx, sqlQuery)
+	rows, closeFn, err := pgxconn.QueryWithTimeoutFromCtx(ctx, tools.conn, sqlQuery)
 	if err != nil {
 		// If we are getting undefined table error, it means the query
 		// is looking for a metric which doesn't exist in the system.
@@ -98,7 +99,9 @@ func fetchSingleMetricExemplars(ctx context.Context, tools *queryTools, metadata
 			return nil, fmt.Errorf("querying single metric exemplars: %w", err)
 		}
 	}
-	defer rows.Close()
+	defer func() {
+		_ = closeFn()
+	}()
 
 	exemplarSeriesRows, err := getExemplarSeriesRows(metadata.metric, rows)
 	if err != nil {
@@ -122,7 +125,7 @@ func fetchMultipleMetricsExemplars(ctx context.Context, tools *queryTools, metad
 	)
 
 	numQueries := 0
-	batch := tools.conn.NewBatch()
+	batch, sendBatchFn := pgxconn.NewBatchWithTimeoutFromCtx(ctx, tools.conn)
 
 	// Generate queries for each metric and send them in a single batch.
 	for i := range metrics {
@@ -149,11 +152,13 @@ func fetchMultipleMetricsExemplars(ctx context.Context, tools *queryTools, metad
 		numQueries += 1
 	}
 
-	batchResults, err := tools.conn.SendBatch(ctx, batch)
+	batchResults, err := sendBatchFn()
 	if err != nil {
 		return nil, err
 	}
-	defer batchResults.Close()
+	defer func() {
+		_ = batchResults.Close()
+	}()
 
 	for i := 0; i < numQueries; i++ {
 		rows, err := batchResults.Query()

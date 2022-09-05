@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 type querySamples struct {
@@ -74,12 +75,12 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 // successfully applied, the new top node is returned together with the metric
 // rows. For more information about top nodes, see `engine.populateSeries`.
 func fetchSingleMetricSamples(ctx context.Context, tools *queryTools, metadata *evalMetadata) ([]sampleRow, parser.Node, error) {
-	sqlQuery, values, topNode, tsSeries, err := buildSingleMetricSamplesQuery(metadata)
+	query, err := buildSingleMetricSamplesQuery(metadata)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, err := tools.conn.Query(ctx, sqlQuery, values...)
+	rows, closeFn, err := pgxconn.QueryWithTimeoutFromCtx(ctx, tools.conn, query.sql, query.values...)
 	if err != nil {
 		if e, ok := err.(*pgconn.PgError); ok {
 			switch e.Code {
@@ -96,21 +97,34 @@ func fetchSingleMetricSamples(ctx context.Context, tools *queryTools, metadata *
 		}
 		return nil, nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = closeFn()
+	}()
 
-	updatedMetricName := ""
-	// If the table name and series table name don't match, this is a custom metric view which
-	// shares the series table with the raw metric, hence we have to update the metric name label.
-	if metadata.timeFilter.metric != metadata.timeFilter.seriesTable {
-		updatedMetricName = metadata.timeFilter.metric
-	}
+	samplesRows, err := appendSampleRows(
+		make([]sampleRow, 0, 1),
+		rows,
+		query.tsSeries,
+		metricNameOverride(metadata),
+		metadata.timeFilter.schema,
+		metadata.timeFilter.column,
+	)
 
-	filter := metadata.timeFilter
-	samplesRows, err := appendSampleRows(make([]sampleRow, 0, 1), rows, tsSeries, updatedMetricName, filter.schema, filter.column)
 	if err != nil {
-		return nil, topNode, fmt.Errorf("appending sample rows: %w", err)
+		return nil, query.topNode, fmt.Errorf("appending sample rows: %w", err)
 	}
-	return samplesRows, topNode, nil
+
+	return samplesRows, query.topNode, nil
+}
+
+// metricNameOverride returns the metric name to use if the table name and
+// series table name don't match. This happens on custom metric views that
+// share the series table with the raw metric.
+func metricNameOverride(metadata *evalMetadata) string {
+	if metadata.timeFilter.metric != metadata.timeFilter.seriesTable {
+		return metadata.timeFilter.metric
+	}
+	return ""
 }
 
 // fetchMultipleMetricsSamples returns all the result rows for across multiple
@@ -124,8 +138,14 @@ func fetchMultipleMetricsSamples(ctx context.Context, tools *queryTools, metadat
 
 	// TODO this assume on average on row per-metric. Is this right?
 	results := make([]sampleRow, 0, len(metrics))
+
+	if len(metrics) == 0 {
+		return results, nil
+	}
+
 	numQueries := 0
-	batch := tools.conn.NewBatch()
+
+	batch, sendBatchFn := pgxconn.NewBatchWithTimeoutFromCtx(ctx, tools.conn)
 
 	// Generate queries for each metric and send them in a single batch.
 	for i := range metrics {
@@ -161,11 +181,13 @@ func fetchMultipleMetricsSamples(ctx context.Context, tools *queryTools, metadat
 		numQueries += 1
 	}
 
-	batchResults, err := tools.conn.SendBatch(ctx, batch)
+	batchResults, err := sendBatchFn()
 	if err != nil {
 		return nil, err
 	}
-	defer batchResults.Close()
+	defer func() {
+		_ = batchResults.Close()
+	}()
 
 	for i := 0; i < numQueries; i++ {
 		rows, err := batchResults.Query()
