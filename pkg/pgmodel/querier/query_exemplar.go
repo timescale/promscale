@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 type queryExemplars struct {
@@ -90,7 +91,7 @@ func (q *queryExemplars) Select(start, end time.Time, matchersList ...[]*labels.
 func fetchSingleMetricExemplars(ctx context.Context, tools *queryTools, metadata *evalMetadata) ([]exemplarSeriesRow, error) {
 	sqlQuery := buildSingleMetricExemplarsQuery(metadata)
 
-	rows, err := tools.conn.Query(ctx, sqlQuery)
+	rows, commit, err := pgxconn.QueryWithTimeoutFromCtx(ctx, tools.conn, sqlQuery)
 	if err != nil {
 		// If we are getting undefined table error, it means the query
 		// is looking for a metric which doesn't exist in the system.
@@ -103,6 +104,9 @@ func fetchSingleMetricExemplars(ctx context.Context, tools *queryTools, metadata
 	exemplarSeriesRows, err := getExemplarSeriesRows(metadata.metric, rows)
 	if err != nil {
 		return nil, fmt.Errorf("appending exemplar rows: %w", err)
+	}
+	if err = commit(); err != nil {
+		return nil, fmt.Errorf("query commit failed: %w", err)
 	}
 	return exemplarSeriesRows, nil
 }

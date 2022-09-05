@@ -101,9 +101,16 @@ const (
 	defaultColumnName = "value"
 )
 
+type singleMetricSampleQuery struct {
+	sql      string
+	values   []interface{}
+	topNode  parser.Node
+	tsSeries TimestampSeries
+}
+
 // buildSingleMetricSamplesQuery builds a SQL query which fetches the data for
 // one metric.
-func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{}, parser.Node, TimestampSeries, error) {
+func buildSingleMetricSamplesQuery(metadata *evalMetadata) (singleMetricSampleQuery, error) {
 	// The basic structure of the SQL query which this function produces is:
 	//		SELECT
 	//		  series.labels
@@ -137,14 +144,14 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		var err error
 		timeClauseBound, values, err = setParameterNumbers(qf.timeClause, values, qf.timeParams...)
 		if err != nil {
-			return "", nil, nil, nil, err
+			return singleMetricSampleQuery{}, err
 		}
 		selectors = append(selectors, "result.time_array")
 		selectorClauses = append(selectorClauses, timeClauseBound+" as time_array")
 	}
 	valueClauseBound, values, err := setParameterNumbers(qf.valueClause, values, qf.valueParams...)
 	if err != nil {
-		return "", nil, nil, nil, err
+		return singleMetricSampleQuery{}, err
 	}
 	selectors = append(selectors, "result.value_array")
 	selectorClauses = append(selectorClauses, valueClauseBound+" as value_array")
@@ -225,7 +232,12 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		pgx.Identifier{filter.column}.Sanitize(),
 	)
 
-	return finalSQL, values, node, qf.tsSeries, nil
+	return singleMetricSampleQuery{
+		finalSQL,
+		values,
+		node,
+		qf.tsSeries,
+	}, nil
 }
 
 func buildMultipleMetricSamplesQuery(filter timeFilter, series []pgmodel.SeriesID) (string, error) {

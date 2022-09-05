@@ -164,7 +164,7 @@ func (r *sampleRow) GetAdditionalLabels() (ll labels.Labels) {
 
 // appendSampleRows adds new results rows to already existing result rows and
 // returns the as a result.
-func appendSampleRows(out []sampleRow, in pgxconn.PgxRows, tsSeries TimestampSeries, metric, schema, column string) ([]sampleRow, error) {
+func appendSampleRows(out []sampleRow, in pgxconn.PgxRows, tsSeries TimestampSeries, metricNameOverride, schema, column string) ([]sampleRow, error) {
 	if in.Err() != nil {
 		return out, in.Err()
 	}
@@ -188,7 +188,7 @@ func appendSampleRows(out []sampleRow, in pgxconn.PgxRows, tsSeries TimestampSer
 		}
 
 		row.values = values
-		row.metricOverride = metric
+		row.metricOverride = metricNameOverride
 		row.schema = schema
 		row.column = column
 
