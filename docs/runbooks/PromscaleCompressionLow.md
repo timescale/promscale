@@ -50,7 +50,7 @@ please solve the latter one first by following its runbook.
 
 ### Low number of maintenance jobs
 
-Increase background jobs using: `SELECT prom_api.config_maintenance_jobs(number_jobs=> <new_jobs_count>)`
+Increase background jobs using: `SELECT prom_api.config_maintenance_jobs(number_jobs => <new_jobs_count>, new_schedule_interval => <new_schedule_interval>)`
 
 ### Low background workers limit compared to available databases
 

@@ -35,7 +35,7 @@ See [Very large uncompressed chunks](#very-large-uncompressed-chunks) for mitiga
 
 ### Lots of uncompressed chunks
 1. An immediate solution to this is manually compressing chunks by calling: `call prom_api.execute_maintenance();`. This will also perform retention policies.
-2. Try increasing background maintenance jobs using: `SELECT prom_api.config_maintenance_jobs(number_jobs=>X)`. The given `number_jobs` will run every 30 mins. Maintenance jobs are responsible for performing compression and retention policy
+2. Try increasing the number of maintenance jobs by using: `SELECT prom_api.config_maintenance_jobs(number_jobs => X, new_schedule_interval => '30 minutes'::interval)`. The given `number_jobs` will run every `new_schedule_interval` minutes (in this case, 30). Maintenance jobs are responsible for performing compression and applying retention policies.
 
 ### Very large uncompressed chunks
 

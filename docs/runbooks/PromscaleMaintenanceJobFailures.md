@@ -34,14 +34,14 @@ Run the following debugging query
 
 ```postgresql
 SELECT * FROM timescaledb_information.job_stats js 
-    INNER JOIN timescaledb_information.jobs j ON (js.job_id = j.job_id) 
+    INNER JOIN timescaledb_information.jobs j USING (job_id) 
 WHERE proc_name ='execute_maintenance_job';
 ```
 
 If the output has:
 1. no rows => No jobs are installed
 
-`SELECT prom_api.config_maintenance_jobs(number_jobs=>2)`
+`SELECT prom_api.config_maintenance_jobs(number_jobs => 2, new_schedule_interval => '30 minutes'::interval)`
 
 2. last_run_status not = 'Success' => Job had an error
 
@@ -51,10 +51,10 @@ Run `CALL prom_api.execute_maintenance(true);` and see if there are any obvious 
 
 4. next_start not within 30 min
 
-Try increasing maintenance jobs and see if it helps: `SELECT prom_api.config_maintenance_jobs(number_jobs=>X, interval '15 minutes')`
+Try increasing maintenance jobs and see if it helps: `SELECT prom_api.config_maintenance_jobs(number_jobs => X, new_schedule_interval => '30 minutes'::interval)`
 
 If some problem persists with scheduling, then please open an issue at https://github.com/timescale/promscale/issues
 
 5. last_run_duration is high (>30 min) => Not enough parallelism
 
-Increase the number of maintenance jobs N using `SELECT prom_api.config_maintenance_jobs(number_jobs=>N)`
+Increase the number of maintenance jobs N using `SELECT prom_api.config_maintenance_jobs(number_jobs => N, new_schedule_interval => '30 minutes'::interval)`
