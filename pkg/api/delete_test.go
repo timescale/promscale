@@ -6,7 +6,7 @@ package api
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -92,7 +92,7 @@ func TestDelete(t *testing.T) {
 				return
 			}
 			if tc.fails {
-				bstream, err := ioutil.ReadAll(wPost.Body)
+				bstream, err := io.ReadAll(wPost.Body)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -112,7 +112,7 @@ func TestDelete(t *testing.T) {
 				return
 			}
 			if tc.fails {
-				bstream, err := ioutil.ReadAll(wPut.Body)
+				bstream, err := io.ReadAll(wPut.Body)
 				if err != nil {
 					t.Fatal(err)
 				}

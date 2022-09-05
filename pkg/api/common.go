@@ -9,9 +9,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -120,7 +120,7 @@ func readFromFile(path string, defaultValue string) (string, error) {
 	if path == "" {
 		return defaultValue, nil
 	}
-	bs, err := ioutil.ReadFile(path) // #nosec G304
+	bs, err := os.ReadFile(path) // #nosec G304
 	if err != nil {
 		return "", fmt.Errorf("unable to read file %s: %w", path, err)
 	}

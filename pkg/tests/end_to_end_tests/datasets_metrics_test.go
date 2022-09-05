@@ -5,7 +5,7 @@
 package end_to_end_tests
 
 import (
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"os"
 	"time"
@@ -327,7 +327,7 @@ func generateRealTimeseries() []prompb.TimeSeries {
 			panic(err)
 		}
 
-		compressed, err := ioutil.ReadAll(f)
+		compressed, err := io.ReadAll(f)
 		if err != nil {
 			panic(err)
 		}

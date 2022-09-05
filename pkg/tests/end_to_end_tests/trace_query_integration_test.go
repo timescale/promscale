@@ -9,7 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"sort"
@@ -348,7 +348,7 @@ func do(url string) (*structuredResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("http get: %w", err)
 	}
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read all: %w", err)
 	}

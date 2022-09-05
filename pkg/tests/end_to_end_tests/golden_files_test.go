@@ -5,7 +5,8 @@ package end_to_end_tests
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,7 +54,7 @@ func TestSQLGoldenFiles(t *testing.T) {
 
 			actualFile := filepath.Join(pgContainerTestDataDir, "out", base+".out")
 
-			actual, err := ioutil.ReadFile(actualFile)
+			actual, err := os.ReadFile(actualFile)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -69,7 +70,7 @@ func TestSQLGoldenFiles(t *testing.T) {
 				}
 				defer rc.Close()
 
-				msg, err := ioutil.ReadAll(rc)
+				msg, err := io.ReadAll(rc)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -96,7 +97,7 @@ func TestSQLGoldenFiles(t *testing.T) {
 				}
 			}
 
-			expected, err := ioutil.ReadFile(expectedFile)
+			expected, err := os.ReadFile(expectedFile)
 			if err != nil {
 				t.Fatal(err)
 			}

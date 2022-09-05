@@ -7,7 +7,7 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"math/rand"
 	"net/http"
@@ -139,13 +139,13 @@ func testRequest(tsReq, promReq *http.Request, client *http.Client, comparator r
 
 		compareHTTPHeaders(t, promResp.Header, tsResp.Header)
 
-		promContent, err := ioutil.ReadAll(promResp.Body)
+		promContent, err := io.ReadAll(promResp.Body)
 		if err != nil {
 			t.Fatalf("unexpected error returned when reading Prometheus response body:\n%s\n", err.Error())
 		}
 		defer promResp.Body.Close()
 
-		tsContent, err := ioutil.ReadAll(tsResp.Body)
+		tsContent, err := io.ReadAll(tsResp.Body)
 
 		if err != nil {
 			t.Fatalf("unexpected error returned when reading connector response body:\n%s\n", err.Error())
@@ -212,7 +212,7 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 
 				compareHTTPHeaders(t, promResp.Header, tsResp.Header)
 
-				promContent, err := ioutil.ReadAll(promResp.Body)
+				promContent, err := io.ReadAll(promResp.Body)
 
 				if err != nil {
 					t.Errorf("unexpected error returned when reading Prometheus response body:\n%s\n", err.Error())
@@ -220,7 +220,7 @@ func testRequestConcurrent(requestCases []requestCase, client *http.Client, comp
 				}
 				defer promResp.Body.Close()
 
-				tsContent, err := ioutil.ReadAll(tsResp.Body)
+				tsContent, err := io.ReadAll(tsResp.Body)
 
 				if err != nil {
 					t.Errorf("unexpected error returned when reading connector response body:\n%s\n", err.Error())

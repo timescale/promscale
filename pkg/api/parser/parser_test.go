@@ -6,7 +6,7 @@ package parser
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -137,7 +137,7 @@ func TestParseRequest(t *testing.T) {
 				Header: map[string][]string{
 					"Content-Type": {contentType},
 				},
-				Body: ioutil.NopCloser(strings.NewReader(c.body)),
+				Body: io.NopCloser(strings.NewReader(c.body)),
 			}
 
 			parser := NewParser()

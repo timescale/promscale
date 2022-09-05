@@ -7,7 +7,6 @@ package api
 import (
 	"context"
 	"errors"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -123,7 +122,7 @@ func doCORSWrapperRequest(t *testing.T, queryHandler http.Handler, url, origin s
 }
 
 func TestValidateConfig(t *testing.T) {
-	fileContents, err := ioutil.ReadFile("common_test.go")
+	fileContents, err := os.ReadFile("common_test.go")
 	if err != nil {
 		t.Fatal("error reading file contents common_test.go")
 	}
