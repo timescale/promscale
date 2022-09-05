@@ -58,7 +58,7 @@ func init() {
 
 func loggingUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	m, err := handler(ctx, req)
-	if err != nil && !errors.As(err, &context.Canceled) {
+	if err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("msg", "error in GRPC call", "err", err)
 	}
 	return m, err
@@ -66,7 +66,7 @@ func loggingUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.Un
 
 func loggingStreamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	err := handler(srv, ss)
-	if err != nil && !errors.As(err, &context.Canceled) {
+	if err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("msg", "error in GRPC call", "err", err)
 	}
 	return err
