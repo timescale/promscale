@@ -199,21 +199,32 @@ func (b *Builder) findTraceIDsQuery(q *spanstore.TraceQueryParameters, tInfo *ta
 	return b.BuildTraceIDSubquery(q, tInfo)
 }
 
-func (b *Builder) getTraceQuery(traceID model.TraceID) (string, []interface{}, error) {
+func getUUIDFromTraceID(traceID model.TraceID) (pgtype.UUID, error) {
 	var buf [16]byte
+	var uuid pgtype.UUID
 	n, err := traceID.MarshalTo(buf[:])
 	if n != 16 || err != nil {
-		return "", nil, fmt.Errorf("marshaling TraceID: %w", err)
+		return uuid, fmt.Errorf("marshaling TraceID: %w", err)
 	}
 
-	var uuid pgtype.UUID
 	if err := uuid.Set(buf); err != nil {
-		return "", nil, fmt.Errorf("setting TraceID: %w", err)
+		return uuid, fmt.Errorf("setting TraceID: %w", err)
 	}
-	params := []interface{}{uuid}
+	return uuid, nil
+}
 
-	traceIDClause := "s.trace_id = $1"
-	return b.buildCompleteTraceQuery(traceIDClause, "", ""), params, nil
+func (b *Builder) getTraceQuery(traceID model.TraceID) (string, []interface{}, error) {
+	traceUUID, err := getUUIDFromTraceID(traceID)
+	if err != nil {
+		return "", nil, fmt.Errorf("TraceID to UUID conversion: %w", err)
+	}
+
+	//it may seem silly to build a traceID subquery when we know the traceID
+	//but, this allows us to get the time range of the trace for the rest of the query.
+	subquery, params := b.BuildTraceTimeRangeSubqueryForTraceID(traceUUID)
+	traceIDClause := "s.trace_id = trace_ids.trace_id"
+	completeTraceSQL := b.buildCompleteTraceQuery(traceIDClause, "trace_ids.time_low", "trace_ids.time_high")
+	return fmt.Sprintf(findTraceSQLFormat, subquery, completeTraceSQL), params, nil
 }
 
 func (b *Builder) buildOperationSubquery(q *spanstore.TraceQueryParameters, tInfo *tagsInfo, params []interface{}) (string, []interface{}) {
@@ -286,6 +297,15 @@ func (b *Builder) buildTagClauses(q *spanstore.TraceQueryParameters, tInfo *tags
 	}
 	return "(" + strings.Join(clauses, " AND ") + ")", params
 
+}
+
+func (b *Builder) BuildTraceTimeRangeSubqueryForTraceID(traceID pgtype.UUID) (string, []interface{}) {
+	params := make([]interface{}, 0, 2)
+	params = append(params, traceID)
+	clauseString := fmt.Sprintf("s.trace_id = $%d", len(params))
+	params = append(params, b.cfg.MaxTraceDuration)
+	query := fmt.Sprintf(subqueryFormat, len(params), "", clauseString)
+	return query, params
 }
 
 func (b *Builder) BuildTraceIDSubquery(q *spanstore.TraceQueryParameters, tInfo *tagsInfo) (string, []interface{}) {
