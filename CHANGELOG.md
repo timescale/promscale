@@ -41,6 +41,7 @@ We use the following categories for changes:
 - Fix broken cache eviction in clockcache [#1603]
 - Possible goroutine leak due to unbuffered channel in select block [#1604]
 - Wrap extension upgrades in an explicit transaction [#1665]
+- Fix incorrect population of span kind field in jaeger getOperations response [#1627]
 
 ## [0.14.0] - 2022-08-30
 

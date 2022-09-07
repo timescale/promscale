@@ -59,7 +59,7 @@ func getOperations(ctx context.Context, conn pgxconn.PgxConn, query spanstore.Op
 	if err != nil {
 		return operationsResp, fmt.Errorf("operation names: text-array-to-string-array: %w", err)
 	}
-	spanKinds, err := textArraytoStringArr(pgOperationNames)
+	spanKinds, err := textArraytoStringArr(pgSpanKinds)
 	if err != nil {
 		return operationsResp, fmt.Errorf("span kinds: text-array-to-string-array: %w", err)
 	}
@@ -71,10 +71,7 @@ func getOperations(ctx context.Context, conn pgxconn.PgxConn, query spanstore.Op
 	operationsResp = make([]spanstore.Operation, len(spanKinds))
 
 	for i := 0; i < len(operationNames); i++ {
-		operationsResp[i] = spanstore.Operation{
-			Name:     operationNames[i],
-			SpanKind: spanKinds[i],
-		}
+		operationsResp[i] = internalToJaegerOperation(operationNames[i], spanKinds[i])
 	}
 	return operationsResp, nil
 }
