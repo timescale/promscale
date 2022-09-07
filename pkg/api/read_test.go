@@ -14,6 +14,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -79,7 +80,7 @@ func TestRead(t *testing.T) {
 				response: c.readerResponse,
 				err:      c.readerErr,
 			}
-			config := &Config{}
+			config := &Config{HighAvailability: &ha.Config{}}
 			receivedQueriesCounter := &mockMetric{}
 
 			metrics = &Metrics{

@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/timescale/promscale/pkg/ha/client"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -69,7 +71,7 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ClusterNameLabel, Value: "cluster1"},
+							{Name: DefaultClusterLabelName, Value: "cluster1"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: inLeaseTimestamp, Value: 0.1},
@@ -88,7 +90,7 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ReplicaNameLabel, Value: "replica1"},
+							{Name: DefaultReplicaLabelName, Value: "replica1"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: inLeaseTimestamp, Value: 0.1},
@@ -106,8 +108,8 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ReplicaNameLabel, Value: "replica1"},
-							{Name: ClusterNameLabel, Value: "cluster1"},
+							{Name: DefaultReplicaLabelName, Value: "replica1"},
+							{Name: DefaultClusterLabelName, Value: "cluster1"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: inLeaseTimestamp, Value: 0.1},
@@ -121,7 +123,7 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ClusterNameLabel, Value: "cluster1"},
+							{Name: DefaultClusterLabelName, Value: "cluster1"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: inLeaseTimestamp, Value: 0.1},
@@ -146,8 +148,8 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ReplicaNameLabel, Value: "replica2"},
-							{Name: ClusterNameLabel, Value: "cluster2"},
+							{Name: DefaultReplicaLabelName, Value: "replica2"},
+							{Name: DefaultClusterLabelName, Value: "cluster2"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: inLeaseTimestamp, Value: 0.1},
@@ -176,8 +178,8 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ReplicaNameLabel, Value: "replica1"},
-							{Name: ClusterNameLabel, Value: "cluster3"},
+							{Name: DefaultReplicaLabelName, Value: "replica1"},
+							{Name: DefaultClusterLabelName, Value: "cluster3"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: inLeaseTimestamp, Value: 0.1},
@@ -191,7 +193,7 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ClusterNameLabel, Value: "cluster3"},
+							{Name: DefaultClusterLabelName, Value: "cluster3"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: inLeaseTimestamp, Value: 0.1},
@@ -216,8 +218,8 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ReplicaNameLabel, Value: "replica1"},
-							{Name: ClusterNameLabel, Value: "cluster3"},
+							{Name: DefaultReplicaLabelName, Value: "replica1"},
+							{Name: DefaultClusterLabelName, Value: "cluster3"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: behindLeaseTimestamp, Value: 0.1},
@@ -232,7 +234,7 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ClusterNameLabel, Value: "cluster3"},
+							{Name: DefaultClusterLabelName, Value: "cluster3"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: inLeaseTimestamp, Value: 0.2},
@@ -257,8 +259,8 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ReplicaNameLabel, Value: "replica1"},
-							{Name: ClusterNameLabel, Value: "cluster3"},
+							{Name: DefaultReplicaLabelName, Value: "replica1"},
+							{Name: DefaultClusterLabelName, Value: "cluster3"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: aheadLeaseTimestamp, Value: 0.1},
@@ -272,7 +274,7 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ClusterNameLabel, Value: "cluster3"},
+							{Name: DefaultClusterLabelName, Value: "cluster3"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: aheadLeaseTimestamp, Value: 0.1},
@@ -297,8 +299,8 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ReplicaNameLabel, Value: "replica2"},
-							{Name: ClusterNameLabel, Value: "cluster4"},
+							{Name: DefaultReplicaLabelName, Value: "replica2"},
+							{Name: DefaultClusterLabelName, Value: "cluster4"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: inLeaseTimestamp, Value: 0.1},
@@ -312,7 +314,7 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ClusterNameLabel, Value: "cluster4"},
+							{Name: DefaultClusterLabelName, Value: "cluster4"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: inLeaseTimestamp, Value: 0.1},
@@ -337,8 +339,8 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ReplicaNameLabel, Value: "replica2"},
-							{Name: ClusterNameLabel, Value: "cluster5"},
+							{Name: DefaultReplicaLabelName, Value: "replica2"},
+							{Name: DefaultClusterLabelName, Value: "cluster5"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: behindLeaseTimestamp, Value: 0.1},
@@ -367,8 +369,8 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ReplicaNameLabel, Value: "replica1"},
-							{Name: ClusterNameLabel, Value: "cluster5"},
+							{Name: DefaultReplicaLabelName, Value: "replica1"},
+							{Name: DefaultClusterLabelName, Value: "cluster5"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: behindLeaseTimestamp, Value: 0.1},
@@ -383,7 +385,7 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ClusterNameLabel, Value: "cluster5"},
+							{Name: DefaultClusterLabelName, Value: "cluster5"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: behindLeaseTimestamp, Value: 0.1},
@@ -414,8 +416,8 @@ func TestHaParserParseData(t *testing.T) {
 					{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: ReplicaNameLabel, Value: "replica1"},
-							{Name: ClusterNameLabel, Value: "cluster5"},
+							{Name: DefaultReplicaLabelName, Value: "replica1"},
+							{Name: DefaultClusterLabelName, Value: "cluster5"},
 						},
 						Samples: []prompb.Sample{
 							{Timestamp: inLeaseTimestamp, Value: 0.3},
@@ -446,7 +448,7 @@ func TestHaParserParseData(t *testing.T) {
 			if c.setClusterStates != nil {
 				SetLeaderInMockService(service, c.setClusterStates)
 			}
-			h := NewFilter(service)
+			h := NewFilter(service, DefaultReplicaLabelName, DefaultClusterLabelName)
 			err := h.Process(nil, c.args)
 			if err != nil {
 				if !c.wantErr {
@@ -561,4 +563,53 @@ func TestFilterSamples(t *testing.T) {
 		}
 	}
 
+}
+
+func TestFilterValidateLabels(t *testing.T) {
+	testCases := []struct {
+		description string
+		cluster     string
+		replica     string
+		errExpected bool
+	}{
+		{
+			description: "both cluster and replica label values are empty",
+			cluster:     "",
+			replica:     "",
+			errExpected: true,
+		},
+		{
+			description: "cluster label value is set but replica label value is empty",
+			cluster:     "test",
+			replica:     "",
+			errExpected: true,
+		},
+		{
+			description: "replica label value is set but cluster label value is empty",
+			cluster:     "",
+			replica:     "test-0",
+			errExpected: true,
+		},
+		{
+			description: "both cluster and replica label values are set",
+			cluster:     "test",
+			replica:     "test-0",
+			errExpected: false,
+		},
+	}
+
+	f := NewFilter(nil, DefaultReplicaLabelName, DefaultClusterLabelName)
+
+	for _, testcase := range testCases {
+		tc := testcase
+
+		t.Run(tc.description, func(t *testing.T) {
+			err := f.validateClusterLabels(tc.cluster, tc.replica)
+			if tc.errExpected {
+				require.NotNil(t, err)
+			} else {
+				require.Nil(t, err)
+			}
+		})
+	}
 }

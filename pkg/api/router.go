@@ -31,9 +31,9 @@ import (
 // TODO: Refactor this function to reduce number of paramaters.
 func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client, store *jaegerStore.Store, authWrapper mux.MiddlewareFunc, reload func() error) (*mux.Router, error) {
 	var writePreprocessors []parser.Preprocessor
-	if apiConf.HighAvailability {
+	if apiConf.HighAvailability.Enabled {
 		service := ha.NewService(haClient.NewLeaseClient(client.ReadOnlyConnection()))
-		writePreprocessors = append(writePreprocessors, ha.NewFilter(service))
+		writePreprocessors = append(writePreprocessors, ha.NewFilter(service, apiConf.HighAvailability.ReplicaLabelName, apiConf.HighAvailability.ClusterLabelName))
 	}
 	if apiConf.MultiTenancy != nil {
 		writePreprocessors = append(writePreprocessors, apiConf.MultiTenancy.WriteAuthorizer())

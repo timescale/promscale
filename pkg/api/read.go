@@ -13,7 +13,6 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -56,10 +55,10 @@ func Read(config *Config, reader querier.Reader, metrics *Metrics, updateMetrics
 		// Drop __replica__ labelSet when
 		// Promscale is running in HA mode
 		// as the same lebelSet is dropped during ingestion.
-		if config.HighAvailability {
+		if config.HighAvailability.Enabled {
 			for _, q := range req.Queries {
 				for ind, l := range q.Matchers {
-					if l.Name == ha.ReplicaNameLabel {
+					if l.Name == config.HighAvailability.ReplicaLabelName {
 						q.Matchers = append(q.Matchers[:ind], q.Matchers[ind+1:]...)
 					}
 				}

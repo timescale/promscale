@@ -5,6 +5,8 @@ package end_to_end_tests
 
 import (
 	"context"
+	"testing"
+
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -12,7 +14,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgclient"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/runner"
-	"testing"
 )
 
 func TestMigrationFailsIfNoTimescaleDBAvailable(t *testing.T) {
@@ -49,6 +50,7 @@ func TestMigrationFailsIfNoTimescaleDBAvailable(t *testing.T) {
 				WriterPoolSize: pgclient.MinPoolSize,
 				ReaderPoolSize: pgclient.MinPoolSize,
 			},
+			APICfg: *defaultAPIConfig(),
 		}
 
 		_, err = runner.CreateClient(prometheus.NewRegistry(), &cfg)

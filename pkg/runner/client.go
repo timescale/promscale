@@ -143,7 +143,7 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 			"compression and thus performance and disk usage will be significantly negatively effected.")
 	}
 
-	if !cfg.APICfg.HighAvailability && !cfg.APICfg.ReadOnly {
+	if !cfg.APICfg.HighAvailability.Enabled && !cfg.APICfg.ReadOnly {
 		log.Info("msg", "Prometheus HA is not enabled")
 	}
 

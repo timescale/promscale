@@ -121,7 +121,7 @@ func prepareWriterWithHa(db *pgxpool.Pool, t testing.TB) (*util.ManualTicker, ht
 	sigClose := make(chan struct{})
 	sCache := cache.NewSeriesCache(cache.DefaultConfig, sigClose)
 	dataParser := parser.NewParser()
-	dataParser.AddPreprocessor(ha.NewFilter(haService))
+	dataParser.AddPreprocessor(ha.NewFilter(haService, ha.DefaultReplicaLabelName, ha.DefaultClusterLabelName))
 	mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
 
 	ing, err := ingestor.NewPgxIngestor(pgxconn.NewPgxConn(db), mCache, sCache, nil, &ingestor.Cfg{
@@ -542,8 +542,8 @@ func generateHASamplesRequest(input haTestInput) *http.Request {
 		sample := prompb.TimeSeries{
 			Labels: []prompb.Label{
 				{Name: model.MetricNameLabelName, Value: "metric"},
-				{Name: ha.ClusterNameLabel, Value: "cluster"},
-				{Name: ha.ReplicaNameLabel, Value: input.replica},
+				{Name: ha.DefaultClusterLabelName, Value: "cluster"},
+				{Name: ha.DefaultReplicaLabelName, Value: input.replica},
 			},
 			Samples: []prompb.Sample{{
 				Value: rand.Float64(), Timestamp: ts,

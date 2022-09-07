@@ -225,7 +225,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		if flagset["install-extensions"] && cfg.InstallExtensions {
 			return nil, fmt.Errorf("Cannot install or update TimescaleDB extension in read-only mode")
 		}
-		if flagset["metrics.high-availability"] && cfg.APICfg.HighAvailability {
+		if flagset["metrics.high-availability"] && cfg.APICfg.HighAvailability.Enabled {
 			return nil, fmt.Errorf("cannot run Promscale in both HA and read-only mode")
 		}
 		cfg.Migrate = false
@@ -235,7 +235,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		cfg.UpgradeExtensions = false
 	}
 
-	if cfg.APICfg.HighAvailability {
+	if cfg.APICfg.HighAvailability.Enabled {
 		cfg.PgmodelCfg.UsesHA = true
 	}
 	return cfg, nil

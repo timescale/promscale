@@ -13,19 +13,20 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-const ReplicaNameLabel = "__replica__"
-const ClusterNameLabel = "cluster"
-
 // Filter is a HA filter which filters data based on lease information it
 // gets from the lease service.
 type Filter struct {
-	service *Service
+	service          *Service
+	replicaLabelName string
+	clusterLabelName string
 }
 
 // NewFilter creates a new Filter based on the provided Service.
-func NewFilter(service *Service) *Filter {
+func NewFilter(service *Service, replicaLabelName, clusterLabelName string) *Filter {
 	return &Filter{
-		service: service,
+		service:          service,
+		replicaLabelName: replicaLabelName,
+		clusterLabelName: clusterLabelName,
 	}
 }
 
@@ -33,15 +34,15 @@ func NewFilter(service *Service) *Filter {
 // When Prometheus & Promscale are running HA mode the below FilterData is used
 // to validate leader replica samples & ha_locks in TimescaleDB.
 func (h *Filter) Process(_ *http.Request, wr *prompb.WriteRequest) error {
-	defer finalFiltering(wr)
+	defer h.finalFiltering(wr)
 	tts := wr.Timeseries
 	if len(tts) == 0 {
 		return nil
 	}
 
-	clusterName, replicaName := haLabels(tts[0].Labels)
+	clusterName, replicaName := h.haLabels(tts[0].Labels)
 
-	if err := validateClusterLabels(clusterName, replicaName); err != nil {
+	if err := h.validateClusterLabels(clusterName, replicaName); err != nil {
 		return err
 	}
 
@@ -155,7 +156,7 @@ func filterOutSampleRange(wr *prompb.WriteRequest, timeStartIncl, timeEndExcl in
 // out any instances without any samples. If the timeseries does contain samples,
 // it filters out the HA replica labels so it won't create different series
 // based on that label value.
-func finalFiltering(wr *prompb.WriteRequest) {
+func (h *Filter) finalFiltering(wr *prompb.WriteRequest) {
 	numAccepted := 0
 	for i := range wr.Timeseries {
 		t := &wr.Timeseries[i]
@@ -168,7 +169,7 @@ func finalFiltering(wr *prompb.WriteRequest) {
 		// we don't want samples from the same Prometheus
 		// HA set to become different series.
 		for ind, value := range t.Labels {
-			if value.Name == ReplicaNameLabel {
+			if value.Name == h.replicaLabelName {
 				t.Labels = append(t.Labels[:ind], t.Labels[ind+1:]...)
 				break
 			}
@@ -208,35 +209,37 @@ func findDataTimeRange(tts []prompb.TimeSeries) (minTUnix int64, maxTUnix int64)
 	return minTUnix, maxTUnix
 }
 
-func haLabels(labels []prompb.Label) (cluster, replica string) {
+func (h *Filter) haLabels(labels []prompb.Label) (cluster, replica string) {
 	for _, label := range labels {
-		if label.Name == ClusterNameLabel {
+		if label.Name == h.clusterLabelName {
 			cluster = label.Value
-		} else if label.Name == ReplicaNameLabel {
+		} else if label.Name == h.replicaLabelName {
 			replica = label.Value
 		}
 	}
 	return cluster, replica
 }
 
-func validateClusterLabels(cluster, replica string) error {
-	if cluster == "" && replica == "" {
+func (h *Filter) validateClusterLabels(cluster, replica string) error {
+	switch {
+	case cluster == "" && replica == "":
 		return fmt.Errorf("HA enabled, but both %s and %s labels are empty",
-			ClusterNameLabel,
-			ReplicaNameLabel,
+			h.clusterLabelName,
+			h.replicaLabelName,
 		)
-	} else if cluster == "" {
+	case cluster == "":
 		return fmt.Errorf("HA enabled, but %s label is empty; %s set to: %s",
-			ClusterNameLabel,
-			ReplicaNameLabel,
+			h.clusterLabelName,
+			h.replicaLabelName,
 			replica,
 		)
-	} else if replica == "" {
+	case replica == "":
 		return fmt.Errorf("HA enabled, but %s label is empty; %s set to: %s",
-			ReplicaNameLabel,
-			ClusterNameLabel,
+			h.replicaLabelName,
+			h.clusterLabelName,
 			cluster,
 		)
 	}
+
 	return nil
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/httputil"
+	"github.com/timescale/promscale/pkg/ha"
 	"github.com/timescale/promscale/pkg/log"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/promql"
@@ -35,7 +36,7 @@ var (
 type Config struct {
 	AllowedOrigin    *regexp.Regexp
 	ReadOnly         bool
-	HighAvailability bool
+	HighAvailability *ha.Config
 	AdminAPIEnabled  bool
 	TelemetryPath    string
 
@@ -44,8 +45,9 @@ type Config struct {
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
+	cfg.HighAvailability = ha.ParseFlags(fs)
+
 	fs.BoolVar(&cfg.ReadOnly, "db.read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
-	fs.BoolVar(&cfg.HighAvailability, "metrics.high-availability", false, "Enable external_labels based HA.")
 	fs.BoolVar(&cfg.AdminAPIEnabled, "web.enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
 	fs.StringVar(&cfg.TelemetryPath, "web.telemetry-path", "/metrics", "Web endpoint for exposing Promscale's Prometheus metrics.")
 
@@ -53,7 +55,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 }
 
 func Validate(cfg *Config) error {
-	return nil
+	return cfg.HighAvailability.Validate()
 }
 
 func corsWrapper(conf *Config, f http.HandlerFunc) http.HandlerFunc {

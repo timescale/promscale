@@ -16,6 +16,7 @@ import (
 
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/auth"
+	"github.com/timescale/promscale/pkg/ha"
 )
 
 var (
@@ -52,8 +53,9 @@ func TestRouterAuth(t *testing.T) {
 		}
 
 		apiConfig := &api.Config{
-			AllowedOrigin: regexp.MustCompile(".*"),
-			TelemetryPath: "/metrics",
+			AllowedOrigin:    regexp.MustCompile(".*"),
+			TelemetryPath:    "/metrics",
+			HighAvailability: &ha.Config{},
 		}
 
 		router, pgClient, err := buildRouterWithAPIConfig(db, apiConfig, nil)
@@ -87,8 +89,9 @@ func TestRouterAuth(t *testing.T) {
 		}
 
 		apiConfig = &api.Config{
-			AllowedOrigin: regexp.MustCompile(".*"),
-			TelemetryPath: "/metrics",
+			AllowedOrigin:    regexp.MustCompile(".*"),
+			TelemetryPath:    "/metrics",
+			HighAvailability: &ha.Config{},
 		}
 
 		authWrapper := func(h http.Handler) http.Handler {

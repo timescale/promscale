@@ -332,6 +332,7 @@ func TestPromQLBasedTelemetry(t *testing.T) {
 				ReaderPoolSize: pgclient.MinPoolSize,
 				MaintPoolSize:  pgclient.MinPoolSize,
 			},
+			APICfg: *defaultAPIConfig(),
 		}
 		defer conn.Release()
 

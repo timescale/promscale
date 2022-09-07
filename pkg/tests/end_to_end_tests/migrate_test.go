@@ -80,6 +80,7 @@ func TestMigrateLock(t *testing.T) {
 				ReaderPoolSize: pgclient.MinPoolSize,
 				MaintPoolSize:  pgclient.MinPoolSize,
 			},
+			APICfg: *defaultAPIConfig(),
 		}
 		conn.Release()
 		reader, err := runner.CreateClient(prometheus.NewRegistry(), &cfg)
@@ -171,6 +172,7 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 				SslMode:        "allow",
 				MaxConnections: -1,
 			},
+			APICfg: *defaultAPIConfig(),
 		}
 		conn.Release()
 		_, err = db.Exec(context.Background(), "DROP EXTENSION IF EXISTS promscale")
