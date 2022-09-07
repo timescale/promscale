@@ -29,6 +29,16 @@ const (
 	) as trace_sub
 	ORDER BY trace_sub.start_time_max DESC
 	`
+	subqueryTimeRangeForTraceID = `
+		SELECT
+			s.trace_id,
+			s.start_time - $1::interval as time_low,
+			s.start_time + $1::interval as time_high
+		FROM _ps_trace.span s
+		WHERE
+			s.trace_id = $2
+		LIMIT 1
+	`
 
 	// PostgreSQL badly overestimates the number of rows returned if the complete trace query
 	// uses an IN clause on trace_id, but gives good estimates for equality conditions. So, leverage an INNER
@@ -273,12 +283,8 @@ func (b *Builder) buildTagClauses(q *spanstore.TraceQueryParameters, tInfo *tags
 }
 
 func (b *Builder) BuildTraceTimeRangeSubqueryForTraceID(traceID pgtype.UUID) (string, []interface{}) {
-	params := make([]interface{}, 0, 2)
-	params = append(params, traceID)
-	clauseString := fmt.Sprintf("s.trace_id = $%d", len(params))
-	params = append(params, b.cfg.MaxTraceDuration)
-	query := fmt.Sprintf(subqueryFormat, len(params), "", clauseString)
-	return query, params
+	params := []interface{}{b.cfg.MaxTraceDuration, traceID}
+	return subqueryTimeRangeForTraceID, params
 }
 
 func (b *Builder) BuildTraceIDSubquery(q *spanstore.TraceQueryParameters, tInfo *tagsInfo) (string, []interface{}) {
