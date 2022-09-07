@@ -23,6 +23,7 @@ import (
 	"github.com/timescale/promscale/pkg/tenancy"
 	"github.com/timescale/promscale/pkg/tracer"
 	"github.com/timescale/promscale/pkg/util"
+	"github.com/timescale/promscale/pkg/vacuum"
 )
 
 type Config struct {
@@ -38,6 +39,7 @@ type Config struct {
 	PromQLCfg                   query.Config
 	RulesCfg                    rules.Config
 	TracingCfg                  jaegerStore.Config
+	VacuumCfg                   vacuum.Config
 	ConfigFile                  string
 	DatasetConfig               string
 	TLSCertFile                 string
@@ -132,6 +134,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	query.ParseFlags(fs, &cfg.PromQLCfg)
 	jaegerStore.ParseFlags(fs, &cfg.TracingCfg)
 	rules.ParseFlags(fs, &cfg.RulesCfg)
+	vacuum.ParseFlags(fs, &cfg.VacuumCfg)
 
 	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web.listen-address", ":9201", "Address to listen on for web endpoints.")
@@ -245,6 +248,9 @@ func validate(cfg *Config) error {
 	}
 	if err := rules.Validate(&cfg.RulesCfg); err != nil {
 		return fmt.Errorf("error validating rules configuration: %w", err)
+	}
+	if err := vacuum.Validate(&cfg.VacuumCfg); err != nil {
+		return fmt.Errorf("error validating vacuum configuration: %w", err)
 	}
 	return nil
 }

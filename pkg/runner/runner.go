@@ -20,6 +20,7 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/oklog/run"
+	"github.com/timescale/promscale/pkg/vacuum"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
@@ -254,6 +255,20 @@ func Run(cfg *Config) error {
 			grpcServer.Stop()
 		},
 	)
+
+	if !cfg.VacuumCfg.Disable {
+		ve := vacuum.NewEngine(client.ReadWriteConnection(), cfg.VacuumCfg.RunFrequency, cfg.VacuumCfg.Parallelism)
+		group.Add(
+			func() error {
+				log.Info("msg", "Starting vacuum engine")
+				ve.Start()
+				return nil
+			}, func(err error) {
+				log.Info("msg", "Stopping vacuum engine")
+				ve.Stop()
+			},
+		)
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/", router)

@@ -275,6 +275,10 @@ func (c *Client) ReadOnlyConnection() pgxconn.PgxConn {
 	return c.readerPool
 }
 
+func (c *Client) ReadWriteConnection() pgxconn.PgxConn {
+	return c.writerPool
+}
+
 func (c *Client) MaintenanceConnection() pgxconn.PgxConn {
 	return c.maintPool
 }
