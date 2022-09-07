@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/jaegertracing/jaeger/model"
+	"github.com/jaegertracing/jaeger/storage/spanstore"
 	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -39,6 +40,15 @@ var (
 		"consumer": "consumer",
 		"producer": "producer",
 	}
+	// Map of internal span kind to Jaeger.
+	internalToJaegerSpanKind = map[string]string{
+		"client":      "client",
+		"server":      "server",
+		"internal":    "internal",
+		"consumer":    "consumer",
+		"producer":    "producer",
+		"unspecified": "",
+	}
 )
 
 func internalToStatusCode(s string) ptrace.StatusCode {
@@ -56,6 +66,17 @@ func statusCodeToInternal(sc ptrace.StatusCode) string {
 		}
 	}
 	panic(fmt.Sprintf("status code %s does not have internal representation", sc.String()))
+}
+
+func internalToJaegerOperation(name, kind string) spanstore.Operation {
+	spanKind, ok := internalToJaegerSpanKind[kind]
+	if !ok {
+		return spanstore.Operation{}
+	}
+	return spanstore.Operation{
+		Name:     name,
+		SpanKind: spanKind,
+	}
 }
 
 func internalToSpanKind(s string) ptrace.SpanKind {
