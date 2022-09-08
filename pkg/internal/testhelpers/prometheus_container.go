@@ -14,15 +14,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// FIXME: we had to change from main to latest because the main tag was
-// broken and blocked our CI. Whenever a container is started it fails
-// with the following error:
-//
-// Error setting up container Error response from daemon: failed to create shim
-// task: OCI runtime create failed: runc create failed: unable to start
-// container process: exec: "/bin/prometheus": permission denied: unknown:
-// failed to start container
-const prometheusImage = "prom/prometheus:latest"
+const prometheusImage = "prom/prometheus:main"
 
 // StartPromContainer starts a Prometheus container for use in testing
 func StartPromContainer(storagePath string, ctx context.Context) (testcontainers.Container, string, nat.Port, error) {
