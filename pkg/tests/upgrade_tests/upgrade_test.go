@@ -180,6 +180,18 @@ func TestUpgradeFromEarliestNoData(t *testing.T) {
 	}
 }
 
+func turnOffCompressionOnMetric(t *testing.T) {
+	db, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(context.Background(), "SELECT set_compression_on_metric_table('test_uncompressed', false);")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+}
+
 func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionState testhelpers.TestOptions) (upgradedDbInfo dbSnapshot) {
 	// We test that upgrading from both the earliest and the directly-previous versions works
 	// While it may seem that the earliest version is sufficient, idempotent scripts are only
@@ -210,7 +222,8 @@ func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionSta
 
 			writeUrl := fmt.Sprintf("http://%s/write", net.JoinHostPort(connectorHost, connectorPort.Port()))
 
-			doWrite(t, &client, writeUrl, preUpgradeData1, preUpgradeData2)
+			doWrite(t, &client, writeUrl, preUpgradeData1, preUpgradeData2, preUpgradeData3)
+			turnOffCompressionOnMetric(t)
 		},
 		/* postUpgrade */
 		func(dbContainer testcontainers.Container, dbTmpDir string) {
@@ -259,7 +272,7 @@ func getPristineDbInfo(t *testing.T, noData bool, extensionState testhelpers.Tes
 			}
 			defer ing.Close()
 
-			doIngest(t, ing, preUpgradeData1, preUpgradeData2)
+			doIngest(t, ing, preUpgradeData1, preUpgradeData2, preUpgradeData3)
 		},
 		/* postRestart */
 		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
@@ -305,6 +318,18 @@ var (
 		{
 			Labels: []prompb.Label{
 				{Name: model.MetricNameLabelName, Value: "test2"},
+				{Name: "foo", Value: "bar"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: startTime + 4, Value: 2.2},
+			},
+		},
+	}
+
+	preUpgradeData3 = []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "test_uncompressed"},
 				{Name: "foo", Value: "bar"},
 			},
 			Samples: []prompb.Sample{
