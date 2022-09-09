@@ -1350,7 +1350,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
+        "h": 2,
         "w": 4,
         "x": 0,
         "y": 12
@@ -1518,7 +1518,6 @@
             }
           },
           "mappings": [],
-          "max": 1,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
@@ -1533,7 +1532,7 @@
               }
             ]
           },
-          "unit": "percentunit"
+          "unit": "none"
         },
         "overrides": []
       },
@@ -1543,7 +1542,7 @@
         "x": 14,
         "y": 12
       },
-      "id": 23,
+      "id": 49,
       "options": {
         "legend": {
           "calcs": [],
@@ -1561,14 +1560,58 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
+          "editorMode": "code",
           "exemplar": true,
-          "expr": "1 - promscale_sql_database_health_check_errors_total / promscale_sql_database_health_check_total",
+          "expr": "max by (job, instance) (promscale_sql_database_chunks_metrics_expired_count)",
           "interval": "",
-          "legendFormat": "{{ instance }}",
+          "legendFormat": "metrics-expired",
+          "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "max by (job, instance) (promscale_sql_database_chunks_metrics_uncompressed_count)",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "metrics-uncompressed",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "max by (job, instance) (promscale_sql_database_chunks_traces_expired_count)",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "traces-expired",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "max by (job, instance) (promscale_sql_database_chunks_traces_uncompressed_count)",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "traces-uncompressed",
+          "range": true,
+          "refId": "D"
         }
       ],
-      "title": "Database health",
+      "title": "Maintenance job backlogs",
       "type": "timeseries"
     },
     {
@@ -1596,10 +1639,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
+        "h": 2,
         "w": 4,
         "x": 0,
-        "y": 16
+        "y": 14
       },
       "id": 15,
       "options": {
@@ -1632,6 +1675,98 @@
       ],
       "title": "Last DB maintenance job start",
       "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 16
+      },
+      "id": 23,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "exemplar": true,
+          "expr": "1 - promscale_sql_database_health_check_errors_total / promscale_sql_database_health_check_total",
+          "interval": "",
+          "legendFormat": "{{ instance }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Database health",
+      "type": "timeseries"
     },
     {
       "datasource": {
