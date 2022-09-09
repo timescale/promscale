@@ -25,6 +25,7 @@ We use the following categories for changes:
 
 ### Changed
 - Log throughput in the same line for samples, spans and metric metadata [#1643]
+- Sizes of maintenance worker backlogs exposed as database metrics on the Promscale dashboard [#1634]
 - Enable tracing.async-acks by default [#1633]
 
 ### Fixed
