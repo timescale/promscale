@@ -235,8 +235,13 @@ func Run(cfg *Config) error {
 	ptraceotlp.RegisterServer(grpcServer, api.NewTraceServer(client))
 
 	queryPlugin := shared.StorageGRPCPlugin{
-		Impl:       jaegerStore,
-		StreamImpl: jaegerStore,
+		Impl: jaegerStore,
+	}
+	if cfg.TracingCfg.StreamingSpanWriter {
+		queryPlugin.StreamImpl = jaegerStore
+		log.Info("msg", "Jaeger StreamingSpanWriter is enabled")
+	} else {
+		log.Info("msg", "Jaeger StreamingSpanWriter is disabled")
 	}
 	if err = queryPlugin.GRPCServer(nil, grpcServer); err != nil {
 		log.Error("msg", "Creating jaeger query GRPC server failed", "err", err)
