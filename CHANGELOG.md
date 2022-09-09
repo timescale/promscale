@@ -15,14 +15,16 @@ We use the following categories for changes:
 
 ### Added
 - prom-migrator: Support for passing custom HTTP headers via command line arguments for both
-  reader and writer [#1020].
+  reader and writer [#1020]
 - Run timescaledb-tune with the promscale profile [#1615]
 - Propagate the context from received HTTP read requests downstream to database
   requests [#1205]
 - Add cmd flag `web.auth.ignore-path` to skip http paths from authentication [#1637]
+- Add cmd flag `tracing.streaming-span-writer` to enable/disable streaming span writer. It is enabled by default. [#1633].
 
 ### Changed
 - Log throughput in the same line for samples, spans and metric metadata [#1643]
+- Enable tracing.async-acks by default [#1633]
 
 ### Fixed
 - Do not collect telemetry if `timescaledb.telemetry_level=off` [#1612]
