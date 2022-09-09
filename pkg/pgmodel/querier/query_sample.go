@@ -78,6 +78,8 @@ func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]samp
 		return nil, nil, err
 	}
 
+	fmt.Println(sqlQuery)
+
 	rows, err := tools.conn.Query(context.Background(), sqlQuery, values...)
 	if err != nil {
 		if e, ok := err.(*pgconn.PgError); ok {
