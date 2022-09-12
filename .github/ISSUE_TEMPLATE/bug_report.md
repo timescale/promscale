@@ -19,6 +19,13 @@ assignees: ''
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
+**Configuration Details (please complete the follow information):**
+ - Promscale Connector:
+ - TimescaleDB:
+ - Prometheus:
+ - Jaeger:
+ - OpenTelemetry:
+
 **Version Details(please complete the following information):**
  - Distribution/OS: 
  - Promscale: 
