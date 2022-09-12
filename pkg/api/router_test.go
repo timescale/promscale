@@ -118,6 +118,7 @@ func TestAuthHandler(t *testing.T) {
 		cfg        *Config
 		headers    map[string]string
 		authorized bool
+		path       string
 	}{
 		{
 			name:       "no auth",
@@ -180,6 +181,64 @@ func TestAuthHandler(t *testing.T) {
 			},
 			authorized: true,
 		},
+		{
+			name: "basic auth with ignore path",
+			cfg: &Config{
+				Auth: &Auth{
+					BasicAuthUsername: "foo",
+					BasicAuthPassword: "foo",
+					IgnorePaths: []string{
+						"/healthz",
+						"/api",
+					},
+				},
+			},
+			authorized: true,
+			path:       "/healthz",
+		},
+		{
+			name: "bearer token with non ignored path",
+			cfg: &Config{
+				Auth: &Auth{
+					BearerToken: "foo",
+					IgnorePaths: []string{
+						"/healthz",
+						"/api",
+					},
+				},
+			},
+			authorized: false,
+			path:       "/api/foo",
+		},
+		{
+			name: "basic auth with non ignore path",
+			cfg: &Config{
+				Auth: &Auth{
+					BasicAuthUsername: "foo",
+					BasicAuthPassword: "foo",
+					IgnorePaths: []string{
+						"/healthz",
+						"/api",
+					},
+				},
+			},
+			authorized: false,
+			path:       "/api/foo",
+		},
+		{
+			name: "bearer token with ignore path",
+			cfg: &Config{
+				Auth: &Auth{
+					BearerToken: "foo",
+					IgnorePaths: []string{
+						"/healthz",
+						"/api",
+					},
+				},
+			},
+			authorized: false,
+			path:       "/api/foo",
+		},
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -190,7 +249,7 @@ func TestAuthHandler(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 
-			req, err := http.NewRequest("GET", "", nil)
+			req, err := http.NewRequest("GET", c.path, nil)
 			if err != nil {
 				t.Errorf("%v", err)
 			}
