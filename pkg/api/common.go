@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +41,8 @@ var (
 	multipleTokenFlagsSetError    = fmt.Errorf("at most one of bearer-token & bearer-token-file must be set")
 )
 
+type arrayOfIgnorePaths []string
+
 type Auth struct {
 	BasicAuthUsername     string
 	BasicAuthPassword     string
@@ -47,6 +50,17 @@ type Auth struct {
 
 	BearerToken     string
 	BearerTokenFile string
+
+	IgnorePaths arrayOfIgnorePaths
+}
+
+func (p *arrayOfIgnorePaths) String() string {
+	return fmt.Sprintf("auth ignored paths: %#v", p)
+}
+
+func (p *arrayOfIgnorePaths) Set(path string) error {
+	*p = append(*p, path)
+	return nil
 }
 
 func (a *Auth) Validate() error {
@@ -79,6 +93,13 @@ func (a *Auth) Validate() error {
 			return fmt.Errorf("error reading bearer token file: %w", err)
 		}
 		a.BearerToken = token
+	case a.IgnorePaths != nil:
+		for _, p := range a.IgnorePaths {
+			_, err := path.Match(p, "")
+			if err != nil {
+				return fmt.Errorf("invalid ignore path pattern: %w", err)
+			}
+		}
 	}
 
 	return nil
@@ -109,6 +130,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.StringVar(&cfg.Auth.BasicAuthPasswordFile, "web.auth.password-file", "", "Path for auth password file containing the actual password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password and bearer-token methods.")
 	fs.StringVar(&cfg.Auth.BearerToken, "web.auth.bearer-token", "", "Bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token-file and basic auth methods.")
 	fs.StringVar(&cfg.Auth.BearerTokenFile, "web.auth.bearer-token-file", "", "Path of the file containing the bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token and basic auth methods.")
+	fs.Var(&cfg.Auth.IgnorePaths, "web.auth.ignore-path", "Http paths which has to be skipped from authentication. This flag shall be repeated and each one would be appended to the ignore list.")
 	return cfg
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"path"
 	"strings"
 	"time"
 
@@ -163,8 +164,22 @@ func authHandler(cfg *Config, handler http.Handler) http.Handler {
 		return handler
 	}
 
+	isIgnoredPath := func(r *http.Request) bool {
+		for _, pathIgnored := range cfg.Auth.IgnorePaths {
+			ignorePathFound, _ := path.Match(pathIgnored, r.URL.Path)
+			if ignorePathFound {
+				return true
+			}
+		}
+		return false
+	}
+
 	if cfg.Auth.BasicAuthUsername != "" {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isIgnoredPath(r) {
+				handler.ServeHTTP(w, r)
+				return
+			}
 			user, pass, ok := r.BasicAuth()
 			if !ok || cfg.Auth.BasicAuthUsername != user || cfg.Auth.BasicAuthPassword != pass {
 				log.Error("msg", "Unauthorized access to endpoint, invalid username or password")
@@ -177,6 +192,10 @@ func authHandler(cfg *Config, handler http.Handler) http.Handler {
 
 	if cfg.Auth.BearerToken != "" {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isIgnoredPath(r) {
+				handler.ServeHTTP(w, r)
+				return
+			}
 			splitToken := strings.Split(r.Header.Get("Authorization"), "Bearer ")
 			if len(splitToken) < 2 || cfg.Auth.BearerToken != splitToken[1] {
 				log.Error("msg", "Unauthorized access to endpoint, invalid bearer token")

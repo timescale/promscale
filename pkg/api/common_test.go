@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"reflect"
 	"strings"
 	"testing"
@@ -232,6 +233,23 @@ func TestValidateConfig(t *testing.T) {
 				BearerTokenFile:       "set",
 			},
 			returnErr: usernameAndTokenFlagsSetError,
+		},
+		{
+			name: "invalid ignore path",
+			cfg: &Auth{
+				IgnorePaths: []string{
+					"[",
+				},
+			},
+			returnErr: path.ErrBadPattern,
+		},
+		{
+			name: "valid ignore path",
+			cfg: &Auth{
+				IgnorePaths: []string{
+					"/hello",
+				},
+			},
 		},
 	}
 
