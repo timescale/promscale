@@ -256,8 +256,8 @@ func Run(cfg *Config) error {
 		},
 	)
 
-	if !cfg.VacuumCfg.Disable {
-		ve := vacuum.NewEngine(client.ReadWriteConnection(), cfg.VacuumCfg.RunFrequency, cfg.VacuumCfg.Parallelism)
+	if !cfg.VacuumCfg.Disable && !cfg.APICfg.ReadOnly {
+		ve := vacuum.NewEngine(client.MaintenanceConnection(), cfg.VacuumCfg.RunFrequency, cfg.VacuumCfg.Parallelism)
 		group.Add(
 			func() error {
 				log.Info("msg", "Starting vacuum engine")

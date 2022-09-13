@@ -79,7 +79,6 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 		if err != nil {
 			return nil, fmt.Errorf("get writer pool size: %w", err)
 		}
-		writerPoolSize = writerPoolSize
 		totalConns += writerPoolSize
 
 		numCopiers, err = cfg.GetNumCopiers()
@@ -275,10 +274,14 @@ func (c *Client) ReadOnlyConnection() pgxconn.PgxConn {
 	return c.readerPool
 }
 
-func (c *Client) ReadWriteConnection() pgxconn.PgxConn {
+// WriterConnection returns a connection from the writer pool
+// Will return nil if promscale is running in read only mode
+func (c *Client) WriterConnection() pgxconn.PgxConn {
 	return c.writerPool
 }
 
+// MaintenanceConnection returns a connection from the maintenance pool
+// Will return nil if promscale is running in read only mode
 func (c *Client) MaintenanceConnection() pgxconn.PgxConn {
 	return c.maintPool
 }
