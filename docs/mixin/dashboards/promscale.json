@@ -1609,6 +1609,20 @@
           "legendFormat": "traces-uncompressed",
           "range": true,
           "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "max by (job, instance) (promscale_sql_database_chunks_metrics_delayed_compression_count)",
+          "interval": "",
+          "legendFormat": "metrics-expired",
+          "range": true,
+          "refId": "E",
+          "hide": false
         }
       ],
       "title": "Maintenance job backlogs",

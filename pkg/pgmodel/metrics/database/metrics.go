@@ -45,6 +45,30 @@ type metricQueryWrap struct {
 	isHealthCheck bool
 }
 
+func compressionChunksQueries(countDelayed bool) string {
+	delayClause := "(m.delay_compression_until IS NULL OR m.delay_compression_until < now())"
+	if countDelayed {
+		delayClause = "(m.delay_compression_until IS NOT NULL AND m.delay_compression_until >= now())"
+	}
+
+	return `WITH chunk_candidates AS MATERIALIZED (
+		    SELECT chcons.dimension_slice_id, h.table_name, h.schema_name
+		    FROM _timescaledb_catalog.chunk_constraint chcons
+			     INNER JOIN _timescaledb_catalog.chunk c ON c.id = chcons.chunk_id
+			     INNER JOIN _timescaledb_catalog.hypertable h ON h.id = c.hypertable_id
+		    WHERE c.dropped IS FALSE
+		      AND h.compression_state = 1 -- compression_enabled = TRUE
+		      AND (c.status & 1) != 1) -- only check for uncompressed chunks
+		SELECT count(*)::BIGINT
+		FROM chunk_candidates cc
+			 INNER JOIN _timescaledb_catalog.dimension_slice ds ON ds.id = cc.dimension_slice_id
+			 INNER JOIN _prom_catalog.metric m ON (m.table_name = cc.table_name AND m.table_schema = cc.schema_name)
+		WHERE ` + delayClause +
+		` AND NOT m.is_view
+		  AND ds.range_start <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')
+		  AND ds.range_end <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')`
+}
+
 var metrics = []metricQueryWrap{
 	{
 		metric: prometheus.NewCounter(
@@ -119,22 +143,17 @@ var metrics = []metricQueryWrap{
 				Help:      "The number of metrics chunks soon to be compressed by maintenance jobs.",
 			},
 		),
-		query: `WITH chunk_candidates AS MATERIALIZED (
-		    SELECT chcons.dimension_slice_id, h.table_name, h.schema_name
-		    FROM _timescaledb_catalog.chunk_constraint chcons
-			     INNER JOIN _timescaledb_catalog.chunk c ON c.id = chcons.chunk_id
-			     INNER JOIN _timescaledb_catalog.hypertable h ON h.id = c.hypertable_id
-		    WHERE c.dropped IS FALSE
-		      AND h.compression_state = 1 -- compression_enabled = TRUE
-		      AND (c.status & 1) != 1) -- only check for uncompressed chunks
-		SELECT count(*)::BIGINT
-		FROM chunk_candidates cc
-			 INNER JOIN _timescaledb_catalog.dimension_slice ds ON ds.id = cc.dimension_slice_id
-			 INNER JOIN _prom_catalog.metric m ON (m.table_name = cc.table_name AND m.table_schema = cc.schema_name)
-		WHERE (m.delay_compression_until IS NULL OR m.delay_compression_until < now())
-		  AND NOT m.is_view
-		  AND ds.range_start <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')
-		  AND ds.range_end <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')`,
+		query: compressionChunksQueries(false),
+	}, {
+		metric: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "chunks_metrics_delayed_compression_count",
+				Help:      "The number of metrics chunks not-compressed due to a set delay.",
+			},
+		),
+		query: compressionChunksQueries(true),
 	}, {
 		metric: prometheus.NewGauge(
 			prometheus.GaugeOpts{
