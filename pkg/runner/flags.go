@@ -14,6 +14,7 @@ import (
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffyaml"
 	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/auth"
 	jaegerStore "github.com/timescale/promscale/pkg/jaeger/store"
 	"github.com/timescale/promscale/pkg/limits"
 	"github.com/timescale/promscale/pkg/log"
@@ -33,6 +34,7 @@ type Config struct {
 	LogCfg                      log.Config
 	TracerCfg                   tracer.Config
 	APICfg                      api.Config
+	AuthConfig                  auth.Config
 	LimitsCfg                   limits.Config
 	TenancyCfg                  tenancy.Config
 	PromQLCfg                   query.Config
@@ -127,6 +129,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	log.ParseFlags(fs, &cfg.LogCfg)
 	tracer.ParseFlags(fs, &cfg.TracerCfg)
 	api.ParseFlags(fs, &cfg.APICfg)
+	auth.ParseFlags(fs, &cfg.AuthConfig)
 	limits.ParseFlags(fs, &cfg.LimitsCfg)
 	tenancy.ParseFlags(fs, &cfg.TenancyCfg)
 	query.ParseFlags(fs, &cfg.PromQLCfg)
@@ -227,6 +230,9 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 func validate(cfg *Config) error {
 	if err := api.Validate(&cfg.APICfg); err != nil {
 		return fmt.Errorf("error validating API configuration: %w", err)
+	}
+	if err := auth.Validate(&cfg.AuthConfig); err != nil {
+		return fmt.Errorf("error validating Auth configuration: %w", err)
 	}
 	if err := limits.Validate(&cfg.LimitsCfg); err != nil {
 		return fmt.Errorf("error validating limits configuration: %w", err)

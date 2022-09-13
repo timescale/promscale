@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 
 	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/auth"
 )
 
 var (
@@ -55,7 +56,7 @@ func TestRouterAuth(t *testing.T) {
 			TelemetryPath: "/metrics",
 		}
 
-		router, pgClient, err := buildRouterWithAPIConfig(db, apiConfig)
+		router, pgClient, err := buildRouterWithAPIConfig(db, apiConfig, nil)
 		if err != nil {
 			t.Fatalf("Cannot run test, unable to build router: %s", err)
 			return
@@ -88,13 +89,17 @@ func TestRouterAuth(t *testing.T) {
 		apiConfig = &api.Config{
 			AllowedOrigin: regexp.MustCompile(".*"),
 			TelemetryPath: "/metrics",
-			Auth: &api.Auth{
-				BasicAuthUsername: "foo",
-				BasicAuthPassword: "foo",
-			},
 		}
 
-		router, pgClient, err = buildRouterWithAPIConfig(db, apiConfig)
+		authWrapper := func(h http.Handler) http.Handler {
+			auth := &auth.Config{
+				BasicAuthUsername: "foo",
+				BasicAuthPassword: "foo",
+			}
+			return auth.AuthHandler(h)
+		}
+
+		router, pgClient, err = buildRouterWithAPIConfig(db, apiConfig, authWrapper)
 		if err != nil {
 			t.Fatalf("Cannot run test, unable to build router: %s", err)
 			return

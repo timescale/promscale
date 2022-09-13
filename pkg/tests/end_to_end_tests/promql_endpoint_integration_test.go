@@ -299,12 +299,12 @@ func defaultQueryConfig() *query.Config {
 func buildRouter(pool *pgxpool.Pool) (*mux.Router, *pgclient.Client, error) {
 	apiConfig := defaultAPIConfig()
 	apiConfig.ReadOnly = true
-	return buildRouterWithAPIConfig(pool, apiConfig)
+	return buildRouterWithAPIConfig(pool, apiConfig, nil)
 }
 
 // buildRouterWithAPIConfig builds a testing router from a connection pool and
 // an API config.
-func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router, *pgclient.Client, error) {
+func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config, authWrapper mux.MiddlewareFunc) (*mux.Router, *pgclient.Client, error) {
 	api.InitMetrics()
 	conf := &pgclient.Config{
 		CacheConfig:    cache.DefaultConfig,
@@ -321,7 +321,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 		return nil, nil, fmt.Errorf("init promql engine: %w", err)
 	}
 
-	router, err := api.GenerateRouter(cfg, qryCfg, pgClient, nil, nil)
+	router, err := api.GenerateRouter(cfg, qryCfg, pgClient, nil, authWrapper, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate router: %w", err)
 	}

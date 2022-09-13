@@ -171,7 +171,11 @@ func Run(cfg *Config) error {
 
 	jaegerStore := jaegerStore.New(client.ReadOnlyConnection(), client.Inserter(), &cfg.TracingCfg)
 
-	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client, jaegerStore, rulesReloader)
+	authWrapper := func(h http.Handler) http.Handler {
+		return cfg.AuthConfig.AuthHandler(h)
+	}
+
+	router, err := api.GenerateRouter(&cfg.APICfg, &cfg.PromQLCfg, client, jaegerStore, authWrapper, rulesReloader)
 	if err != nil {
 		log.Error("msg", "aborting startup due to error", "err", fmt.Sprintf("generate router: %s", err.Error()))
 		return fmt.Errorf("generate router: %w", err)

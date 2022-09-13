@@ -18,7 +18,7 @@ We use the following categories for changes:
   reader and writer [#1020].
 - Run timescaledb-tune with the promscale profile [#1615]
 - Propagate the context from received HTTP read requests downstream to database
-  requests [#1205].
+  requests [#1205]
 - Add cmd flag `web.auth.ignore-path` to skip http paths from authentication [#1637]
 
 ### Changed
