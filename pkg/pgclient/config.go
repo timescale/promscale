@@ -34,6 +34,7 @@ type Config struct {
 	IgnoreCompressedChunks  bool
 	MetricsAsyncAcks        bool
 	TracesAsyncAcks         bool
+	MaintenancePoolSize     int
 	WriteConnections        int
 	WriterPoolSize          int
 	WriterSynchronousCommit bool
@@ -58,6 +59,7 @@ const (
 	defaultConnectionTime          = time.Minute
 	defaultDbStatementsCache       = true
 	MinPoolSize                    = 2
+	defaultMaintenancePoolSize     = 10
 	defaultPoolSize                = -1
 	defaultMaxConns                = -1
 	defaultWriterSynchronousCommit = false
@@ -84,6 +86,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.BoolVar(&cfg.IgnoreCompressedChunks, "metrics.ignore-samples-written-to-compressed-chunks", false, "Ignore/drop samples that are being written to compressed chunks. "+
 		"Setting this to false allows Promscale to ingest older data by decompressing chunks that were earlier compressed. "+
 		"However, setting this to true will save your resources that may be required during decompression. ")
+	fs.IntVar(&cfg.MaintenancePoolSize, "db.connections.maint-pool.size", defaultMaintenancePoolSize, "Maximum size of the maintenance pool of database connections.")
 	fs.IntVar(&cfg.WriteConnections, "db.connections.num-writers", 0, "Number of database connections for writing metrics/traces to database. "+
 		"By default, this will be set based on the number of CPUs available to the DB Promscale is connected to.")
 	fs.IntVar(&cfg.WriterPoolSize, "db.connections.writer-pool.size", defaultPoolSize, "Maximum size of the writer pool of database connections. This defaults to 50% of max_connections "+

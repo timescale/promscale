@@ -311,7 +311,7 @@ func buildRouterWithAPIConfig(pool *pgxpool.Pool, cfg *api.Config) (*mux.Router,
 		MaxConnections: -1,
 	}
 
-	pgClient, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), conf, 1, pool, pool, tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
+	pgClient, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), conf, 1, pool, pool, pool, tenancy.NewNoopAuthorizer(), cfg.ReadOnly)
 	if err != nil {
 		return nil, pgClient, fmt.Errorf("cannot run test, cannot instantiate pgClient: %w", err)
 	}

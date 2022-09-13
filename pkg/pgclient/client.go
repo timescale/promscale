@@ -46,6 +46,7 @@ type LockFunc = func(ctx context.Context, conn *pgx.Conn) error
 type Client struct {
 	readerPool   pgxconn.PgxConn
 	writerPool   pgxconn.PgxConn
+	maintPool    pgxconn.PgxConn
 	ingestor     ingestor.DBInserter
 	querier      querier.Querier
 	promqlEngine *promql.Engine
@@ -69,6 +70,8 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 		writerPool     *pgxpool.Pool
 		readerFraction = defaultConnFraction
 		writerFraction = defaultConnFraction
+		maintPoolSize  int
+		maintPool      *pgxpool.Pool
 	)
 	if !readOnly {
 		readerFraction = defaultReaderFraction // Since readerFraction + writerFraction should be 0.8 or 80% of allowed database connections.
@@ -76,6 +79,7 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 		if err != nil {
 			return nil, fmt.Errorf("get writer pool size: %w", err)
 		}
+		writerPoolSize = writerPoolSize
 		totalConns += writerPoolSize
 
 		numCopiers, err = cfg.GetNumCopiers()
@@ -97,6 +101,20 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 		if err != nil {
 			return nil, fmt.Errorf("err creating writer connection pool: %w", err)
 		}
+
+		maintPoolSize = cfg.MaintenancePoolSize
+		if maintPoolSize < MinPoolSize {
+			return nil, fmt.Errorf("maintenance pool size canot be less than %d: received %d", MinPoolSize, maintPoolSize)
+		}
+		totalConns += maintPoolSize
+		maintPgConfig, err := cfg.getPgConfig(maintPoolSize)
+		if err != nil {
+			return nil, fmt.Errorf("get maintenance pg-config: %w", err)
+		}
+		maintPool, err = pgxpool.ConnectConfig(context.Background(), maintPgConfig)
+		if err != nil {
+			return nil, fmt.Errorf("err creating maintenance connection pool: %w", err)
+		}
 	}
 
 	readerPoolSize, err := cfg.GetPoolSize("reader", readerFraction, cfg.ReaderPoolSize)
@@ -106,7 +124,7 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 	totalConns += readerPoolSize
 
 	if cfg.MaxConnections != defaultMaxConns && totalConns > cfg.MaxConnections {
-		return nil, fmt.Errorf("reader-pool (size=%d) + writer-pool (size=%d) more than db.connections-max (%d). Increase the db.connections-max or decrease the pool-sizes", readerPoolSize, writerPoolSize, cfg.MaxConnections)
+		return nil, fmt.Errorf("reader-pool (size=%d) + writer-pool (size=%d) + maint-pool (size=%d) more than db.connections-max (%d). Increase the db.connections-max or decrease the pool-sizes", readerPoolSize, writerPoolSize, maintPoolSize, cfg.MaxConnections)
 	}
 
 	readerPgConfig, err := cfg.getPgConfig(readerPoolSize)
@@ -122,6 +140,7 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 	log.Info("msg", "runtime",
 		"writer-pool.size", writerPoolSize,
 		"reader-pool.size", readerPoolSize,
+		"maint-pool.size", maintPoolSize,
 		"min-pool.connections", MinPoolSize,
 		"num-copiers", numCopiers,
 		"statement-cache", statementCacheLog)
@@ -131,7 +150,7 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 	if err != nil {
 		return nil, fmt.Errorf("err creating reader connection pool: %w", err)
 	}
-	client, err := NewClientWithPool(r, cfg, numCopiers, writerPool, readerPool, mt, readOnly)
+	client, err := NewClientWithPool(r, cfg, numCopiers, writerPool, readerPool, maintPool, mt, readOnly)
 	if err != nil {
 		return client, err
 	}
@@ -191,7 +210,7 @@ func getRedactedConnStr(s string) string {
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
-func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, writerPool, readerPool *pgxpool.Pool, mt tenancy.Authorizer, readOnly bool) (*Client, error) {
+func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, writerPool, readerPool, maintPool *pgxpool.Pool, mt tenancy.Authorizer, readOnly bool) (*Client, error) {
 	sigClose := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
@@ -207,7 +226,10 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 		TracesBatchWorkers:      cfg.TracesBatchWorkers,
 	}
 
-	var writerConn pgxconn.PgxConn
+	var (
+		writerConn pgxconn.PgxConn
+		maintConn  pgxconn.PgxConn
+	)
 	readerConn := pgxconn.NewQueryLoggingPgxConn(readerPool)
 
 	exemplarKeyPosCache := cache.NewExemplarLabelsPosCache(cfg.CacheConfig)
@@ -225,11 +247,16 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 			log.Error("msg", "err starting the ingestor", "err", err)
 			return nil, err
 		}
+
+		if maintPool != nil {
+			maintConn = pgxconn.NewPgxConn(maintPool)
+		}
 	}
 
 	client := &Client{
 		readerPool:  readerConn,
 		writerPool:  writerConn,
+		maintPool:   maintConn,
 		ingestor:    dbIngestor,
 		querier:     dbQuerier,
 		healthCheck: health.NewHealthChecker(readerConn),
@@ -240,12 +267,16 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 		sigClose:    sigClose,
 	}
 
-	initMetrics(r, writerPool, readerPool)
+	initMetrics(r, writerPool, readerPool, maintPool)
 	return client, nil
 }
 
 func (c *Client) ReadOnlyConnection() pgxconn.PgxConn {
 	return c.readerPool
+}
+
+func (c *Client) MaintenanceConnection() pgxconn.PgxConn {
+	return c.maintPool
 }
 
 func (c *Client) InitPromQLEngine(cfg *query.Config) error {

@@ -11,7 +11,7 @@ import (
 	"github.com/timescale/promscale/pkg/util"
 )
 
-func initMetrics(r prometheus.Registerer, writerPool, readerPool *pgxpool.Pool) {
+func initMetrics(r prometheus.Registerer, writerPool, readerPool, maintPool *pgxpool.Pool) {
 	writerAcquired := prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Namespace:   util.PromNamespace,
@@ -64,6 +64,36 @@ func initMetrics(r prometheus.Registerer, writerPool, readerPool *pgxpool.Pool) 
 			return float64(readerPool.Stat().TotalConns())
 		},
 	)
+	maintAcquired := prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace:   util.PromNamespace,
+			Subsystem:   "sql_database",
+			Name:        "active_connections",
+			Help:        "Number of connections currently acquired from the pool.",
+			ConstLabels: map[string]string{"pool": "maint"},
+		}, func() float64 {
+			if maintPool == nil {
+				// readonly mode.
+				return 0
+			}
+			return float64(maintPool.Stat().AcquiredConns())
+		},
+	)
+	maintActive := prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace:   util.PromNamespace,
+			Subsystem:   "sql_database",
+			Name:        "total_connections",
+			Help:        "Number of connections currently active in the pool.",
+			ConstLabels: map[string]string{"pool": "maint"},
+		}, func() float64 {
+			if maintPool == nil {
+				// readonly mode.
+				return 0
+			}
+			return float64(maintPool.Stat().TotalConns())
+		},
+	)
 
-	r.MustRegister(writerAcquired, writerActive, readerAcquired, readerActive)
+	r.MustRegister(writerAcquired, writerActive, readerAcquired, readerActive, maintAcquired, maintActive)
 }

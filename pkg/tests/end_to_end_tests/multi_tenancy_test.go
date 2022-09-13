@@ -36,7 +36,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -224,7 +224,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -413,7 +413,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -627,7 +627,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, db, mt, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -759,7 +759,7 @@ func TestMultiTenancyLabelNamesValues(t *testing.T) {
 	ts, _ := generateSmallMultiTenantTimeseries()
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, tb testing.TB) {
 		getClient := func(auth tenancy.Authorizer) *pgclient.Client {
-			client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, auth, false)
+			client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, db, auth, false)
 			require.NoError(t, err)
 			return client
 		}
