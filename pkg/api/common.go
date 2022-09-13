@@ -11,10 +11,7 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"os"
-	"path"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/grafana/regexp"
@@ -33,77 +30,7 @@ import (
 var (
 	minTimeFormatted = pgmodel.MinTime.Format(time.RFC3339Nano)
 	maxTimeFormatted = pgmodel.MaxTime.Format(time.RFC3339Nano)
-
-	usernameAndTokenFlagsSetError = fmt.Errorf("at most one of basic-auth-username, bearer-token & bearer-token-file must be set")
-	noUsernameFlagSetError        = fmt.Errorf("invalid auth setup, cannot enable authorization with password only (username required)")
-	noPasswordFlagsSetError       = fmt.Errorf("one of basic-auth-password & basic-auth-password-file must be configured")
-	multiplePasswordFlagsSetError = fmt.Errorf("at most one of basic-auth-password & basic-auth-password-file must be configured")
-	multipleTokenFlagsSetError    = fmt.Errorf("at most one of bearer-token & bearer-token-file must be set")
 )
-
-type arrayOfIgnorePaths []string
-
-type Auth struct {
-	BasicAuthUsername     string
-	BasicAuthPassword     string
-	BasicAuthPasswordFile string
-
-	BearerToken     string
-	BearerTokenFile string
-
-	IgnorePaths arrayOfIgnorePaths
-}
-
-func (p *arrayOfIgnorePaths) String() string {
-	return fmt.Sprintf("auth ignored paths: %#v", p)
-}
-
-func (p *arrayOfIgnorePaths) Set(path string) error {
-	*p = append(*p, path)
-	return nil
-}
-
-func (a *Auth) Validate() error {
-	switch {
-	case a.BasicAuthUsername != "":
-		if a.BearerToken != "" || a.BearerTokenFile != "" {
-			return usernameAndTokenFlagsSetError
-		}
-		if a.BasicAuthPassword == "" && a.BasicAuthPasswordFile == "" {
-			return noPasswordFlagsSetError
-		}
-		if a.BasicAuthPassword != "" && a.BasicAuthPasswordFile != "" {
-			return multiplePasswordFlagsSetError
-		}
-		pwd, err := readFromFile(a.BasicAuthPasswordFile, a.BasicAuthPassword)
-		if err != nil {
-			return fmt.Errorf("error reading password file: %w", err)
-		}
-		a.BasicAuthPassword = pwd
-	case a.BasicAuthPassword != "" || a.BasicAuthPasswordFile != "":
-		// At this point, if we have password set with no username, throw
-		// error to warn the user this is an invalid auth setup.
-		return noUsernameFlagSetError
-	case a.BearerToken != "" || a.BearerTokenFile != "":
-		if a.BearerToken != "" && a.BearerTokenFile != "" {
-			return multipleTokenFlagsSetError
-		}
-		token, err := readFromFile(a.BearerTokenFile, a.BearerToken)
-		if err != nil {
-			return fmt.Errorf("error reading bearer token file: %w", err)
-		}
-		a.BearerToken = token
-	case a.IgnorePaths != nil:
-		for _, p := range a.IgnorePaths {
-			_, err := path.Match(p, "")
-			if err != nil {
-				return fmt.Errorf("invalid ignore path pattern: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
 
 type Config struct {
 	AllowedOrigin    *regexp.Regexp
@@ -112,42 +39,21 @@ type Config struct {
 	AdminAPIEnabled  bool
 	TelemetryPath    string
 
-	Auth         *Auth
 	MultiTenancy tenancy.Authorizer
 	Rules        *rules.Manager
 }
 
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
-	cfg.Auth = &Auth{}
-
 	fs.BoolVar(&cfg.ReadOnly, "db.read-only", false, "Read-only mode for the connector. Operations related to writing or updating the database are disallowed. It is used when pointing the connector to a TimescaleDB read replica.")
 	fs.BoolVar(&cfg.HighAvailability, "metrics.high-availability", false, "Enable external_labels based HA.")
 	fs.BoolVar(&cfg.AdminAPIEnabled, "web.enable-admin-api", false, "Allow operations via API that are for advanced users. Currently, these operations are limited to deletion of series.")
 	fs.StringVar(&cfg.TelemetryPath, "web.telemetry-path", "/metrics", "Web endpoint for exposing Promscale's Prometheus metrics.")
 
-	fs.StringVar(&cfg.Auth.BasicAuthUsername, "web.auth.username", "", "Authentication username used for web endpoint authentication. Disabled by default.")
-	fs.StringVar(&cfg.Auth.BasicAuthPassword, "web.auth.password", "", "Authentication password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password-file and bearer-token flags.")
-	fs.StringVar(&cfg.Auth.BasicAuthPasswordFile, "web.auth.password-file", "", "Path for auth password file containing the actual password used for web endpoint authentication. This flag should be set together with auth-username. It is mutually exclusive with auth-password and bearer-token methods.")
-	fs.StringVar(&cfg.Auth.BearerToken, "web.auth.bearer-token", "", "Bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token-file and basic auth methods.")
-	fs.StringVar(&cfg.Auth.BearerTokenFile, "web.auth.bearer-token-file", "", "Path of the file containing the bearer token (JWT) used for web endpoint authentication. Disabled by default. Mutually exclusive with bearer-token and basic auth methods.")
-	fs.Var(&cfg.Auth.IgnorePaths, "web.auth.ignore-path", "Http paths which has to be skipped from authentication. This flag shall be repeated and each one would be appended to the ignore list.")
 	return cfg
 }
 
 func Validate(cfg *Config) error {
-	return cfg.Auth.Validate()
-}
-
-func readFromFile(path string, defaultValue string) (string, error) {
-	if path == "" {
-		return defaultValue, nil
-	}
-	bs, err := os.ReadFile(path) // #nosec G304
-	if err != nil {
-		return "", fmt.Errorf("unable to read file %s: %w", path, err)
-	}
-
-	return strings.TrimSpace(string(bs)), nil
+	return nil
 }
 
 func corsWrapper(conf *Config, f http.HandlerFunc) http.HandlerFunc {

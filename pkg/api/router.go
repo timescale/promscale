@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
-	"path"
-	"strings"
 	"time"
 
 	"github.com/felixge/fgprof"
@@ -30,7 +28,8 @@ import (
 	"github.com/timescale/promscale/pkg/telemetry"
 )
 
-func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client, store *jaegerStore.Store, reload func() error) (*mux.Router, error) {
+// TODO: Refactor this function to reduce number of paramaters.
+func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client, store *jaegerStore.Store, authWrapper mux.MiddlewareFunc, reload func() error) (*mux.Router, error) {
 	var writePreprocessors []parser.Preprocessor
 	if apiConf.HighAvailability {
 		service := ha.NewService(haClient.NewLeaseClient(client.ReadOnlyConnection()))
@@ -52,12 +51,10 @@ func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.
 		writeHandler = withWarnLog("trying to send metrics to write API while connector is in read-only mode", http.NotFoundHandler())
 	}
 
-	authWrapper := func(h http.Handler) http.Handler {
-		return authHandler(apiConf, h)
-	}
-
 	router := mux.NewRouter().UseEncodedPath()
-	router.Use(mux.MiddlewareFunc(authWrapper))
+	if authWrapper != nil {
+		router.Use(authWrapper)
+	}
 
 	router.Path("/write").Methods(http.MethodPost).HandlerFunc(writeHandler)
 
@@ -157,56 +154,6 @@ func RegisterTelemetryMetrics(t telemetry.Engine) error {
 		return fmt.Errorf("register 'promscale_metrics_queries_timedout_total' metric for telemetry: %w", err)
 	}
 	return nil
-}
-
-func authHandler(cfg *Config, handler http.Handler) http.Handler {
-	if cfg.Auth == nil {
-		return handler
-	}
-
-	isIgnoredPath := func(r *http.Request) bool {
-		for _, pathIgnored := range cfg.Auth.IgnorePaths {
-			ignorePathFound, _ := path.Match(pathIgnored, r.URL.Path)
-			if ignorePathFound {
-				return true
-			}
-		}
-		return false
-	}
-
-	if cfg.Auth.BasicAuthUsername != "" {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if isIgnoredPath(r) {
-				handler.ServeHTTP(w, r)
-				return
-			}
-			user, pass, ok := r.BasicAuth()
-			if !ok || cfg.Auth.BasicAuthUsername != user || cfg.Auth.BasicAuthPassword != pass {
-				log.Error("msg", "Unauthorized access to endpoint, invalid username or password")
-				http.Error(w, "Unauthorized access to endpoint, invalid username or password.", http.StatusUnauthorized)
-				return
-			}
-			handler.ServeHTTP(w, r)
-		})
-	}
-
-	if cfg.Auth.BearerToken != "" {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if isIgnoredPath(r) {
-				handler.ServeHTTP(w, r)
-				return
-			}
-			splitToken := strings.Split(r.Header.Get("Authorization"), "Bearer ")
-			if len(splitToken) < 2 || cfg.Auth.BearerToken != splitToken[1] {
-				log.Error("msg", "Unauthorized access to endpoint, invalid bearer token")
-				http.Error(w, "Unauthorized access to endpoint, invalid bearer token", http.StatusUnauthorized)
-				return
-			}
-			handler.ServeHTTP(w, r)
-		})
-	}
-
-	return handler
 }
 
 func withWarnLog(msg string, handler http.Handler) http.HandlerFunc {
