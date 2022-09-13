@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -170,6 +171,27 @@ func TestParseFlags(t *testing.T) {
 			name:        "test deprecated CLI flag",
 			args:        []string{"-db-writer-connection-concurrency", "10"},
 			shouldError: true,
+		},
+		{
+			name:        "test vacuum.disable",
+			args:        []string{"-vacuum.disable", "true"},
+			shouldError: false,
+			result: func(c Config) Config {
+				c.VacuumCfg.Disable = true
+				c.VacuumCfg.RunFrequency = 10 * time.Minute
+				c.VacuumCfg.Parallelism = 4
+				return c
+			},
+		},
+		{
+			name:        "test vacuum",
+			args:        []string{"-vacuum.parallelism", "5", "-vacuum.run-frequency", "30m"},
+			shouldError: false,
+			result: func(c Config) Config {
+				c.VacuumCfg.RunFrequency = 30 * time.Minute
+				c.VacuumCfg.Parallelism = 5
+				return c
+			},
 		},
 	}
 

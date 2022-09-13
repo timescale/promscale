@@ -97,6 +97,14 @@ The following subsections cover all CLI flags which promscale supports. You can 
 | telemetry.trace.jaeger-endpoint          |  string  | "" (empty) | Jaeger tracing collector thrift HTTP URL endpoint to send telemetry to (e.g. https://jaeger-collector:14268/api/traces).                                                                    |
 | telemetry.trace.sample-ratio             |  float   |    1.0     | Trace sampling ratio, amount of spans to send to collector. Valid values from 0.0 (none) to 1.0 (all).                                                                                      |
 
+### Vacuum Engine flags
+
+| Flag                 | Type     | Default    | Description                                              |
+|----------------------|:--------:|:----------:|:---------------------------------------------------------|
+| vacuum.disable       |   bool   |   false    | disables the vacuum engine                               |
+| vacuum.run-frequency | duration | 10 minutes | how often should the vacuum engine run                   |
+| vacuum.parallelism   | integer  |     4      | how many goroutines/connections should be used to vacuum |
+
 ### Metrics specific flags
 
 | Flag                                                | Type                           | Default   | Description                                                                                                                                                                                                                                                                                                                            |

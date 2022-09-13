@@ -23,10 +23,12 @@ We use the following categories for changes:
 - Add cmd flag `tracing.streaming-span-writer` to enable/disable streaming span writer. It is enabled by default. [#1633].
 - Enable tracing.async-acks by default [#1633].
 - Sizes of maintenance worker backlogs exposed as database metrics on the Promscale dashboard [#1634]
+- Added a vacuum engine that detects and vacuums/freezes compressed chunks [#1648]
 
 ### Changed
 - Log throughput in the same line for samples, spans and metric metadata [#1643]
 - The `chunks_created` metrics was removed. [#1634]
+  requests [#1205].
 
 ### Fixed
 - Do not collect telemetry if `timescaledb.telemetry_level=off` [#1612]
