@@ -75,7 +75,7 @@ services:
       - "16686:16686"
 
   grafana:
-    image: vineeth97/promscale-demo-grafana
+    image: timescale/promscale-demo-grafana
     restart: on-failure
     volumes:
       - grafana-data:/var/lib/grafana
