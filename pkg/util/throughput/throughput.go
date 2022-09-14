@@ -70,16 +70,24 @@ func (tc *throughputCalc) run() {
 			continue
 		}
 
-		if samplesRate+metadataRate != 0 {
-			// Metric data ingested.
+		throughput := []interface{}{"msg", "ingestor throughput"}
+		if samplesRate != 0 {
 			maxSentTs := timestamp.Time(atomic.LoadInt64(&tc.metricsMaxSentTs))
-			log.Info("msg", "ingestor throughput", "samples/sec", int(samplesRate), "metrics-max-sent-ts", maxSentTs)
+			throughput = append(throughput, []interface{}{"samples/sec", int(samplesRate), "metrics-max-sent-ts", maxSentTs}...)
 		}
 
 		if spansRate != 0 {
-			// Spans ingested.
 			spansLastWriteOn := timestamp.Time(atomic.LoadInt64(&tc.spansLastWriteOn))
-			log.Info("msg", "ingestor throughput", "spans/sec", int(spansRate), "spans-last-write-on", spansLastWriteOn)
+			throughput = append(throughput, []interface{}{"spans/sec", int(spansRate), "spans-last-write-on", spansLastWriteOn}...)
+		}
+
+		if metadataRate != 0 {
+			throughput = append(throughput, []interface{}{"metric-metadata/sec", int(metadataRate)}...)
+		}
+
+		if len(throughput) > 2 {
+			// Log only if we had any activity.
+			log.Info(throughput...)
 		}
 	}
 }
