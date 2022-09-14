@@ -8,6 +8,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/jaegertracing/jaeger/model"
@@ -76,9 +77,14 @@ func (p *Store) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Tra
 		metrics.QueryDuration.With(prometheus.Labels{"type": "trace", "handler": "Get_Trace", "code": code}).Observe(time.Since(start).Seconds())
 	}()
 	res, err := getTrace(ctx, p.builder, p.conn, traceID)
+
 	if err != nil {
-		return nil, logError(err)
+		if !errors.Is(err, spanstore.ErrTraceNotFound) {
+			err = logError(err)
+		}
+		return nil, err
 	}
+
 	code = "2xx"
 	traceRequestsExec.Add(1)
 	return res, nil

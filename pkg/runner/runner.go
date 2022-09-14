@@ -24,7 +24,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
 
 	"github.com/google/uuid"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -67,9 +69,16 @@ func loggingUnaryInterceptor(ctx context.Context, req interface{}, info *grpc.Un
 
 func loggingStreamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	err := handler(srv, ss)
-	if err != nil && !errors.Is(err, context.Canceled) {
-		log.Error("msg", "error in GRPC call", "err", err)
+	if err == nil {
+		return nil
 	}
+
+	st, ok := status.FromError(err)
+	if ok && (st.Code() == codes.NotFound || st.Code() == codes.Canceled) {
+		return err
+	}
+
+	log.Error("msg", "error in GRPC call", "err", err)
 	return err
 }
 
