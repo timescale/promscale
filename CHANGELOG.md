@@ -18,7 +18,10 @@ We use the following categories for changes:
   reader and writer [#1020].
 - Run timescaledb-tune with the promscale profile [#1615]
 - Propagate the context from received HTTP read requests downstream to database
-  requests [#1205]. 
+  requests [#1205]
+
+### Changed
+- Log throughput in the same line for samples, spans and metric metadata [#1643]
 
 ### Fixed
 - Fix broken cache eviction in clockcache [#1603]
