@@ -55,7 +55,7 @@ func (e *metricsEngineImpl) unregister() {
 func getMetrics(m []metricQueryWrap) []prometheus.Collector {
 	var metrics []prometheus.Collector
 	for i := range m {
-		metrics = append(metrics, m[i].metric)
+		metrics = append(metrics, m[i].metrics...)
 	}
 	return metrics
 }
@@ -146,7 +146,7 @@ func healthCheck(conn pgxconn.PgxConn, healthMetric metricQueryWrap) {
 	err := conn.QueryRow(context.Background(), healthMetric.query).Scan(&val)
 	networkLatency := time.Since(start).Milliseconds()
 
-	updateMetric(healthMetric.metric, 1)
+	updateMetric(healthMetric.metrics[0], 1)
 	if err != nil {
 		dbHealthErrors.Inc()
 		log.Error("msg", "health check failed", "err", err.Error())
@@ -173,18 +173,24 @@ func (e *metricsEngineImpl) IsRunning() bool {
 
 func handleResults(results pgx.BatchResults, m []metricQueryWrap) {
 	for i := range m {
-		metric := m[i]
-		val := new(int64)
-		err := results.QueryRow().Scan(&val)
+		entry := m[i]
+		valsCount := len(entry.metrics)
+		vals := make([]interface{}, valsCount)
+		for vi := range vals {
+			vals[vi] = new(int64)
+		}
+		err := results.QueryRow().Scan(vals...)
 		if err != nil {
-			log.Warn("msg", fmt.Sprintf("error evaluating database metric with query: %s", metric.query), "err", err.Error())
+			log.Warn("msg", fmt.Sprintf("error evaluating database metric with query: %s", entry.query), "err", err.Error())
 			return
 		}
 		var value int64
-		if val != nil {
-			value = *val
+		for vi := range vals {
+			if vals[vi] != nil {
+				value = *vals[vi].(*int64)
+			}
+			updateMetric(entry.metrics[vi], value)
 		}
-		updateMetric(metric.metric, value)
 	}
 }
 
