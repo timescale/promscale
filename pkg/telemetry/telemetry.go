@@ -44,6 +44,8 @@ type engineImpl struct {
 	uuid [16]byte
 	conn pgxconn.PgxConn
 
+	wasStartupMetadataWritten bool
+
 	stop chan struct{}
 
 	promqlEngine    *promql.Engine
@@ -54,18 +56,6 @@ type engineImpl struct {
 }
 
 func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, promqlQueryable promql.Queryable) (Engine, error) {
-	isTelemetryOff, err := isTelemetryOff(conn)
-	if err != nil {
-		log.Debug("msg", "unable to get TimescaleDB telemetry configuration. Maybe TimescaleDB is not installed", "err", err.Error())
-		return NewNoopEngine(), nil
-	}
-	if isTelemetryOff {
-		return NewNoopEngine(), nil
-	}
-	// Warn the users about telemetry collection only if telemetry collection is enabled.
-	log.Warn("msg", "Promscale collects anonymous usage telemetry data to help the Promscale team better understand and assist users. "+
-		"This can be disabled via the process described at https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disabling-telemetry")
-
 	t := &engineImpl{
 		conn: conn,
 		uuid: uuid,
@@ -81,26 +71,29 @@ func NewEngine(conn pgxconn.PgxConn, uuid [16]byte, promqlQueryable promql.Query
 		promqlQueryable: promqlQueryable,
 	}
 
-	if err := t.writeStartupMetadata(); err != nil {
-		return NewNoopEngine(), fmt.Errorf("writing metadata: %w", err)
+	if t.IsActive() {
+		// Warn the users about telemetry collection only if telemetry collection is enabled.
+		log.Warn("msg", "Promscale collects anonymous usage telemetry data to help the Promscale team better understand and assist users. "+
+			"This can be disabled via the process described at https://docs.timescale.com/timescaledb/latest/how-to-guides/configuration/telemetry/#disabling-telemetry")
+
+		if err := t.writeStartupMetadata(); err != nil {
+			return nil, fmt.Errorf("writing metadata: %w", err)
+		}
 	}
 	return t, nil
 }
 
-func isTelemetryOff(conn pgxconn.PgxConn) (bool, error) {
-	if !util.IsTimescaleDBInstalled(conn) {
-		return true, nil
+func (t *engineImpl) IsActive() bool {
+	if !util.IsTimescaleDBInstalled(t.conn) {
+		return false
 	}
 	var state string
-	err := conn.QueryRow(context.Background(), "SHOW timescaledb.telemetry_level").Scan(&state)
-	if err != nil {
-		// Return true as telemetry is by default not collected when TimescaleDB is not installed.
-		return true, fmt.Errorf("fetching timescaledb telemetry setting: %w", err)
+	err := t.conn.QueryRow(context.Background(), "SHOW timescaledb.telemetry_level").Scan(&state)
+	if err != nil || state == "off" {
+		// Return false as telemetry is by default not collected when TimescaleDB is not installed.
+		return false
 	}
-	if state == "off" {
-		return true, nil
-	}
-	return false, nil
+	return true
 }
 
 // writeMetadata writes Promscale and Tobs metadata.
@@ -112,6 +105,7 @@ func (t *engineImpl) writeStartupMetadata() error {
 	if len(tobs) > 0 {
 		t.writeToTimescaleMetadataTable(tobs)
 	}
+	t.wasStartupMetadataWritten = true
 	return nil
 }
 
@@ -202,6 +196,16 @@ func (t *engineImpl) syncWithMetadataTable(queryFormat string, m Metadata) error
 }
 
 func (t *engineImpl) Sync() error {
+	if !t.IsActive() {
+		log.Debug("msg", "skipping telemetry", "reason", "telemetry is inactive")
+		return nil
+	}
+	if !t.wasStartupMetadataWritten {
+		if err := t.writeStartupMetadata(); err != nil {
+			log.Debug("msg", "writing telemetry metadata", "err", err.Error())
+		}
+	}
+	log.Debug("msg", "updating telemetry")
 	if err := t.syncWithInfoTable(); err != nil {
 		return fmt.Errorf("sync info table: %w", err)
 	}
@@ -449,11 +453,3 @@ func (t *engineImpl) syncPromqlTelemetry() {
 func convertIntToString(i int64) string {
 	return strconv.FormatInt(i, 10)
 }
-
-type Noop struct{}
-
-func NewNoopEngine() Engine                                          { return Noop{} }
-func (Noop) Start()                                                  {}
-func (Noop) Stop()                                                   {}
-func (Noop) RegisterDynamicMetadata(string, prometheus.Metric) error { return nil }
-func (Noop) RegisterMetric(string, ...prometheus.Metric) error       { return nil }

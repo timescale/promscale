@@ -177,9 +177,13 @@ func Run(cfg *Config) error {
 		return fmt.Errorf("generate router: %w", err)
 	}
 
-	telemetryEngine := initTelemetryEngine(client)
-	telemetryEngine.Start()
-	defer telemetryEngine.Stop()
+	telemetryEngine, err := initTelemetryEngine(client)
+	if err != nil {
+		log.Debug("msg", "error starting telemetry engine", "error", err.Error())
+	} else {
+		telemetryEngine.Start()
+		defer telemetryEngine.Stop()
+	}
 
 	if len(cfg.ThanosStoreAPIListenAddr) > 0 {
 		srv := thanos.NewStorage(client.Queryable())
@@ -316,11 +320,11 @@ func Run(cfg *Config) error {
 	return err
 }
 
-func initTelemetryEngine(client *pgclient.Client) telemetry.Engine {
+func initTelemetryEngine(client *pgclient.Client) (telemetry.Engine, error) {
 	t, err := telemetry.NewEngine(client.ReadOnlyConnection(), PromscaleID, client.Queryable())
 	if err != nil {
 		log.Debug("msg", "err creating telemetry engine", "err", err.Error())
-		return t
+		return nil, err
 	}
 	if err := api.RegisterTelemetryMetrics(t); err != nil {
 		log.Error("msg", "error registering metrics for API telemetry", "err", err.Error())
@@ -334,5 +338,5 @@ func initTelemetryEngine(client *pgclient.Client) telemetry.Engine {
 	if err := rules.RegisterForTelemetry(t); err != nil {
 		log.Error("msg", "error registering metrics for rules telemetry", "err", err.Error())
 	}
-	return t
+	return t, nil
 }
