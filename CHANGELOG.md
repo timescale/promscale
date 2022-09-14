@@ -21,6 +21,7 @@ We use the following categories for changes:
   requests [#1205]. 
 
 ### Fixed
+- Do not collect telemetry if `timescaledb.telemetry_level=off` [#1612]
 - Fix broken cache eviction in clockcache [#1603]
 - Possible goroutine leak due to unbuffered channel in select block [#1604]
 

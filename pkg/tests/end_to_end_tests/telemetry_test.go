@@ -38,6 +38,7 @@ func setTobsEnv(prop string) error {
 type e2eTelemetry interface {
 	telemetry.Engine
 	Sync() error
+	IsActive() bool
 }
 
 func telemetryEngineForE2E(t testing.TB, conn pgxconn.PgxConn, qryable promql.Queryable) e2eTelemetry {
@@ -263,11 +264,23 @@ func TestTelemetryEngineWhenTelemetryIsSetToOff(t *testing.T) {
 		_, err2 := conn.Exec(context.Background(), "SELECT set_config('timescaledb.telemetry_level', 'off', false)")
 		require.NoError(t, err2)
 
-		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
-		require.NoError(t, err)
-		_, isNoop := engine.(telemetry.Noop)
-		require.True(t, isNoop)
+		testIfTelemetryIsOff(t, conn)
 	})
+}
+
+func testIfTelemetryIsOff(t testing.TB, conn pgxconn.PgxConn) {
+	engine := telemetryEngineForE2E(t, conn, nil)
+
+	numTelemetryWritten := 0
+	err := conn.QueryRow(context.Background(), "SELECT count(*) FROM _timescaledb_catalog.metadata;").Scan(&numTelemetryWritten)
+	require.NoError(t, err)
+
+	require.NoError(t, engine.Sync())
+	numTelemetryAfterSync := 0
+	err = conn.QueryRow(context.Background(), "SELECT count(*) FROM _timescaledb_catalog.metadata;").Scan(&numTelemetryAfterSync)
+	require.NoError(t, err)
+
+	require.Equal(t, numTelemetryWritten, numTelemetryAfterSync)
 }
 
 func TestTelemetrySQLStats(t *testing.T) {
@@ -320,14 +333,8 @@ func TestTelemetryWithoutTimescaleDB(t *testing.T) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
 		defer db.Close()
 
-		conn := pgxconn.NewPgxConn(db)
-
-		engine, err := telemetry.NewEngine(conn, generateUUID(), nil)
-		require.NoError(t, err)
-
-		// If TimescaleDB is unavailable, telemetry should be a noop.
-		_, isNoop := engine.(telemetry.Noop)
-		require.True(t, isNoop)
+		engine := telemetryEngineForE2E(t, pgxconn.NewPgxConn(db), nil)
+		require.False(t, engine.IsActive())
 	})
 }
 
