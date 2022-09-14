@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package querier
 
 import (
@@ -222,7 +226,7 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		strings.Join(selectorClauses, ", "),
 		strings.Join(selectors, ", "),
 		orderByClause,
-		pgx.Identifier{filter.column}.Sanitize(),
+		filter.column,
 	)
 
 	return finalSQL, values, node, qf.tsSeries, nil

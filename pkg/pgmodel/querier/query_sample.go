@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package querier
 
 import (
@@ -9,16 +13,26 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 type querySamples struct {
 	*pgxQuerier
+	rollup *rollupDecider
 }
 
 func newQuerySamples(qr *pgxQuerier) *querySamples {
-	return &querySamples{qr}
+	rollup := &rollupDecider{
+		conn: qr.tools.conn,
+	}
+	go rollup.refresh()
+	return &querySamples{
+		pgxQuerier: qr,
+		rollup:     rollup,
+	}
 }
 
 // Select implements the SamplesQuerier interface. It is the entry point for our
@@ -38,10 +52,33 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 		return nil, nil, fmt.Errorf("get evaluation metadata: %w", err)
 	}
 
-	filter := metadata.timeFilter
+	filter := &metadata.timeFilter
+
+	rollupSchemaName := q.rollup.decide(mint/1000, maxt/1000)
+	fmt.Println("schema name", rollupSchemaName)
+	if rollupSchemaName != "" {
+		// Use metric rollups.
+		column, err := q.rollup.getValueColumnString(filter.metric)
+		if err != nil {
+			log.Error("msg", "cannot use metric rollups for querying. Reason: error getting column value", "error", err.Error())
+		}
+		if filter.schema == model.SchemaNameLabelName {
+			// The query belongs to custom Caggs. We need to warn the user that this query will be treated as
+			// general automatic downsampled query. That's the most we can do.
+			// If the user wants Caggs query, then he should not enable automatic rollups for querying in CLI flags.
+			log.Warn("msg", "conflicting schema found. Note: __schema__ will be overwritten")
+		}
+		filter.column = column
+		filter.schema = rollupSchemaName
+	}
+
 	if metadata.isSingleMetric {
 		// Single vector selector case.
-		mInfo, err := q.tools.getMetricTableName(filter.schema, filter.metric, false)
+		s := filter.schema
+		if rollupSchemaName != "" {
+			s = ""
+		}
+		mInfo, err := q.tools.getMetricTableName(s, filter.metric, false)
 		if err != nil {
 			if err == errors.ErrMissingTableName {
 				return nil, nil, nil
@@ -51,6 +88,9 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 		metadata.timeFilter.metric = mInfo.TableName
 		metadata.timeFilter.schema = mInfo.TableSchema
 		metadata.timeFilter.seriesTable = mInfo.SeriesTable
+		if rollupSchemaName != "" {
+			metadata.timeFilter.schema = rollupSchemaName
+		}
 
 		sampleRows, topNode, err := fetchSingleMetricSamples(q.tools, metadata)
 		if err != nil {

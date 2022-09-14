@@ -16,7 +16,8 @@ import (
 )
 
 type pgxQuerier struct {
-	tools *queryTools
+	tools          *queryTools
+	samplesQuerier *querySamples
 }
 
 var _ Querier = (*pgxQuerier)(nil)
@@ -39,6 +40,7 @@ func NewQuerier(
 			rAuth:            rAuth,
 		},
 	}
+	querier.samplesQuerier = newQuerySamples(querier)
 	return querier
 }
 
@@ -47,7 +49,7 @@ func (q *pgxQuerier) RemoteReadQuerier() RemoteReadQuerier {
 }
 
 func (q *pgxQuerier) SamplesQuerier() SamplesQuerier {
-	return newQuerySamples(q)
+	return q.samplesQuerier
 }
 
 func (q *pgxQuerier) ExemplarsQuerier(ctx context.Context) ExemplarQuerier {
