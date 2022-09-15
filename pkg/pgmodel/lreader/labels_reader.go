@@ -48,21 +48,31 @@ const (
 	tenantLabelValueQual   = `value = $%d`
 	getLabelNamesForTenant = `
 	SELECT
-		array_agg(distinct l.key)
-	FROM _prom_catalog.label l
-	WHERE EXISTS(
+		array_agg(keys.key)
+	FROM (
+		SELECT
+			distinct l.key
+		FROM _prom_catalog.label l
+	) as keys
+	WHERE EXISTS (
 		SELECT 1
-		FROM _prom_catalog.series
-		WHERE (
-			labels @> array[l.id] AND
-			labels &&
-				(
-					SELECT array_agg(id :: INTEGER)
-					FROM _prom_catalog.label
-					WHERE key = '__tenant__' AND ( %s )
-				)::int[]
+		FROM _prom_catalog.label l
+		WHERE key = keys.key AND
+		EXISTS(
+			SELECT 1
+			FROM _prom_catalog.series
+			WHERE (
+				labels @> array[l.id] AND
+				labels &&
+					(
+						SELECT array_agg(id :: INTEGER)
+						FROM _prom_catalog.label
+						WHERE key = '__tenant__' AND ( %s )
+					)::int[]
+			)
 		)
-	)`
+	)
+`
 
 	getLabelValuesForTenant = `
 	SELECT
