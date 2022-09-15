@@ -33,7 +33,9 @@ type querierAdapter struct {
 func (q querierAdapter) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	// Pushdowns are not supported here. This is fine as Prometheus rule-manager only uses queryable to know
 	// the previous state of the alert. This function is not used in recording/alerting rules evaluation.
-	seriesSet, _ := q.qr.Select(sortSeries, hints, nil, nil, matchers...)
+	// TODO (harkishen) after PoC: Note: Maybe passdown as param that do we want rollups to be used or
+	//  not for this evaluation.
+	seriesSet, _, _ := q.qr.Select(sortSeries, hints, nil, nil, matchers...)
 	return seriesSet
 }
 

@@ -106,6 +106,8 @@ func (r *rollupDecider) decide(minSeconds, maxSeconds int64) (rollupSchemaName s
 	//if r.withinRange(estimatedRawSamples) || estimatedRawSamples < low || len(r.resolutionInASCOrder) == 0 {
 	//	return noRollupSchema
 	//}
+	// -- to return always the lowest resolution.
+	//return r.getSchemaFor(r.resolutionInASCOrder[len(r.resolutionInASCOrder)-1])
 	var acceptableResolution []time.Duration
 	for _, resolution := range r.schemaResolutionCache {
 		estimate := estimateSamples(resolution)

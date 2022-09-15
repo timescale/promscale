@@ -44,7 +44,7 @@ type RemoteReadQuerier interface {
 // matching samples.
 type SamplesQuerier interface {
 	// Select returns a series set containing the exemplar that matches the supplied query parameters.
-	Select(mint, maxt int64, sortSeries bool, hints *storage.SelectHints, queryHints *QueryHints, path []parser.Node, ms ...*labels.Matcher) (SeriesSet, parser.Node)
+	Select(mint, maxt int64, sortSeries bool, hints *storage.SelectHints, queryHints *QueryHints, path []parser.Node, ms ...*labels.Matcher) (SeriesSet, parser.Node, bool)
 }
 
 // ExemplarQuerier queries data using the provided query data and returns the

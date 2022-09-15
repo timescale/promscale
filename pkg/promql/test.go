@@ -110,9 +110,9 @@ type QuerierWrapper struct {
 	storage.Querier
 }
 
-func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ *querier.QueryHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ *querier.QueryHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node, bool) {
 	ss := t.Querier.Select(b, sh, m...)
-	return ss, nil
+	return ss, nil, false
 }
 
 func (t *QuerierWrapper) LabelValues(n string) ([]string, storage.Warnings, error) {

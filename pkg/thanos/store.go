@@ -41,7 +41,8 @@ func (fc *Storage) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesSe
 	}
 	defer q.Close()
 
-	ss, _ := q.Select(false, nil, nil, nil, matchers...)
+	// TODO (harkishen) after PoC
+	ss, _, _ := q.Select(false, nil, nil, nil, matchers...)
 
 	for ss.Next() {
 		series := ss.At()

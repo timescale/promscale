@@ -37,19 +37,19 @@ func newQuerySamples(qr *pgxQuerier) *querySamples {
 
 // Select implements the SamplesQuerier interface. It is the entry point for our
 // own version of the Prometheus engine.
-func (q *querySamples) Select(mint, maxt int64, _ bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (seriesSet SeriesSet, node parser.Node) {
-	sampleRows, topNode, err := q.fetchSamplesRows(mint, maxt, hints, qh, path, ms)
+func (q *querySamples) Select(mint, maxt int64, _ bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (seriesSet SeriesSet, node parser.Node, usedRollup bool) {
+	sampleRows, topNode, usedRollup, err := q.fetchSamplesRows(mint, maxt, hints, qh, path, ms)
 	if err != nil {
-		return errorSeriesSet{err: err}, nil
+		return errorSeriesSet{err: err}, nil, false
 	}
 	responseSeriesSet := buildSeriesSet(sampleRows, q.tools.labelsReader)
-	return responseSeriesSet, topNode
+	return responseSeriesSet, topNode, usedRollup
 }
 
-func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms []*labels.Matcher) ([]sampleRow, parser.Node, error) {
+func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms []*labels.Matcher) (rows []sampleRow, topNode parser.Node, usedRollup bool, err error) {
 	metadata, err := getEvaluationMetadata(q.tools, mint, maxt, GetPromQLMetadata(ms, hints, qh, path))
 	if err != nil {
-		return nil, nil, fmt.Errorf("get evaluation metadata: %w", err)
+		return nil, nil, false, fmt.Errorf("get evaluation metadata: %w", err)
 	}
 
 	filter := &metadata.timeFilter
@@ -78,9 +78,9 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 		mInfo, err := q.tools.getMetricTableName(filter.schema, filter.metric, false)
 		if err != nil {
 			if err == errors.ErrMissingTableName {
-				return nil, nil, nil
+				return nil, nil, false, nil
 			}
-			return nil, nil, fmt.Errorf("get metric table name: %w", err)
+			return nil, nil, false, fmt.Errorf("get metric table name: %w", err)
 		}
 		metadata.timeFilter.metric = mInfo.TableName
 		metadata.timeFilter.schema = mInfo.TableSchema
@@ -88,17 +88,17 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 
 		sampleRows, topNode, err := fetchSingleMetricSamples(q.tools, metadata)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 
-		return sampleRows, topNode, nil
+		return sampleRows, topNode, metadata.rollupConfig != nil, nil
 	}
 	// Multiple vector selector case.
 	sampleRows, err := fetchMultipleMetricsSamples(q.tools, metadata)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
-	return sampleRows, nil, nil
+	return sampleRows, nil, metadata.rollupConfig != nil, nil
 }
 
 // fetchSingleMetricSamples returns all the result rows for a single metric

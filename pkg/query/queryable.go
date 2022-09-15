@@ -65,9 +65,9 @@ func (q *samplesQuerier) Close() {
 	}
 }
 
-func (q *samplesQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *pgQuerier.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (storage.SeriesSet, parser.Node) {
+func (q *samplesQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *pgQuerier.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (seriesSet storage.SeriesSet, topNode parser.Node, rollupUsed bool) {
 	qry := q.metricsReader.SamplesQuerier()
-	ss, n := qry.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
+	ss, n, usingRollup := qry.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
 	q.seriesSets = append(q.seriesSets, ss)
-	return ss, n
+	return ss, n, usingRollup
 }

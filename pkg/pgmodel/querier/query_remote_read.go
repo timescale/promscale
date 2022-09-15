@@ -27,7 +27,9 @@ func (q *queryRemoteRead) Query(query *prompb.Query) ([]*prompb.TimeSeries, erro
 	}
 
 	qrySamples := newQuerySamples(q.pgxQuerier)
-	sampleRows, _, err := qrySamples.fetchSamplesRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, nil, matchers)
+	// TODO after PoC (harkishen): Do not use rollup in case of remote-read. This is because remote-read results are merged with local
+	// Prometheus data and using rollups here will cause evaluation problems.
+	sampleRows, _, _, err := qrySamples.fetchSamplesRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, nil, matchers)
 	if err != nil {
 		return nil, err
 	}
