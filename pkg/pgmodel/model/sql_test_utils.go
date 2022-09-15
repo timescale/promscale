@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -142,8 +143,8 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 		return nil, err
 	}
 	space := regexp.MustCompile(`\s+`)
-	sql = space.ReplaceAllString(sql, " ")
-	row.Sql = space.ReplaceAllString(row.Sql, " ")
+	sql = space.ReplaceAllString(strings.TrimSpace(sql), " ")
+	row.Sql = space.ReplaceAllString(strings.TrimSpace(row.Sql), " ")
 
 	if sql != row.Sql {
 		dmp := diffmatchpatch.New()
