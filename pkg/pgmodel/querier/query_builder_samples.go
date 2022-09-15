@@ -217,8 +217,15 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		start, end = metadata.timeFilter.start, metadata.timeFilter.end
 	}
 
+	samplesSchema, column := filter.schema, filter.column
+	if metadata.rollupConfig != nil {
+		// Use rollups.
+		samplesSchema = metadata.rollupConfig.schemaName
+		column = metadata.rollupConfig.columnClause
+	}
+
 	finalSQL := fmt.Sprintf(template,
-		pgx.Identifier{filter.schema, filter.metric}.Sanitize(),
+		pgx.Identifier{samplesSchema, filter.metric}.Sanitize(),
 		pgx.Identifier{schema.PromDataSeries, filter.seriesTable}.Sanitize(),
 		strings.Join(cases, " AND "),
 		start,
@@ -226,7 +233,7 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		strings.Join(selectorClauses, ", "),
 		strings.Join(selectors, ", "),
 		orderByClause,
-		filter.column,
+		column,
 	)
 
 	return finalSQL, values, node, qf.tsSeries, nil

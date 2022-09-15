@@ -163,7 +163,12 @@ var metricTypeColumnRelationship = map[string]string{
 	"GAUGE": "(sum / count)",
 }
 
-func (r *rollupDecider) getValueColumnString(metricName string) (string, error) {
+type rollupConfig struct {
+	columnClause string
+	schemaName   string
+}
+
+func (r *rollupDecider) getConfig(metricName, schemaName string) (*rollupConfig, error) {
 	metricType, ok := r.metricMetadataCache[metricName]
 	if !ok {
 		log.Debug("msg", fmt.Sprintf("metric metadata not found for %s. Refreshing and trying again", metricName))
@@ -172,14 +177,14 @@ func (r *rollupDecider) getValueColumnString(metricName string) (string, error) 
 		if ok {
 			goto checkMetricColumnRelationship
 		}
-		return noColumn, errNoMetricMetadata
+		return nil, errNoMetricMetadata
 	}
 checkMetricColumnRelationship:
 	columnString, ok := metricTypeColumnRelationship[metricType]
 	if !ok {
-		return noColumn, errNoMetricColumnRelationship
+		return nil, errNoMetricColumnRelationship
 	}
-	return columnString, nil
+	return &rollupConfig{columnString, schemaName}, nil
 }
 
 type sortDuration []time.Duration

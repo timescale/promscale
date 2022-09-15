@@ -56,9 +56,9 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 
 	rollupSchemaName := q.rollup.decide(mint/1000, maxt/1000)
 	fmt.Println("schema name", rollupSchemaName)
-	if rollupSchemaName != "" {
+	if rollupSchemaName != noRollupSchema {
 		// Use metric rollups.
-		column, err := q.rollup.getValueColumnString(filter.metric)
+		rollupConfig, err := q.rollup.getConfig(filter.metric, rollupSchemaName)
 		if err != nil {
 			log.Error("msg", "cannot use metric rollups for querying. Reason: error getting column value", "error", err.Error())
 		}
@@ -66,19 +66,16 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 			// The query belongs to custom Caggs. We need to warn the user that this query will be treated as
 			// general automatic downsampled query. That's the most we can do.
 			// If the user wants Caggs query, then he should not enable automatic rollups for querying in CLI flags.
-			log.Warn("msg", "conflicting schema found. Note: __schema__ will be overwritten")
+			log.Warn("msg", "conflicting schema found. Note: __schema__ & __column__ will be overwritten")
+			filter.schema = ""
+			filter.column = ""
 		}
-		filter.column = column
-		filter.schema = rollupSchemaName
+		metadata.rollupConfig = rollupConfig
 	}
 
 	if metadata.isSingleMetric {
 		// Single vector selector case.
-		s := filter.schema
-		if rollupSchemaName != "" {
-			s = ""
-		}
-		mInfo, err := q.tools.getMetricTableName(s, filter.metric, false)
+		mInfo, err := q.tools.getMetricTableName(filter.schema, filter.metric, false)
 		if err != nil {
 			if err == errors.ErrMissingTableName {
 				return nil, nil, nil
@@ -88,9 +85,6 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 		metadata.timeFilter.metric = mInfo.TableName
 		metadata.timeFilter.schema = mInfo.TableSchema
 		metadata.timeFilter.seriesTable = mInfo.SeriesTable
-		if rollupSchemaName != "" {
-			metadata.timeFilter.schema = rollupSchemaName
-		}
 
 		sampleRows, topNode, err := fetchSingleMetricSamples(q.tools, metadata)
 		if err != nil {

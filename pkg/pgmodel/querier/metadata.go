@@ -39,6 +39,7 @@ type evalMetadata struct {
 	timeFilter      timeFilter
 	clauses         []string
 	values          []interface{}
+	*rollupConfig
 	*promqlMetadata
 }
 
