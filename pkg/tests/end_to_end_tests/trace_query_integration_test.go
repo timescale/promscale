@@ -332,7 +332,9 @@ func getTraces(t testing.TB, c httpClient, service string, start, end int64, use
 	r, err := do(queryUrl)
 	require.NoError(t, err)
 
-	traces := convertToTraces(r.Data.([]interface{}))
+	data, ok := r.Data.([]interface{})
+	require.True(t, ok, "Data is not an []interface")
+	traces := convertToTraces(data)
 	sort.SliceStable(traces, func(i, j int) bool {
 		return traces[i].TraceID < traces[j].TraceID
 	})
