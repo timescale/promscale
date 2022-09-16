@@ -101,6 +101,7 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 			return nil, fmt.Errorf("err creating writer connection pool: %w", err)
 		}
 
+		/* jgp debug
 		maintPoolSize = cfg.MaintenancePoolSize
 		if maintPoolSize < MinPoolSize {
 			return nil, fmt.Errorf("maintenance pool size canot be less than %d: received %d", MinPoolSize, maintPoolSize)
@@ -114,6 +115,7 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 		if err != nil {
 			return nil, fmt.Errorf("err creating maintenance connection pool: %w", err)
 		}
+		*/
 	}
 
 	readerPoolSize, err := cfg.GetPoolSize("reader", readerFraction, cfg.ReaderPoolSize)
