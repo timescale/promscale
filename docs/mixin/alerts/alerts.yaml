@@ -261,6 +261,53 @@ groups:
       summary: Promscale maintenance jobs taking too long to complete.
       description: "Promscale Database is taking {{ $value }} seconds to respond to Promscale's requests."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleMaintenanceJobRunningTooLong.md
+  - alert: PromscaleMaintenanceJobNotKeepingup
+    expr: |
+      (
+          (
+            min_over_time(promscale_sql_database_chunks_metrics_uncompressed_count[1h]) > 10
+          )
+        and
+          (
+            delta(promscale_sql_database_chunks_metrics_uncompressed_count[10m]) > 0
+          )
+      )
+      or
+      (
+          (
+            min_over_time(promscale_sql_database_chunks_metrics_expired_count[1h]) > 10
+          )
+        and
+          (
+            delta(promscale_sql_database_chunks_metrics_expired_count[10m]) > 0
+          )
+      )      
+      or
+      (
+          (
+            min_over_time(promscale_sql_database_chunks_traces_uncompressed_count[1h]) > 10
+          )
+        and
+          (
+            delta(promscale_sql_database_chunks_traces_uncompressed_count[10m]) > 0
+          )
+      )      
+      or
+      (
+          (
+            min_over_time(promscale_sql_database_chunks_traces_expired_count[1h]) > 10
+          )
+        and
+          (
+            delta(promscale_sql_database_chunks_traces_expired_count[10m]) > 0
+          )
+      )      
+    labels:
+      severity: warning
+    annotations:
+      summary: Promscale maintenance jobs are not keeping up.
+      description: "The amount of work for the promscale maintenance jobs is not decreasing for long time."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleMaintenanceJobRunningTooLong.md
   - alert: PromscaleMaintenanceJobFailures
     expr: promscale_sql_database_worker_maintenance_job_failed == 1
     labels:
