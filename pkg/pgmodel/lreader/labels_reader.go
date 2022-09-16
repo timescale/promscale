@@ -48,7 +48,7 @@ const (
 	tenantLabelValueQual   = `value = $%d`
 	getLabelNamesForTenant = `
 	SELECT
-		array_agg(keys.key)
+		array_agg(keys.key order by keys.key)
 	FROM (
 		SELECT
 			distinct l.key
@@ -76,7 +76,7 @@ const (
 
 	getLabelValuesForTenant = `
 	SELECT
-		array_agg(l.value)
+		array_agg(l.value order by l.value)
 	FROM _prom_catalog.label l
 	WHERE key = $1 AND
 	EXISTS(
