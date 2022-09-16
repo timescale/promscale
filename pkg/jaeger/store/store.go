@@ -50,6 +50,7 @@ func (p *Store) StreamingSpanWriter() spanstore.Writer {
 }
 
 func (p *Store) WriteSpan(ctx context.Context, span *model.Span) error {
+	encodeBinaryTags(span)
 	batches := []*model.Batch{
 		{
 			Spans: []*model.Span{span},
