@@ -73,7 +73,7 @@ type SamplesQuerier interface {
 	// Select returns a set of series that matches the given label matchers.
 	// Caller can specify if it requires returned series to be sorted. Prefer not requiring sorting for better performance.
 	// It allows passing hints that can help in optimising select, but it's up to implementation how this is used if used at all.
-	Select(sortSeries bool, hints *storage.SelectHints, qh *pgquerier.QueryHints, nodes []parser.Node, matchers ...*labels.Matcher) (seriesSet storage.SeriesSet, topNode parser.Node, rollupUsed bool)
+	Select(sortSeries bool, hints *storage.SelectHints, qh *pgquerier.QueryHints, nodes []parser.Node, matchers ...*labels.Matcher) (seriesSet storage.SeriesSet, topNode parser.Node, cfg *pgquerier.RollupConfig)
 }
 
 const (
@@ -648,7 +648,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 	}
 	defer querier.Close()
 
-	topNodes, usedRollup := ng.populateSeries(querier, s)
+	topNodes, rollupInterval := ng.populateSeries(querier, s)
 	prepareSpanTimer.Finish()
 
 	// Modify the offset of vector and matrix selectors for the @ modifier
@@ -669,7 +669,6 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 			samplesStats:             query.sampleStats,
 			noStepSubqueryIntervalFn: ng.noStepSubqueryIntervalFn,
 			topNodes:                 topNodes,
-			usedRollup:               usedRollup,
 		}
 		query.sampleStats.InitStepTracking(start, start, 1)
 
@@ -712,10 +711,31 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 	}
 
 	// Range evaluation.
+	var intervalMs int64
+	if rollupInterval > s.Interval {
+		// Rollups evaluated the step interval. Hence, just use this step in rollup.
+		// This is important, as it **avoids unnecessary samples** due to .Seek() as the values remain the same
+		// between the rollup intervals, thereby **speeding up evaluation** involving rollups.
+		//
+		// Example: If s.Interval (from received range query) is 5s, and rollup evaluated is of 5m, then if we were
+		// to pass s.Interval here, then in VectorSelector evaluation, the `ts += ev.interval` will cause .Seek() (in vectorSelectorSingle())
+		// to repeat the values of the previous rollup sample for entire duration until next rollup sample is reached.
+		//
+		// IMPORTANT: This hinders the very aim of rollups, which is to speed up calculations by parent functions, since now,
+		// the parent functions are essentially working on the same NUMBER OF SAMPLES (caused by step from received query)
+		// which without the rollups would be the case.
+		//
+		// We do `rollupInterval > s.Interval` so that if the range query's interval is already greater than rollupInterval
+		// the we do not over respond with higher granularity than needed.
+		intervalMs = durationMilliseconds(rollupInterval)
+	} else {
+		intervalMs = durationMilliseconds(s.Interval)
+	}
+
 	evaluator := &evaluator{
 		startTimestamp:           timeMilliseconds(s.Start),
 		endTimestamp:             timeMilliseconds(s.End),
-		interval:                 durationMilliseconds(s.Interval),
+		interval:                 intervalMs,
 		ctx:                      ctxInnerEval,
 		maxSamples:               ng.maxSamplesPerQuery,
 		logger:                   ng.logger,
@@ -723,7 +743,6 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 		samplesStats:             query.sampleStats,
 		noStepSubqueryIntervalFn: ng.noStepSubqueryIntervalFn,
 		topNodes:                 topNodes,
-		usedRollup:               usedRollup,
 	}
 	query.sampleStats.InitStepTracking(evaluator.startTimestamp, evaluator.endTimestamp, evaluator.interval)
 	val, warnings, err := evaluator.Eval(s.Expr)
@@ -860,7 +879,7 @@ func (ng *Engine) getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorS
 // evaluation. These terminal nodes are called "top nodes".
 //
 // populateSeries returns a map keyed by all top nodes.
-func (ng *Engine) populateSeries(querier SamplesQuerier, evalStmt *parser.EvalStmt) (topNodes map[parser.Node]struct{}, rollupUsed bool) {
+func (ng *Engine) populateSeries(querier SamplesQuerier, evalStmt *parser.EvalStmt) (topNodes map[parser.Node]struct{}, rollupInterval time.Duration) {
 	// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 	// The evaluation of the VectorSelector inside then evaluates the given range and unsets
 	// the variable.
@@ -887,10 +906,10 @@ func (ng *Engine) populateSeries(querier SamplesQuerier, evalStmt *parser.EvalSt
 			evalRange = 0
 			hints.By, hints.Grouping = extractGroupsFromPath(path)
 
-			set, topNode, fromRollup := querier.Select(false, hints, qh, path, n.LabelMatchers...)
+			set, topNode, rollupCfg := querier.Select(false, hints, qh, path, n.LabelMatchers...)
 			topNodes[topNode] = struct{}{}
-			if fromRollup {
-				rollupUsed = true
+			if rollupCfg != nil {
+				rollupInterval = rollupCfg.Interval()
 			}
 			n.UnexpandedSeriesSet = set
 
@@ -899,7 +918,7 @@ func (ng *Engine) populateSeries(querier SamplesQuerier, evalStmt *parser.EvalSt
 		}
 		return nil
 	})
-	return topNodes, rollupUsed
+	return topNodes, rollupInterval
 }
 
 // extractFuncFromPath walks up the path and searches for the first instance of
@@ -982,7 +1001,6 @@ type evaluator struct {
 	logger                   log.Logger
 	lookbackDelta            time.Duration
 	topNodes                 map[parser.Node]struct{}
-	usedRollup               bool
 	samplesStats             *stats.QuerySamples
 	noStepSubqueryIntervalFn func(rangeMillis int64) int64
 }
@@ -1678,32 +1696,32 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 				Points: getPointSlice(numSteps),
 			}
 
-			fmt.Println("usedRollup", ev.usedRollup)
-			if ev.usedRollup {
-				// Rollup evaluated the step interval. Hence, just use the step in rollup.
-				// This is important, as it **avoids unnecessary samples** (with sample `v`) due to `ts += ev.interval` (in the for loop in else block)
-				// thereby **speeding up evaluation** involving rollups.
-				itr := e.Series[i].Iterator()
-				for itr.Next() {
-					ts, v := itr.At()
-					ss.Points = append(ss.Points, Point{V: v, T: ts})
-					ev.currentSamples++
-				}
-			} else {
-				for ts, step := ev.startTimestamp, -1; ts <= ev.endTimestamp; ts += ev.interval {
-					step++
-					_, v, ok := ev.vectorSelectorSingle(it, e, ts)
-					if ok {
-						if ev.currentSamples < ev.maxSamples {
-							ss.Points = append(ss.Points, Point{V: v, T: ts})
-							ev.samplesStats.IncrementSamplesAtStep(step, 1)
-							ev.currentSamples++
-						} else {
-							ev.error(ErrTooManySamples(env))
-						}
+			//fmt.Println("rollupInterval", ev.rollupInterval)
+			//if ev.rollupInterval.Milliseconds() > ev.interval {
+			//	// Rollup evaluated the step interval. Hence, just use the step in rollup.
+			//	// This is important, as it **avoids unnecessary samples** (with sample `v`) due to `ts += ev.interval` (in the for loop in else block)
+			//	// thereby **speeding up evaluation** involving rollups.
+			//	itr := e.Series[i].Iterator()
+			//	for itr.Next() {
+			//		ts, v := itr.At()
+			//		ss.Points = append(ss.Points, Point{V: v, T: ts})
+			//		ev.currentSamples++
+			//	}
+			//} else {
+			for ts, step := ev.startTimestamp, -1; ts <= ev.endTimestamp; ts += ev.interval {
+				step++
+				_, v, ok := ev.vectorSelectorSingle(it, e, ts)
+				if ok {
+					if ev.currentSamples < ev.maxSamples {
+						ss.Points = append(ss.Points, Point{V: v, T: ts})
+						ev.samplesStats.IncrementSamplesAtStep(step, 1)
+						ev.currentSamples++
+					} else {
+						ev.error(ErrTooManySamples(env))
 					}
 				}
 			}
+			//}
 
 			if len(ss.Points) > 0 {
 				mat = append(mat, ss)

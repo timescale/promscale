@@ -39,8 +39,8 @@ type evalMetadata struct {
 	timeFilter      timeFilter
 	clauses         []string
 	values          []interface{}
-	*rollupConfig
 	*promqlMetadata
+	*RollupConfig
 }
 
 func GetMetadata(clauses []string, values []interface{}) *evalMetadata {

@@ -37,31 +37,27 @@ func newQuerySamples(qr *pgxQuerier) *querySamples {
 
 // Select implements the SamplesQuerier interface. It is the entry point for our
 // own version of the Prometheus engine.
-func (q *querySamples) Select(mint, maxt int64, _ bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (seriesSet SeriesSet, node parser.Node, usedRollup bool) {
-	sampleRows, topNode, usedRollup, err := q.fetchSamplesRows(mint, maxt, hints, qh, path, ms)
+func (q *querySamples) Select(mint, maxt int64, _ bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (seriesSet SeriesSet, node parser.Node, rollupCfg *RollupConfig) {
+	sampleRows, topNode, rollupCfg, err := q.fetchSamplesRows(mint, maxt, hints, qh, path, ms)
 	if err != nil {
-		return errorSeriesSet{err: err}, nil, false
+		return errorSeriesSet{err: err}, nil, nil
 	}
 	responseSeriesSet := buildSeriesSet(sampleRows, q.tools.labelsReader)
-	return responseSeriesSet, topNode, usedRollup
+	return responseSeriesSet, topNode, rollupCfg
 }
 
-func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms []*labels.Matcher) (rows []sampleRow, topNode parser.Node, usedRollup bool, err error) {
+func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms []*labels.Matcher) (rows []sampleRow, topNode parser.Node, cfg *RollupConfig, err error) {
 	metadata, err := getEvaluationMetadata(q.tools, mint, maxt, GetPromQLMetadata(ms, hints, qh, path))
 	if err != nil {
-		return nil, nil, false, fmt.Errorf("get evaluation metadata: %w", err)
+		return nil, nil, nil, fmt.Errorf("get evaluation metadata: %w", err)
 	}
 
 	filter := &metadata.timeFilter
 
-	rollupSchemaName := q.rollup.decide(mint/1000, maxt/1000)
-	fmt.Println("schema name", rollupSchemaName)
-	if rollupSchemaName != noRollupSchema {
+	rollupConfig := q.rollup.decide(mint/1000, maxt/1000, filter.metric)
+	if rollupConfig != nil {
 		// Use metric rollups.
-		rollupConfig, err := q.rollup.getConfig(filter.metric, rollupSchemaName)
-		if err != nil {
-			log.Error("msg", "cannot use metric rollups for querying. Reason: error getting column value", "error", err.Error())
-		}
+		fmt.Println("schema name", rollupConfig.schemaName)
 		if filter.schema == model.SchemaNameLabelName {
 			// The query belongs to custom Caggs. We need to warn the user that this query will be treated as
 			// general automatic downsampled query. That's the most we can do.
@@ -70,7 +66,7 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 			filter.schema = ""
 			filter.column = ""
 		}
-		metadata.rollupConfig = rollupConfig
+		metadata.RollupConfig = rollupConfig
 	}
 
 	if metadata.isSingleMetric {
@@ -78,9 +74,9 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 		mInfo, err := q.tools.getMetricTableName(filter.schema, filter.metric, false)
 		if err != nil {
 			if err == errors.ErrMissingTableName {
-				return nil, nil, false, nil
+				return nil, nil, nil, nil
 			}
-			return nil, nil, false, fmt.Errorf("get metric table name: %w", err)
+			return nil, nil, nil, fmt.Errorf("get metric table name: %w", err)
 		}
 		metadata.timeFilter.metric = mInfo.TableName
 		metadata.timeFilter.schema = mInfo.TableSchema
@@ -88,17 +84,17 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 
 		sampleRows, topNode, err := fetchSingleMetricSamples(q.tools, metadata)
 		if err != nil {
-			return nil, nil, false, err
+			return nil, nil, nil, err
 		}
 
-		return sampleRows, topNode, metadata.rollupConfig != nil, nil
+		return sampleRows, topNode, metadata.RollupConfig, nil
 	}
 	// Multiple vector selector case.
 	sampleRows, err := fetchMultipleMetricsSamples(q.tools, metadata)
 	if err != nil {
-		return nil, nil, false, err
+		return nil, nil, nil, err
 	}
-	return sampleRows, nil, metadata.rollupConfig != nil, nil
+	return sampleRows, nil, metadata.RollupConfig, nil
 }
 
 // fetchSingleMetricSamples returns all the result rows for a single metric

@@ -17,6 +17,8 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
@@ -246,14 +248,16 @@ type aggregators struct {
 
 // getAggregators returns the aggregator which should be used to fetch data for
 // a single metric. It may apply pushdowns to functions.
-func getAggregators(metadata *promqlMetadata) (*aggregators, parser.Node) {
+func getAggregators(metadata *promqlMetadata, usingRollup bool) (*aggregators, parser.Node) {
 
-	//agg, node, err := tryPushDown(metadata)
-	//if err != nil {
-	//	log.Info("msg", "error while trying to push down, will skip pushdown optimization", "error", err)
-	//} else if agg != nil {
-	//	return agg, node
-	//}
+	if !usingRollup {
+		agg, node, err := tryPushDown(metadata)
+		if err != nil {
+			log.Info("msg", "error while trying to push down, will skip pushdown optimization", "error", err)
+		} else if agg != nil {
+			return agg, node
+		}
+	}
 
 	defaultAggregators := &aggregators{
 		timeClause:  "array_agg(time)",

@@ -98,16 +98,16 @@ func (r *rollupDecider) refreshMetricMetadata() {
 	r.metricMetadataCache = metadataCache
 }
 
-func (r *rollupDecider) decide(minSeconds, maxSeconds int64) (rollupSchemaName string) {
+func (r *rollupDecider) decide(minSeconds, maxSeconds int64, metricName string) *RollupConfig {
 	estimateSamples := func(resolution time.Duration) int64 {
 		return int64(float64(maxSeconds-minSeconds) / resolution.Seconds())
 	}
 	//estimatedRawSamples := estimateSamples(defaultDurationBetweenSamples)
 	//if r.withinRange(estimatedRawSamples) || estimatedRawSamples < low || len(r.resolutionInASCOrder) == 0 {
-	//	return noRollupSchema
+	//	return nil
 	//}
-	// -- to return always the lowest resolution.
-	//return r.getSchemaFor(r.resolutionInASCOrder[len(r.resolutionInASCOrder)-1])
+	// -- DEBUG: to return always the lowest resolution.
+	//return r.getConfig(metricName, r.resolutionInASCOrder[len(r.resolutionInASCOrder)-1]), true
 	var acceptableResolution []time.Duration
 	for _, resolution := range r.schemaResolutionCache {
 		estimate := estimateSamples(resolution)
@@ -115,32 +115,74 @@ func (r *rollupDecider) decide(minSeconds, maxSeconds int64) (rollupSchemaName s
 			acceptableResolution = append(acceptableResolution, resolution)
 		}
 	}
-	switch len(acceptableResolution) {
-	case 0:
-		// Find the highest resolution that is below upper limit and respond.
+	if len(acceptableResolution) == 0 {
+		// No resolution was found to fit within the permitted range.
+		// Hence, find the highest resolution that is below upper (max) limit and respond.
 		for _, res := range r.resolutionInASCOrder {
 			estimate := estimateSamples(res)
 			if estimate < high {
-				return r.getSchemaFor(res)
+				return r.getConfig(metricName, res)
 			}
 		}
-
+		// None of the resolutions were below the upper limit. Hence, respond with the lowest available resolution.
 		lowestResolution := r.resolutionInASCOrder[len(r.resolutionInASCOrder)-1]
 		// This is the best case in terms of size.
 		// Example: If 1 hour is the lowest resolution, then all other resolutions will be way above 1 hour.
 		// Hence, the best answer is 1 hour.
-		return r.getSchemaFor(lowestResolution)
-	case 1:
-		// Debug stuff: easy to understand.
-		return r.getSchemaFor(acceptableResolution[0])
-	default:
-		// Multiple resolutions fit here. Hence, choose the highest resolution for maximum granularity.
-		return r.getSchemaFor(acceptableResolution[0])
+		//
+		// Note: For understanding resolutions, in a case of resolutions [1m, 5m, 15m, 1h, 1w],
+		// 1m is the highest resolution (since maximum granularity) and 1w is the lowest resolution (due to lowest granularity).
+		return r.getConfig(metricName, lowestResolution)
 	}
+	// Choose the highest resolution for maximum granularity.
+	return r.getConfig(metricName, acceptableResolution[0])
 }
 
 func (r *rollupDecider) withinRange(totalSamples int64) bool {
 	return low <= totalSamples && totalSamples <= high
+}
+
+// metricTypeColumnRelationship is a relationship between the metric type received for query and a computation of
+// set of columns that together compute to `value` of sample. This is because in metric rollups, we do not have a `value`
+// column, rather they are stored as separate utility columns like {COUNTER -> [first, last], GAUGE -> [sum, count, min, max]}.
+//
+// For knowing the reasoning behind this, please read the design doc on metric rollups.
+var metricTypeColumnRelationship = map[string]string{
+	"GAUGE": "(sum / count)",
+}
+
+type RollupConfig struct {
+	columnClause string
+	schemaName   string
+	interval     time.Duration
+}
+
+func (r *RollupConfig) Interval() time.Duration {
+	return r.interval
+}
+
+func (r *rollupDecider) getConfig(metricName string, resolution time.Duration) *RollupConfig {
+	schemaName := r.getSchemaFor(resolution)
+	metricType, ok := r.metricMetadataCache[metricName]
+	if !ok {
+		log.Debug("msg", fmt.Sprintf("metric metadata not found for %s. Refreshing and trying again", metricName))
+		r.refreshMetricMetadata()
+		metricType, ok = r.metricMetadataCache[metricName]
+		if ok {
+			goto checkMetricColumnRelationship
+		}
+		return nil
+	}
+checkMetricColumnRelationship:
+	columnString, ok := metricTypeColumnRelationship[metricType]
+	if !ok {
+		return nil
+	}
+	return &RollupConfig{
+		columnClause: columnString,
+		schemaName:   schemaName,
+		interval:     r.schemaResolutionCache[schemaName],
+	}
 }
 
 func (r *rollupDecider) getSchemaFor(resolution time.Duration) string {
@@ -154,39 +196,6 @@ func (r *rollupDecider) getSchemaFor(resolution time.Duration) string {
 		resolution,
 		"Please open an issue at https://github.com/timescale/promscale/issues",
 	)) // This will never be the case.
-}
-
-// metricTypeColumnRelationship is a relationship between the metric type received for query and a computation of
-// set of columns that together compute to `value` of sample. This is because in metric rollups, we do not have a `value`
-// column, rather they are stored as separate utility columns like {COUNTER -> [first, last], GAUGE -> [sum, count, min, max]}.
-//
-// For knowing the reasoning behind this, please read the design doc on metric rollups.
-var metricTypeColumnRelationship = map[string]string{
-	"GAUGE": "(sum / count)",
-}
-
-type rollupConfig struct {
-	columnClause string
-	schemaName   string
-}
-
-func (r *rollupDecider) getConfig(metricName, schemaName string) (*rollupConfig, error) {
-	metricType, ok := r.metricMetadataCache[metricName]
-	if !ok {
-		log.Debug("msg", fmt.Sprintf("metric metadata not found for %s. Refreshing and trying again", metricName))
-		r.refreshMetricMetadata()
-		metricType, ok = r.metricMetadataCache[metricName]
-		if ok {
-			goto checkMetricColumnRelationship
-		}
-		return nil, errNoMetricMetadata
-	}
-checkMetricColumnRelationship:
-	columnString, ok := metricTypeColumnRelationship[metricType]
-	if !ok {
-		return nil, errNoMetricColumnRelationship
-	}
-	return &rollupConfig{columnString, schemaName}, nil
 }
 
 type sortDuration []time.Duration

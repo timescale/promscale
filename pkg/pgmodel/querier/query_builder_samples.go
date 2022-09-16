@@ -131,7 +131,7 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 	// When pushdowns are available, the <array_aggregator> is a pushdown
 	// function which the promscale extension provides.
 
-	qf, node := getAggregators(metadata.promqlMetadata)
+	qf, node := getAggregators(metadata.promqlMetadata, metadata.RollupConfig != nil)
 
 	var selectors, selectorClauses []string
 	values := metadata.values
@@ -218,10 +218,10 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 	}
 
 	samplesSchema, column := filter.schema, filter.column
-	if metadata.rollupConfig != nil {
+	if metadata.RollupConfig != nil {
 		// Use rollups.
-		samplesSchema = metadata.rollupConfig.schemaName
-		column = metadata.rollupConfig.columnClause
+		samplesSchema = metadata.RollupConfig.schemaName
+		column = metadata.RollupConfig.columnClause
 	}
 
 	finalSQL := fmt.Sprintf(template,

@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 func TestDecideRollup(t *testing.T) {
 	r := &rollupDecider{
 		conn: mockPgxConn{},
-		cache: map[string]time.Duration{
+		schemaResolutionCache: map[string]time.Duration{
 			"hour":      time.Hour,
 			"5_minute":  5 * time.Minute,
 			"15_minute": 15 * time.Minute,
@@ -78,8 +79,16 @@ func TestDecideRollup(t *testing.T) {
 		},
 	}
 	for _, tc := range tcs {
-		recommendedSchema := r.decide(int64(tc.min.Seconds()), int64(tc.max.Seconds()))
-		require.Equal(t, tc.expectedSchemaName, recommendedSchema, tc.name)
+		cfg, shouldUseRollup := r.decide(int64(tc.min.Seconds()), int64(tc.max.Seconds()), "")
+		if tc.expectedSchemaName == noRollupSchema {
+			require.False(t, shouldUseRollup, tc.name)
+			require.Nil(t, cfg)
+			continue
+		} else {
+			require.True(t, shouldUseRollup, tc.name)
+		}
+		fmt.Println("test name", tc.name)
+		require.Equal(t, tc.expectedSchemaName, cfg.schemaName, tc.name)
 	}
 }
 
