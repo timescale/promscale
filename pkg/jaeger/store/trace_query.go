@@ -84,9 +84,8 @@ const (
 			s.trace_id,
 			max(start_time) as start_time_max
 		FROM _ps_trace.span s
-		%[2]s
 		WHERE
-			%[3]s
+			%[2]s
 		GROUP BY s.trace_id
 	) as trace_sub
 	ORDER BY trace_sub.start_time_max DESC
@@ -210,9 +209,25 @@ func (b *Builder) buildOperationSubquery(q *spanstore.TraceQueryParameters, tInf
 	return "", params
 }
 
-func (b *Builder) buildTagClauses(tInfo *tagsInfo, params []interface{}) (string, []interface{}, bool) {
+func (b *Builder) buildEventSubquery(q *spanstore.TraceQueryParameters, clauses []string, params []interface{}) (string, []interface{}) {
+	var defaultTime time.Time
+	if q.StartTimeMin != defaultTime {
+		params = append(params, q.StartTimeMin.Add(-b.cfg.MaxTraceDuration))
+		clauses = append(clauses, fmt.Sprintf(`e.time >= $%d`, len(params)))
+	}
+	if q.StartTimeMax != defaultTime {
+		params = append(params, q.StartTimeMax.Add(b.cfg.MaxTraceDuration))
+		clauses = append(clauses, fmt.Sprintf(`e.time <= $%d`, len(params)))
+	}
+	subquery := fmt.Sprintf(
+		`SELECT 1
+		 FROM _ps_trace.event e
+		 WHERE s.trace_id = e.trace_id AND s.span_id = e.span_id AND %s`, strings.Join(clauses, " AND "))
+	return subquery, params
+}
+
+func (b *Builder) buildTagClauses(q *spanstore.TraceQueryParameters, tInfo *tagsInfo, params []interface{}) (string, []interface{}) {
 	clauses := make([]string, 0, len(tInfo.generalTags))
-	hasEventTags := false
 	for _, tag := range tInfo.generalTags {
 		tagClauses := make([]string, 0, 3)
 		params = append(params, tag.jsonbPairArray)
@@ -223,12 +238,13 @@ func (b *Builder) buildTagClauses(tInfo *tagsInfo, params []interface{}) (string
 			tagClauses = append(tagClauses, fmt.Sprintf("(s.resource_tags @> ANY($%d::jsonb[]))", len(params)))
 		}
 		if tag.isEvent {
-			hasEventTags = true
-			tagClauses = append(tagClauses, fmt.Sprintf("(e.tags @> ANY($%d::jsonb[]))", len(params)))
+			var subquery string
+			subquery, params = b.buildEventSubquery(q, []string{fmt.Sprintf("(e.tags @> ANY($%d::jsonb[]))", len(params))}, params)
+			tagClauses = append(tagClauses, fmt.Sprintf("EXISTS(%s)", subquery))
 		}
 		clauses = append(clauses, "("+strings.Join(tagClauses, " OR ")+")")
 	}
-	return "(" + strings.Join(clauses, " AND ") + ")", params, hasEventTags
+	return "(" + strings.Join(clauses, " AND ") + ")", params
 
 }
 
@@ -237,8 +253,11 @@ func (b *Builder) BuildTraceIDSubquery(q *spanstore.TraceQueryParameters, tInfo 
 	params := tInfo.params
 
 	clauses = append(clauses, tInfo.spanClauses...)
-	clauses = append(clauses, tInfo.eventClauses...)
-	needEventTable := len(tInfo.eventClauses) > 0
+	if len(tInfo.eventClauses) > 0 {
+		var subquery string
+		subquery, params = b.buildEventSubquery(q, tInfo.eventClauses, params)
+		clauses = append(clauses, fmt.Sprintf("EXISTS(%s)", subquery))
+	}
 
 	operationSubquery, params := b.buildOperationSubquery(q, tInfo, params)
 	if len(operationSubquery) > 0 {
@@ -252,29 +271,18 @@ func (b *Builder) BuildTraceIDSubquery(q *spanstore.TraceQueryParameters, tInfo 
 
 	if len(tInfo.generalTags) > 0 {
 		var tagClause string
-		var tagNeedsEventTable bool
-		tagClause, params, tagNeedsEventTable = b.buildTagClauses(tInfo, params)
+		tagClause, params = b.buildTagClauses(q, tInfo, params)
 		clauses = append(clauses, tagClause)
-		needEventTable = needEventTable || tagNeedsEventTable
 	}
 	//todo check the inclusive semantics here
 	var defaultTime time.Time
 	if q.StartTimeMin != defaultTime {
 		params = append(params, q.StartTimeMin)
 		clauses = append(clauses, fmt.Sprintf(`s.start_time >= $%d`, len(params)))
-
-		if needEventTable {
-			params = append(params, q.StartTimeMin.Add(-b.cfg.MaxTraceDuration))
-			clauses = append(clauses, fmt.Sprintf(`e.time >= $%d`, len(params)))
-		}
 	}
 	if q.StartTimeMax != defaultTime {
 		params = append(params, q.StartTimeMax)
 		clauses = append(clauses, fmt.Sprintf(`s.start_time <= $%d`, len(params)))
-		if needEventTable {
-			params = append(params, q.StartTimeMax.Add(b.cfg.MaxTraceDuration))
-			clauses = append(clauses, fmt.Sprintf(`e.time <= $%d`, len(params)))
-		}
 	}
 
 	var defaultDuration time.Duration
@@ -305,14 +313,10 @@ func (b *Builder) BuildTraceIDSubquery(q *spanstore.TraceQueryParameters, tInfo 
 		clauseString = "TRUE"
 	}
 
-	eventJoin := ""
-	if needEventTable {
-		eventJoin = "INNER JOIN _ps_trace.event e ON(s.trace_id = e.trace_id AND s.span_id = e.span_id)"
-	}
 	params = append(params, b.cfg.MaxTraceDuration)
 	//Note: the parameter number for b.cfg.MaxTraceDuration is used in two places ($%[1]d in subqueryFormat)
 	//to both add and subtract from start_time_max.
-	query := fmt.Sprintf(subqueryFormat, len(params), eventJoin, clauseString)
+	query := fmt.Sprintf(subqueryFormat, len(params), clauseString)
 
 	if q.NumTraces != 0 {
 		query += fmt.Sprintf(" LIMIT %d", q.NumTraces)
