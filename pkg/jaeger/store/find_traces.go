@@ -74,6 +74,7 @@ func batchSliceToTraceSlice(bSlice []*model.Batch) []*model.Trace {
 			}
 			//copy over the process from the batch
 			span.Process = batch.Process
+			decodeSpanBinaryTags(span)
 			trace.Spans = append(trace.Spans, span)
 		}
 	}

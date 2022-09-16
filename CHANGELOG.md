@@ -31,6 +31,8 @@ We use the following categories for changes:
 - The `chunks_created` metrics was removed. [#1634]
 - Stop logging as an error grpc NotFound and Canceled status codes [#1645]
 - TimescaleDB is now mandatory [#1660].
+- When querying for Jaeger tags with binary values the binary data will be
+  returned instead of the base64 representation of the string [#1649].
 
 ### Fixed
 - Do not collect telemetry if `timescaledb.telemetry_level=off` [#1612]
