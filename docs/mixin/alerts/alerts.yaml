@@ -306,7 +306,7 @@ groups:
       severity: warning
     annotations:
       summary: Promscale maintenance jobs are not keeping up.
-      description: "The amount of work for the promscale maintenance jobs is not decreasing for long time."
+      description: "The amount of work for the promscale maintenance {{ $labels.name }} job is not decreasing for long time."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleMaintenanceJobRunningTooLong.md
   - alert: PromscaleMaintenanceJobFailures
     expr: promscale_sql_database_worker_maintenance_job_failed == 1
