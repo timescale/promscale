@@ -6,6 +6,8 @@ package store
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -48,7 +50,42 @@ func (p *Store) StreamingSpanWriter() spanstore.Writer {
 	return p
 }
 
+func encodeBinaryTagToStr(tag model.KeyValue) model.KeyValue {
+	value := fmt.Sprintf("__ValueType_BINARY__%s", base64.StdEncoding.EncodeToString(tag.GetVBinary()))
+	return model.KeyValue{
+		Key:   tag.Key,
+		VType: model.ValueType_STRING,
+		VStr:  value,
+	}
+}
+
+func encodeBinaryTags(span *model.Span) {
+	for i, tag := range span.Tags {
+		if tag.GetVType() != model.ValueType_BINARY {
+			continue
+		}
+		span.Tags[i] = encodeBinaryTagToStr(tag)
+	}
+
+	for _, log := range span.Logs {
+		for i, tag := range log.Fields {
+			if tag.GetVType() != model.ValueType_BINARY {
+				continue
+			}
+			log.Fields[i] = encodeBinaryTagToStr(tag)
+		}
+	}
+
+	for i, tag := range span.Process.Tags {
+		if tag.GetVType() != model.ValueType_BINARY {
+			continue
+		}
+		span.Process.Tags[i] = encodeBinaryTagToStr(tag)
+	}
+}
+
 func (p *Store) WriteSpan(ctx context.Context, span *model.Span) error {
+	encodeBinaryTags(span)
 	batches := []*model.Batch{
 		{
 			Spans: []*model.Span{span},

@@ -6,6 +6,7 @@ package store
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -55,7 +56,7 @@ type spanDBResult struct {
 	linksTags             pgtype.JSONBArray
 }
 
-func ScanRow(row pgxconn.PgxRows, traces *ptrace.Traces) error {
+func ScanRow(row pgxconn.PgxRows, traces *ptrace.Traces) (*spanBinaryTags, error) {
 	dbRes := spanDBResult{}
 
 	if err := row.Scan(
@@ -95,27 +96,44 @@ func ScanRow(row pgxconn.PgxRows, traces *ptrace.Traces) error {
 		&dbRes.linksDroppedTagsCount,
 		&dbRes.linksTags,
 	); err != nil {
-		return fmt.Errorf("scanning traces: %w", err)
+		return nil, fmt.Errorf("scanning traces: %w", err)
 	}
 
 	span := traces.ResourceSpans().AppendEmpty()
-	if err := populateSpan(span, &dbRes); err != nil {
-		return fmt.Errorf("populate span error: %w", err)
+	spanBinaryTags, err := populateSpan(span, &dbRes)
+	if err != nil {
+		return nil, fmt.Errorf("populate span error: %w", err)
 	}
 
-	return nil
+	return spanBinaryTags, nil
+}
+
+type spanBinaryTags struct {
+	spanID      int64
+	spanTags    map[string]string
+	logsTags    map[int]map[string]string
+	processTags map[string]string
+}
+
+func (t *spanBinaryTags) isEmpty() bool {
+	return len(t.spanTags) == 0 && len(t.logsTags) == 0 && len(t.processTags) == 0
 }
 
 func populateSpan(
 	// From span table.
 	resourceSpan ptrace.ResourceSpans,
-	dbResult *spanDBResult) error {
+	dbResult *spanDBResult) (*spanBinaryTags, error) {
 
-	attr, err := makeAttributes(dbResult.resourceTags)
+	binaryTags := &spanBinaryTags{
+		spanID: dbResult.spanId,
+	}
+
+	attr, processTags, err := makeAttributes(dbResult.resourceTags)
 	if err != nil {
-		return fmt.Errorf("making resource tags: %w", err)
+		return nil, fmt.Errorf("making resource tags: %w", err)
 	}
 	pcommon.NewMapFromRaw(attr).CopyTo(resourceSpan.Resource().Attributes())
+	binaryTags.processTags = processTags
 
 	instrumentationLibSpan := resourceSpan.ScopeSpans().AppendEmpty()
 	if dbResult.instLibSchemaUrl != nil {
@@ -136,7 +154,7 @@ func populateSpan(
 	// Type preprocessing.
 	traceId, err := makeTraceId(dbResult.traceId)
 	if err != nil {
-		return fmt.Errorf("makeTraceId: %w", err)
+		return nil, fmt.Errorf("makeTraceId: %w", err)
 	}
 	ref.SetTraceID(traceId)
 
@@ -146,7 +164,7 @@ func populateSpan(
 	// We use a pointer since parent id can be nil. If we use normal int64, we can get parsing errors.
 	var temp *int64
 	if err := dbResult.parentSpanId.AssignTo(&temp); err != nil {
-		return fmt.Errorf("assigning parent span id: %w", err)
+		return nil, fmt.Errorf("assigning parent span id: %w", err)
 	}
 	parentId := makeSpanId(temp)
 	ref.SetParentSpanID(parentId)
@@ -173,26 +191,30 @@ func populateSpan(
 	ref.SetDroppedLinksCount(uint32(dbResult.droppedLinkCounts))
 
 	if err = setStatus(ref, dbResult); err != nil {
-		return fmt.Errorf("set status: %w", err)
+		return nil, fmt.Errorf("set status: %w", err)
 	}
 
-	attr, err = makeAttributes(dbResult.spanTags)
+	var spanBinaryTags map[string]string
+	attr, spanBinaryTags, err = makeAttributes(dbResult.spanTags)
 	if err != nil {
-		return fmt.Errorf("making span tags: %w", err)
+		return nil, fmt.Errorf("making span tags: %w", err)
 	}
+	binaryTags.spanTags = spanBinaryTags
 	pcommon.NewMapFromRaw(attr).CopyTo(ref.Attributes())
 
 	if dbResult.eventNames != nil {
-		if err := populateEvents(ref.Events(), dbResult); err != nil {
-			return fmt.Errorf("populate events error: %w", err)
+		logsTags, err := populateEvents(ref.Events(), dbResult)
+		if err != nil {
+			return nil, fmt.Errorf("populate events error: %w", err)
 		}
+		binaryTags.logsTags = logsTags
 	}
 	if dbResult.linksLinkedSpanIds != nil {
 		if err := populateLinks(ref.Links(), dbResult); err != nil {
-			return fmt.Errorf("populate links error: %w", err)
+			return nil, fmt.Errorf("populate links error: %w", err)
 		}
 	}
-	return nil
+	return binaryTags, nil
 }
 
 func setStatus(ref ptrace.Span, dbRes *spanDBResult) error {
@@ -208,21 +230,23 @@ func setStatus(ref ptrace.Span, dbRes *spanDBResult) error {
 
 func populateEvents(
 	spanEventSlice ptrace.SpanEventSlice,
-	dbResult *spanDBResult) error {
+	dbResult *spanDBResult) (map[int]map[string]string, error) {
 
+	binaryTagsPerLog := map[int]map[string]string{}
 	n := len(*dbResult.eventNames)
 	for i := 0; i < n; i++ {
 		event := spanEventSlice.AppendEmpty()
 		event.SetName((*dbResult.eventNames)[i])
 		event.SetTimestamp(pcommon.NewTimestampFromTime((*dbResult.eventTimes)[i]))
 		event.SetDroppedAttributesCount(uint32((*dbResult.eventDroppedTagsCount)[i]))
-		attr, err := makeAttributes(dbResult.eventTags.Elements[i])
+		attr, binaryTags, err := makeAttributes(dbResult.eventTags.Elements[i])
+		binaryTagsPerLog[i] = binaryTags
 		if err != nil {
-			return fmt.Errorf("making event tags: %w", err)
+			return binaryTagsPerLog, fmt.Errorf("making event tags: %w", err)
 		}
 		pcommon.NewMapFromRaw(attr).CopyTo(event.Attributes())
 	}
-	return nil
+	return binaryTagsPerLog, nil
 }
 
 func populateLinks(
@@ -249,7 +273,7 @@ func populateLinks(
 			link.SetTraceState(ptrace.TraceState(traceState))
 		}
 		link.SetDroppedAttributesCount(uint32((*dbResult.linksDroppedTagsCount)[i]))
-		attr, err := makeAttributes(dbResult.linksTags.Elements[i])
+		attr, _, err := makeAttributes(dbResult.linksTags.Elements[i])
 		if err != nil {
 			return fmt.Errorf("making link tags: %w", err)
 		}
@@ -259,26 +283,35 @@ func populateLinks(
 }
 
 // makeAttributes makes raw attribute map using tags.
-func makeAttributes(tagsJson pgtype.JSONB) (map[string]interface{}, error) {
+func makeAttributes(tagsJson pgtype.JSONB) (map[string]interface{}, map[string]string, error) {
 	var tags map[string]interface{}
 	if err := tagsJson.AssignTo(&tags); err != nil {
-		return map[string]interface{}{}, fmt.Errorf("tags assign to: %w", err)
+		return map[string]interface{}{}, map[string]string{}, fmt.Errorf("tags assign to: %w", err)
 	}
-	tags = sanitizeInt(tags)
-	return tags, nil
+	var binaryTags map[string]string
+	tags, binaryTags = sanitizeVal(tags)
+	return tags, binaryTags, nil
 }
 
-// Hotfix of potential bug: Postgres returns tags as a JSONB map. In this format,
 // integers were being returned as float. Hence, this function converts back to integer.
-func sanitizeInt(tags map[string]interface{}) map[string]interface{} {
+func sanitizeVal(tags map[string]interface{}) (map[string]interface{}, map[string]string) {
+	binaryTags := map[string]string{}
 	for k, v := range tags {
 		if val, isFloat := v.(float64); isFloat {
 			if isIntegral(val) {
 				tags[k] = int64(val)
 			}
+			continue
+		}
+		if val, isStr := v.(string); isStr {
+			if strings.HasPrefix(val, "__ValueType_BINARY__") {
+				originalEncodedVal := val[len("__ValueType_BINARY__"):]
+				tags[k] = originalEncodedVal
+				binaryTags[k] = originalEncodedVal
+			}
 		}
 	}
-	return tags
+	return tags, binaryTags
 }
 
 func isIntegral(val float64) bool {

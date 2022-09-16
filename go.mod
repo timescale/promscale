@@ -5,6 +5,7 @@ go 1.17
 require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/blang/semver/v4 v4.0.0
+	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/containerd/cgroups v1.0.4
 	github.com/dekobon/distro-detect v0.0.0-20201122001546-5f5b9c724b9d
 	github.com/docker/go-connections v0.4.0
@@ -24,6 +25,7 @@ require (
 	github.com/jackc/pgtype v1.12.0
 	github.com/jackc/pgx/v4 v4.17.0
 	github.com/jaegertracing/jaeger v1.36.0
+	github.com/kr/pretty v0.3.0
 	github.com/oklog/run v1.1.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger v0.56.0
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
@@ -36,6 +38,7 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20220308163432-03831554a519
 	github.com/sergi/go-diff v1.2.0
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
+	github.com/spyzhov/ajson v0.7.1
 	github.com/stretchr/testify v1.8.0
 	github.com/testcontainers/testcontainers-go v0.13.0
 	github.com/thanos-io/thanos v0.26.0
@@ -69,7 +72,6 @@ require (
 	github.com/aws/aws-sdk-go v1.44.20 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
-	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/cilium/ebpf v0.6.2 // indirect
 	github.com/containerd/containerd v1.5.9 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
@@ -127,6 +129,7 @@ require (
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.12 // indirect
@@ -156,6 +159,7 @@ require (
 	github.com/prometheus/common/sigv4 v0.1.0 // indirect
 	github.com/prometheus/exporter-toolkit v0.7.1 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
+	github.com/rogpeppe/go-internal v1.6.2 // indirect
 	github.com/rs/cors v1.8.2 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749 // indirect
@@ -167,7 +171,6 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/spf13/viper v1.12.0 // indirect
-	github.com/spyzhov/ajson v0.7.1 // indirect
 	github.com/subosito/gotenv v1.3.0 // indirect
 	github.com/uber/jaeger-client-go v2.30.0+incompatible // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect

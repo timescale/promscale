@@ -6,6 +6,7 @@ package store
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 
 	"github.com/jaegertracing/jaeger/model"
@@ -36,12 +37,18 @@ func findTraces(ctx context.Context, builder *Builder, conn pgxconn.PgxConn, q *
 
 func scanTraces(rows pgxconn.PgxRows) ([]*model.Trace, error) {
 	traces := ptrace.NewTraces()
+	spansBinaryTags := map[int64]*spanBinaryTags{}
 	for rows.Next() {
 		if rows.Err() != nil {
 			return nil, fmt.Errorf("trace row iterator: %w", rows.Err())
 		}
-		if err := ScanRow(rows, &traces); err != nil {
+		var err error
+		spanBinaryTags, err := ScanRow(rows, &traces)
+		if err != nil {
 			return nil, fmt.Errorf("error scanning trace: %w", err)
+		}
+		if !spanBinaryTags.isEmpty() {
+			spansBinaryTags[spanBinaryTags.spanID] = spanBinaryTags
 		}
 
 	}
@@ -54,10 +61,10 @@ func scanTraces(rows pgxconn.PgxRows) ([]*model.Trace, error) {
 		return nil, fmt.Errorf("internal-traces-to-jaeger-proto: %w", err)
 	}
 
-	return batchSliceToTraceSlice(batch), nil
+	return batchSliceToTraceSlice(batch, spansBinaryTags), nil
 }
 
-func batchSliceToTraceSlice(bSlice []*model.Batch) []*model.Trace {
+func batchSliceToTraceSlice(bSlice []*model.Batch, spansWithBinaryTag map[int64]*spanBinaryTags) []*model.Trace {
 	// Mostly Copied from Jaeger's grpc_client.go
 	// https://github.com/jaegertracing/jaeger/blob/067dff713ab635ade66315bbd05518d7b28f40c6/plugin/storage/grpc/shared/grpc_client.go#L179
 	traces := make([]*model.Trace, 0)
@@ -74,8 +81,50 @@ func batchSliceToTraceSlice(bSlice []*model.Batch) []*model.Trace {
 			}
 			//copy over the process from the batch
 			span.Process = batch.Process
+			if binaryTags, ok := spansWithBinaryTag[int64(span.SpanID)]; ok {
+				decodeBinaryTags(span, binaryTags)
+			}
 			trace.Spans = append(trace.Spans, span)
 		}
 	}
 	return traces
+}
+
+func decodeBinaryTags(span *model.Span, binaryTags *spanBinaryTags) {
+	if len(binaryTags.spanTags) != 0 {
+		doDecodeBinaryTags(span.Tags, binaryTags.spanTags)
+	}
+
+	if len(binaryTags.processTags) != 0 {
+		doDecodeBinaryTags(span.Process.Tags, binaryTags.processTags)
+	}
+
+	if len(binaryTags.logsTags) != 0 {
+		for i, logsTags := range binaryTags.logsTags {
+			doDecodeBinaryTags(span.Logs[i].Fields, logsTags)
+		}
+	}
+}
+
+func doDecodeBinaryTags(actualTags []model.KeyValue, binaryTags map[string]string) {
+	for i, tag := range actualTags {
+		if tag.GetVType() != model.ValueType_STRING {
+			continue
+		}
+		strV, ok := binaryTags[tag.Key]
+		if !ok || strV != tag.VStr {
+			continue
+		}
+		vBin, err := base64.StdEncoding.DecodeString(tag.VStr)
+		// If we can't decode it means that we didn't encode it in the
+		// first place, so we should keep it as is.
+		if err != nil {
+			continue
+		}
+		actualTags[i] = model.KeyValue{
+			Key:     tag.Key,
+			VType:   model.ValueType_BINARY,
+			VBinary: vBin,
+		}
+	}
 }
