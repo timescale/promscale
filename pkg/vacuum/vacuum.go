@@ -14,7 +14,7 @@ import (
 
 const (
 	sqlStart            = "SELECT pg_try_advisory_lock(1982010619820106)"
-	sqlListChunks       = "SELECT format('%I.%I', schema_name, table_name) from _ps_catalog.chunks_to_vacuum_freeze LIMIT 1000"
+	sqlListChunks       = "SELECT format('%I.%I', schema_name, table_name) from _ps_catalog.chunks_to_freeze LIMIT 1000"
 	sqlVacuumFmt        = "VACUUM (FREEZE, ANALYZE) %s"
 	sqlStop             = "SELECT pg_advisory_unlock(1982010619820106)"
 	delay               = 10 * time.Second
@@ -101,7 +101,6 @@ func every(every time.Duration, task func()) (execute, kill func()) {
 	kill = func() {
 		once.Do(func() {
 			ticker.Stop()
-			die <- struct{}{}
 			close(die)
 		})
 	}
