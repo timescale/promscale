@@ -10,19 +10,14 @@ import (
 )
 
 type batchVisitor struct {
-	batch       *Batch
-	lowestEpoch SeriesEpoch
-	minTime     int64
+	batch   *Batch
+	minTime int64
 }
+
+var MaxDate int64 = math.MaxInt64
 
 func getBatchVisitor(batch *Batch) *batchVisitor {
-	return &batchVisitor{batch, SeriesEpoch(math.MaxInt64), math.MaxInt64}
-}
-
-// LowestEpoch returns the lowest epoch value encountered while visiting insertables.
-// It must be called after Visit() has completed.
-func (vtr *batchVisitor) LowestEpoch() SeriesEpoch {
-	return vtr.lowestEpoch
+	return &batchVisitor{batch, math.MaxInt64}
 }
 
 func (vtr *batchVisitor) MinTime() int64 {
@@ -34,27 +29,19 @@ func (vtr *batchVisitor) Visit(
 	visitExemplars func(t time.Time, v float64, seriesId int64, lvalues []string),
 ) error {
 	var (
-		seriesId    SeriesID
-		seriesEpoch SeriesEpoch
-		err         error
+		seriesId SeriesID
+		err      error
 	)
-	updateEpoch := func(epoch SeriesEpoch) {
-		if epoch < vtr.lowestEpoch {
-			vtr.lowestEpoch = epoch
-		}
-	}
 	for _, insertable := range vtr.batch.data {
 		updateMinTs := func(t int64) {
 			if t < vtr.minTime {
 				vtr.minTime = t
 			}
 		}
-		seriesId, seriesEpoch, err = insertable.Series().GetSeriesID()
+		seriesId, err = insertable.Series().GetSeriesID()
 		if err != nil {
 			return fmt.Errorf("get series-id: %w", err)
 		}
-
-		updateEpoch(seriesEpoch)
 
 		switch insertable.Type() {
 		case Sample:

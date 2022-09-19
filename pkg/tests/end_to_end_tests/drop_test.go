@@ -659,7 +659,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 			t.Error("expected ingest to fail due to old epoch")
 		}
 
-		scache.Reset()
+		scache.Reset(pgmodel.SeriesEpoch(time.Now().Unix()))
 
 		ingestor.Close()
 		ingestor2, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)

@@ -88,6 +88,7 @@ PROMSCALE_DB_PASSWORD=postgres \
 PROMSCALE_DB_NAME=postgres \
 PROMSCALE_DB_SSL_MODE=disable \
 PROMSCALE_WEB_TELEMETRY_PATH=/metrics \
+PROMSCALE_STARTUP_UPGRADE_PRERELEASE_EXTENSIONS=true \
 ./promscale -startup.only
 
 docker exec e2e-tsdb psql -U postgres -d postgres \

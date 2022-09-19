@@ -5,12 +5,11 @@
 package ingestor
 
 import (
-	"testing"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"testing"
 )
 
 func getSeries(t *testing.T, scache *cache.SeriesCacheImpl, labels labels.Labels) *model.Series {
@@ -74,7 +73,7 @@ func TestLabelArrayCreator(t *testing.T) {
 
 	/* test one series already set */
 	setSeries := getSeries(t, scache, labels.Labels{metricNameLabel, valTwo})
-	setSeries.SetSeriesID(5, 4)
+	setSeries.SetSeriesID(5)
 	seriesSet = []*model.Series{
 		getSeries(t, scache, labels.Labels{metricNameLabel, valOne}),
 		setSeries,
