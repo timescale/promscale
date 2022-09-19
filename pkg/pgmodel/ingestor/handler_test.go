@@ -6,6 +6,7 @@ package ingestor
 
 import (
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -74,7 +75,7 @@ func TestLabelArrayCreator(t *testing.T) {
 
 	/* test one series already set */
 	setSeries := getSeries(t, scache, labels.Labels{metricNameLabel, valTwo})
-	setSeries.SetSeriesID(5, 4)
+	setSeries.SetSeriesID(5, model.NewSeriesEpoch(time.Now()))
 	seriesSet = []*model.Series{
 		getSeries(t, scache, labels.Labels{metricNameLabel, valOne}),
 		setSeries,

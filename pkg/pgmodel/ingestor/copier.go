@@ -348,7 +348,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 	var sampleRows [][]interface{}
 	var exemplarRows [][]interface{}
 	insertStart := time.Now()
-	lowestEpoch := pgmodel.SeriesEpoch(math.MaxInt64)
+	lowestEpoch := pgmodel.NewSeriesEpoch(pgmodel.MaxDate)
 	lowestMinTime := int64(math.MaxInt64)
 	tx, err := conn.BeginTx(ctx)
 	if err != nil {
@@ -410,7 +410,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 			return err, lowestMinTime
 		}
 		epoch := visitor.LowestEpoch()
-		if epoch < lowestEpoch {
+		if lowestEpoch.After(epoch) {
 			lowestEpoch = epoch
 		}
 		minTime := visitor.MinTime()
@@ -475,7 +475,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 	//thus we don't need row locking here. Note by doing this check at the end we can
 	//have some wasted work for the inserts before this fails but this is rare.
 	//avoiding an additional loop or memoization to find the lowest epoch ahead of time seems worth it.
-	row := tx.QueryRow(ctx, "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1", int64(lowestEpoch))
+	row := tx.QueryRow(ctx, "SELECT CASE $1::TIMESTAMPTZ <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.global_epoch LIMIT 1", lowestEpoch.Time())
 	var val []byte
 	if err = row.Scan(&val); err != nil {
 		return err, lowestMinTime
