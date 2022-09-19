@@ -24,6 +24,7 @@ We use the following categories for changes:
 - Enable tracing.async-acks by default [#1633].
 - Sizes of maintenance worker backlogs exposed as database metrics on the Promscale dashboard [#1634]
 - Added a vacuum engine that detects and vacuums/freezes compressed chunks [#1648]
+- Add pool of database connections for maintenance jobs e.g. telemetry [#1657]
 
 ### Changed
 - Log throughput in the same line for samples, spans and metric metadata [#1643]

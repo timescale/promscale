@@ -362,8 +362,9 @@ func TestPromQLBasedTelemetry(t *testing.T) {
 				SslMode:        "allow",
 				MaxConnections: -1,
 				CacheConfig:    cache.DefaultConfig,
-				WriterPoolSize: 2,
-				ReaderPoolSize: 2,
+				WriterPoolSize: pgclient.MinPoolSize,
+				ReaderPoolSize: pgclient.MinPoolSize,
+				MaintPoolSize:  pgclient.MinPoolSize,
 			},
 		}
 		defer conn.Release()
