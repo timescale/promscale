@@ -87,12 +87,6 @@ var metrics = []metricQueryWrap{
 			prometheus.GaugeOpts{
 				Namespace: util.PromNamespace,
 				Subsystem: "sql_database",
-				Name:      "chunks_created",
-				Help:      "Total number of chunks created since creation of database.",
-			},
-			prometheus.GaugeOpts{
-				Namespace: util.PromNamespace,
-				Subsystem: "sql_database",
 				Name:      "chunks_compressed_count",
 				Help:      "Total number of compressed chunks in TimescaleDB currently.",
 			},
@@ -100,7 +94,6 @@ var metrics = []metricQueryWrap{
 		// Compressed_chunk_id is null for both yet to be compressed and already compressed chunks.
 		query: `SELECT 
 				count(*) FILTER (WHERE dropped=false AND compressed_chunk_id IS NULL)::BIGINT AS chunks_count,
-				count(*) FILTER (WHERE compressed_chunk_id IS NULL)::BIGINT AS chunks_created,
 				count(*) FILTER (WHERE dropped=false AND compressed_chunk_id IS NOT NULL)::BIGINT AS chunks_compressed_count
 			FROM _timescaledb_catalog.chunk`,
 	}, {

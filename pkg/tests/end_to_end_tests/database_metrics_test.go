@@ -33,8 +33,6 @@ func TestDatabaseMetrics(t *testing.T) {
 		require.Equal(t, float64(0), compressionStatus)
 		numMaintenanceJobs := getMetricValue(t, "worker_maintenance_job")
 		require.Equal(t, float64(0), numMaintenanceJobs)
-		chunksCreated := getMetricValue(t, "chunks_created")
-		require.Equal(t, float64(0), chunksCreated)
 		chunksCount := getMetricValue(t, "chunks_count")
 		require.Equal(t, float64(0), chunksCount)
 		chunksCompressedCount := getMetricValue(t, "chunks_compressed_count")
@@ -56,8 +54,6 @@ func TestDatabaseMetrics(t *testing.T) {
 		require.Equal(t, float64(1), compressionStatus)
 		numMaintenanceJobs = getMetricValue(t, "worker_maintenance_job")
 		require.Equal(t, float64(2), numMaintenanceJobs)
-		chunksCreated = getMetricValue(t, "chunks_created")
-		require.Equal(t, float64(0), chunksCreated)
 		chunksCount = getMetricValue(t, "chunks_count")
 		require.Equal(t, float64(0), chunksCount)
 		chunksCompressedCount = getMetricValue(t, "chunks_compressed_count")
@@ -81,8 +77,6 @@ func TestDatabaseMetrics(t *testing.T) {
 		// Update the metrics again.
 		require.NoError(t, dbMetrics.Update())
 
-		chunksCreated = getMetricValue(t, "chunks_created")
-		require.Equal(t, float64(3), chunksCreated)
 		chunksCount = getMetricValue(t, "chunks_count")
 		require.Equal(t, float64(3), chunksCount)
 		chunksCompressedCount = getMetricValue(t, "chunks_compressed_count")
@@ -126,8 +120,6 @@ func TestDatabaseMetricsAfterCompression(t *testing.T) {
 		require.Equal(t, float64(1), compressionStatus)
 		numMaintenanceJobs := getMetricValue(t, "worker_maintenance_job")
 		require.Equal(t, float64(2), numMaintenanceJobs)
-		chunksCreated := getMetricValue(t, "chunks_created")
-		require.Equal(t, float64(2), chunksCreated)
 		chunksCount := getMetricValue(t, "chunks_count")
 		require.Equal(t, float64(2), chunksCount)
 		chunksCompressedCount := getMetricValue(t, "chunks_compressed_count")
@@ -146,8 +138,6 @@ func TestDatabaseMetricsAfterCompression(t *testing.T) {
 
 		// Update the metrics after compression.
 		require.NoError(t, dbMetrics.Update())
-		chunksCreated = getMetricValue(t, "chunks_created")
-		require.Equal(t, float64(2), chunksCreated)
 		chunksCount = getMetricValue(t, "chunks_count")
 		require.Equal(t, float64(2), chunksCount)
 		chunksCompressedCount = getMetricValue(t, "chunks_compressed_count")
