@@ -175,7 +175,6 @@ type pgxSeriesIterator struct {
 
 // newIterator returns an iterator over the samples. It expects times and values to be the same length.
 func newIterator(times TimestampSeries, values *pgtype.Float8Array) *pgxSeriesIterator {
-	fmt.Println("totalSamples", times.Len())
 	return &pgxSeriesIterator{
 		cur:          -1,
 		totalSamples: times.Len(),

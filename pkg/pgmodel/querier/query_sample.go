@@ -17,27 +17,24 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/querier/rollup"
 )
 
 type querySamples struct {
 	*pgxQuerier
-	rollup *rollupDecider
+	r *rollup.Manager
 }
 
 func newQuerySamples(qr *pgxQuerier) *querySamples {
-	rollup := &rollupDecider{
-		conn: qr.tools.conn,
-	}
-	go rollup.refresh()
 	return &querySamples{
 		pgxQuerier: qr,
-		rollup:     rollup,
+		r:          rollup.NewManager(qr.tools.conn),
 	}
 }
 
 // Select implements the SamplesQuerier interface. It is the entry point for our
 // own version of the Prometheus engine.
-func (q *querySamples) Select(mint, maxt int64, _ bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (seriesSet SeriesSet, node parser.Node, rollupCfg *RollupConfig) {
+func (q *querySamples) Select(mint, maxt int64, _ bool, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms ...*labels.Matcher) (seriesSet SeriesSet, node parser.Node, rollupCfg *rollup.Config) {
 	sampleRows, topNode, rollupCfg, err := q.fetchSamplesRows(mint, maxt, hints, qh, path, ms)
 	if err != nil {
 		return errorSeriesSet{err: err}, nil, nil
@@ -46,7 +43,7 @@ func (q *querySamples) Select(mint, maxt int64, _ bool, hints *storage.SelectHin
 	return responseSeriesSet, topNode, rollupCfg
 }
 
-func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms []*labels.Matcher) (rows []sampleRow, topNode parser.Node, cfg *RollupConfig, err error) {
+func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectHints, qh *QueryHints, path []parser.Node, ms []*labels.Matcher) (rows []sampleRow, topNode parser.Node, cfg *rollup.Config, err error) {
 	metadata, err := getEvaluationMetadata(q.tools, mint, maxt, GetPromQLMetadata(ms, hints, qh, path))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("get evaluation metadata: %w", err)
@@ -54,10 +51,10 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 
 	filter := &metadata.timeFilter
 
-	rollupConfig := q.rollup.decide(mint/1000, maxt/1000, filter.metric)
+	rollupConfig := q.r.Decide(mint/1000, maxt/1000, filter.metric)
 	if rollupConfig != nil {
 		// Use metric rollups.
-		fmt.Println("schema name", rollupConfig.schemaName)
+		fmt.Println("schema name", rollupConfig.SchemaName())
 		if filter.schema == model.SchemaNameLabelName {
 			// The query belongs to custom Caggs. We need to warn the user that this query will be treated as
 			// general automatic downsampled query. That's the most we can do.
@@ -66,7 +63,7 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 			filter.schema = ""
 			filter.column = ""
 		}
-		metadata.RollupConfig = rollupConfig
+		metadata.rollupConfig = rollupConfig
 	}
 
 	if metadata.isSingleMetric {
@@ -87,14 +84,14 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 			return nil, nil, nil, err
 		}
 
-		return sampleRows, topNode, metadata.RollupConfig, nil
+		return sampleRows, topNode, metadata.rollupConfig, nil
 	}
 	// Multiple vector selector case.
 	sampleRows, err := fetchMultipleMetricsSamples(q.tools, metadata)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return sampleRows, nil, metadata.RollupConfig, nil
+	return sampleRows, nil, metadata.rollupConfig, nil
 }
 
 // fetchSingleMetricSamples returns all the result rows for a single metric
@@ -103,7 +100,7 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 // successfully applied, the new top node is returned together with the metric
 // rows. For more information about top nodes, see `engine.populateSeries`.
 func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]sampleRow, parser.Node, error) {
-	sqlQuery, values, topNode, tsSeries, err := buildSingleMetricSamplesQuery(metadata)
+	sqlQuery, values, topNode, tsSeries, valueWithoutAgg, err := buildSingleMetricSamplesQuery(metadata)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -137,7 +134,7 @@ func fetchSingleMetricSamples(tools *queryTools, metadata *evalMetadata) ([]samp
 	}
 
 	filter := metadata.timeFilter
-	samplesRows, err := appendSampleRows(make([]sampleRow, 0, 1), rows, tsSeries, updatedMetricName, filter.schema, filter.column)
+	samplesRows, err := appendSampleRows(make([]sampleRow, 0, 1), rows, tsSeries, updatedMetricName, filter.schema, filter.column, valueWithoutAgg)
 	if err != nil {
 		return nil, topNode, fmt.Errorf("appending sample rows: %w", err)
 	}
@@ -205,7 +202,7 @@ func fetchMultipleMetricsSamples(tools *queryTools, metadata *evalMetadata) ([]s
 			return nil, err
 		}
 		// Append all rows into results.
-		results, err = appendSampleRows(results, rows, nil, "", "", "")
+		results, err = appendSampleRows(results, rows, nil, "", "", "", false)
 		rows.Close()
 		if err != nil {
 			rows.Close()

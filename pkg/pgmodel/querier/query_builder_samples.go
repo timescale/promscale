@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/querier/rollup"
 )
 
 const (
@@ -107,7 +108,7 @@ const (
 
 // buildSingleMetricSamplesQuery builds a SQL query which fetches the data for
 // one metric.
-func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{}, parser.Node, TimestampSeries, error) {
+func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{}, parser.Node, TimestampSeries, bool, error) {
 	// The basic structure of the SQL query which this function produces is:
 	//		SELECT
 	//		  series.labels
@@ -131,7 +132,23 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 	// When pushdowns are available, the <array_aggregator> is a pushdown
 	// function which the promscale extension provides.
 
-	qf, node := getAggregators(metadata.promqlMetadata, metadata.RollupConfig != nil)
+	// TODO NEXT: Instant query with max_over_time(), min_over_time()
+
+	qf, node := getAggregators(metadata.promqlMetadata, metadata.rollupConfig != nil)
+
+	var (
+		rollupOptimizer          *rollup.SqlOptimizer
+		useInstantQueryOptimizer bool
+		grandparent              parser.Node
+	)
+	if metadata.rollupConfig != nil {
+		path := metadata.promqlMetadata.path
+		if len(path) >= 2 {
+			grandparent = path[len(path)-2]
+			rollupOptimizer = metadata.rollupConfig.SupportsFunctionalOptimization(grandparent, metadata.metric)
+			useInstantQueryOptimizer = rollupOptimizer != nil && metadata.queryHints.IsInstantQuery
+		}
+	}
 
 	var selectors, selectorClauses []string
 	values := metadata.values
@@ -141,17 +158,30 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		var err error
 		timeClauseBound, values, err = setParameterNumbers(qf.timeClause, values, qf.timeParams...)
 		if err != nil {
-			return "", nil, nil, nil, err
+			return "", nil, nil, nil, false, err
 		}
 		selectors = append(selectors, "result.time_array")
-		selectorClauses = append(selectorClauses, timeClauseBound+" as time_array")
+
+		if useInstantQueryOptimizer {
+			selectorClauses = append(selectorClauses, " current_timestamp::timestamptz as time_array")
+			node = grandparent // Send the optimization as top node so that evaluator in PromQL engine does not reevaluate.
+		} else {
+			selectorClauses = append(selectorClauses, timeClauseBound+" as time_array")
+		}
 	}
 	valueClauseBound, values, err := setParameterNumbers(qf.valueClause, values, qf.valueParams...)
 	if err != nil {
-		return "", nil, nil, nil, err
+		return "", nil, nil, nil, false, err
 	}
 	selectors = append(selectors, "result.value_array")
-	selectorClauses = append(selectorClauses, valueClauseBound+" as value_array")
+	valueWithoutAggregation := false
+
+	if useInstantQueryOptimizer {
+		selectorClauses = append(selectorClauses, rollupOptimizer.InstantQueryAgg()+" as value_array")
+		valueWithoutAggregation = true
+	} else {
+		selectorClauses = append(selectorClauses, valueClauseBound+" as value_array")
+	}
 
 	orderByClause := "ORDER BY time"
 	if qf.unOrdered {
@@ -218,10 +248,13 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 	}
 
 	samplesSchema, column := filter.schema, filter.column
-	if metadata.RollupConfig != nil {
+	if metadata.rollupConfig != nil {
 		// Use rollups.
-		samplesSchema = metadata.RollupConfig.schemaName
-		column = metadata.RollupConfig.columnClause
+		samplesSchema = metadata.rollupConfig.SchemaName()
+		column = metadata.rollupConfig.ColumnClause()
+		if rollupOptimizer != nil {
+			column = rollupOptimizer.ColumnName()
+		}
 	}
 
 	finalSQL := fmt.Sprintf(template,
@@ -235,8 +268,7 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		orderByClause,
 		column,
 	)
-
-	return finalSQL, values, node, qf.tsSeries, nil
+	return finalSQL, values, node, qf.tsSeries, valueWithoutAggregation, nil
 }
 
 func buildMultipleMetricSamplesQuery(filter timeFilter, series []pgmodel.SeriesID) (string, error) {

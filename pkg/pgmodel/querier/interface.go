@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/querier/rollup"
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -44,7 +45,7 @@ type RemoteReadQuerier interface {
 // matching samples.
 type SamplesQuerier interface {
 	// Select returns a series set containing the exemplar that matches the supplied query parameters.
-	Select(mint, maxt int64, sortSeries bool, hints *storage.SelectHints, queryHints *QueryHints, path []parser.Node, ms ...*labels.Matcher) (SeriesSet, parser.Node, *RollupConfig)
+	Select(mint, maxt int64, sortSeries bool, hints *storage.SelectHints, queryHints *QueryHints, path []parser.Node, ms ...*labels.Matcher) (SeriesSet, parser.Node, *rollup.Config)
 }
 
 // ExemplarQuerier queries data using the provided query data and returns the

@@ -164,7 +164,7 @@ func (r *sampleRow) GetAdditionalLabels() (ll labels.Labels) {
 
 // appendSampleRows adds new results rows to already existing result rows and
 // returns the as a result.
-func appendSampleRows(out []sampleRow, in pgxconn.PgxRows, tsSeries TimestampSeries, metric, schema, column string) ([]sampleRow, error) {
+func appendSampleRows(out []sampleRow, in pgxconn.PgxRows, tsSeries TimestampSeries, metric, schema, column string, valueWithoutAgg bool) ([]sampleRow, error) {
 	if in.Err() != nil {
 		return out, in.Err()
 	}
@@ -179,7 +179,17 @@ func appendSampleRows(out []sampleRow, in pgxconn.PgxRows, tsSeries TimestampSer
 			times := tPool.Get().(*pgtype.TimestamptzArray)
 			times.Elements = times.Elements[:0]
 			timesWrapper := timestamptzArrayWrapper{times}
-			row.err = in.Scan(&row.labelIds, &timesWrapper, &valuesWrapper)
+			if valueWithoutAgg {
+				var (
+					flt pgtype.Float8
+					ts  pgtype.Timestamptz
+				)
+				row.err = in.Scan(&row.labelIds, &ts, &flt)
+				timesWrapper.Elements = []pgtype.Timestamptz{ts}
+				valuesWrapper.Elements = []pgtype.Float8{flt}
+			} else {
+				row.err = in.Scan(&row.labelIds, &timesWrapper, &valuesWrapper)
+			}
 			row.timeArrayOwnership = times
 			row.times = newRowTimestampSeries(times)
 		} else {

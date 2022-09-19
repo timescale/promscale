@@ -249,7 +249,6 @@ type aggregators struct {
 // getAggregators returns the aggregator which should be used to fetch data for
 // a single metric. It may apply pushdowns to functions.
 func getAggregators(metadata *promqlMetadata, usingRollup bool) (*aggregators, parser.Node) {
-
 	if !usingRollup {
 		agg, node, err := tryPushDown(metadata)
 		if err != nil {
@@ -258,6 +257,11 @@ func getAggregators(metadata *promqlMetadata, usingRollup bool) (*aggregators, p
 			return agg, node
 		}
 	}
+
+	//fmt.Println("start", metadata.selectHints.Start)
+	//fmt.Println("end", metadata.selectHints.End)
+	//fmt.Println("range", metadata.selectHints.Range)
+	//fmt.Println("end - start in mins", (metadata.selectHints.End-metadata.selectHints.Start)/(1000*60))
 
 	defaultAggregators := &aggregators{
 		timeClause:  "array_agg(time)",

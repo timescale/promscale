@@ -45,6 +45,7 @@ import (
 	"github.com/prometheus/prometheus/util/stats"
 
 	pgquerier "github.com/timescale/promscale/pkg/pgmodel/querier"
+	"github.com/timescale/promscale/pkg/pgmodel/querier/rollup"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -73,7 +74,7 @@ type SamplesQuerier interface {
 	// Select returns a set of series that matches the given label matchers.
 	// Caller can specify if it requires returned series to be sorted. Prefer not requiring sorting for better performance.
 	// It allows passing hints that can help in optimising select, but it's up to implementation how this is used if used at all.
-	Select(sortSeries bool, hints *storage.SelectHints, qh *pgquerier.QueryHints, nodes []parser.Node, matchers ...*labels.Matcher) (seriesSet storage.SeriesSet, topNode parser.Node, cfg *pgquerier.RollupConfig)
+	Select(sortSeries bool, hints *storage.SelectHints, qh *pgquerier.QueryHints, nodes []parser.Node, matchers ...*labels.Matcher) (seriesSet storage.SeriesSet, topNode parser.Node, cfg *rollup.Config)
 }
 
 const (
@@ -648,7 +649,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 	}
 	defer querier.Close()
 
-	topNodes, rollupInterval := ng.populateSeries(querier, s)
+	topNodes, rollupInterval := ng.populateSeries(querier, s, s.Start == s.End)
 	prepareSpanTimer.Finish()
 
 	// Modify the offset of vector and matrix selectors for the @ modifier
@@ -879,7 +880,7 @@ func (ng *Engine) getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorS
 // evaluation. These terminal nodes are called "top nodes".
 //
 // populateSeries returns a map keyed by all top nodes.
-func (ng *Engine) populateSeries(querier SamplesQuerier, evalStmt *parser.EvalStmt) (topNodes map[parser.Node]struct{}, rollupInterval time.Duration) {
+func (ng *Engine) populateSeries(querier SamplesQuerier, evalStmt *parser.EvalStmt, isInstantQuery bool) (topNodes map[parser.Node]struct{}, rollupInterval time.Duration) {
 	// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 	// The evaluation of the VectorSelector inside then evaluates the given range and unsets
 	// the variable.
@@ -900,8 +901,9 @@ func (ng *Engine) populateSeries(querier SamplesQuerier, evalStmt *parser.EvalSt
 			}
 
 			qh = &pgquerier.QueryHints{
-				CurrentNode: n,
-				Lookback:    ng.lookbackDelta,
+				CurrentNode:    n,
+				Lookback:       ng.lookbackDelta,
+				IsInstantQuery: isInstantQuery,
 			}
 			evalRange = 0
 			hints.By, hints.Grouping = extractGroupsFromPath(path)
@@ -1337,6 +1339,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 	defer span.End()
 
 	if _, isTopNode := ev.topNodes[expr]; isTopNode {
+		fmt.Println("in eval() topNode", ev, ev.topNodes[expr])
 		// the storage layer has already processed this node. Just return
 		// the result.
 		var (
@@ -1370,6 +1373,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		if mat == nil {
 			ev.error(fmt.Errorf("Matrix not filled in"))
 		}
+		fmt.Println("total samples in mat", mat.TotalSamples())
 		return mat, warnings
 	}
 
@@ -1402,6 +1406,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		}, e.Param, e.Expr)
 
 	case *parser.Call:
+		fmt.Println("into call")
 		call := FunctionCalls[e.Func.Name]
 		if e.Func.Name == "timestamp" {
 			// Matrix evaluation always returns the evaluation time,
@@ -1542,6 +1547,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 				enh.Ts = ts
 				// Make the function call.
 				outVec := call(inArgs, e.Args, enh)
+				fmt.Println("outVec", outVec)
 				ev.samplesStats.IncrementSamplesAtStep(step, int64(len(points)))
 				enh.Out = outVec[:0]
 				if len(outVec) > 0 {

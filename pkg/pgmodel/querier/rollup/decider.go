@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package querier
+package rollup
 
 import (
 	"context"
@@ -18,23 +18,24 @@ const (
 	defaultDurationBetweenSamples = 15 * time.Second
 	low                           = 200
 	high                          = 2000
-	noRollupSchema                = ""
-	noColumn                      = ""
 )
 
-var (
-	errNoMetricMetadata           = fmt.Errorf("metric metadata not found")
-	errNoMetricColumnRelationship = fmt.Errorf("metric column relation does not exist. Possible invalid metric type")
-)
-
-type rollupDecider struct {
+type Manager struct {
 	conn                  pgxconn.PgxConn
 	schemaResolutionCache map[string]time.Duration // schema_name: resolution
-	metricMetadataCache   map[string]string        // metric_name: metric_type
+	metricTypeCache       map[string]string        // metric_name: metric_type
 	resolutionInASCOrder  []time.Duration
 }
 
-func (r *rollupDecider) refresh() {
+func NewManager(conn pgxconn.PgxConn) *Manager {
+	rollup := &Manager{
+		conn: conn,
+	}
+	go rollup.refresh()
+	return rollup
+}
+
+func (r *Manager) refresh() {
 	refreshInterval := time.NewTicker(time.Minute)
 	defer refreshInterval.Stop()
 	for {
@@ -45,7 +46,7 @@ func (r *rollupDecider) refresh() {
 	}
 }
 
-func (r *rollupDecider) refreshRollupResolution() (proceedToNextStep bool) {
+func (r *Manager) refreshRollupResolution() (proceedToNextStep bool) {
 	var (
 		schemaName []string
 		resolution []time.Duration
@@ -84,7 +85,7 @@ func (r *rollupDecider) refreshRollupResolution() (proceedToNextStep bool) {
 	return true
 }
 
-func (r *rollupDecider) refreshMetricMetadata() {
+func (r *Manager) refreshMetricMetadata() {
 	var metricName, metricType []string
 	err := r.conn.QueryRow(context.Background(), "select array_agg(metric_family), array_agg(type) from _prom_catalog.metadata").Scan(&metricName, &metricType)
 	if err != nil {
@@ -95,10 +96,13 @@ func (r *rollupDecider) refreshMetricMetadata() {
 	for i := range metricName {
 		metadataCache[metricName[i]] = metricType[i]
 	}
-	r.metricMetadataCache = metadataCache
+	r.metricTypeCache = metadataCache
 }
 
-func (r *rollupDecider) decide(minSeconds, maxSeconds int64, metricName string) *RollupConfig {
+func (r *Manager) Decide(minSeconds, maxSeconds int64, metricName string) *Config {
+	if len(r.resolutionInASCOrder) == 0 {
+		return nil
+	}
 	estimateSamples := func(resolution time.Duration) int64 {
 		return int64(float64(maxSeconds-minSeconds) / resolution.Seconds())
 	}
@@ -106,8 +110,8 @@ func (r *rollupDecider) decide(minSeconds, maxSeconds int64, metricName string) 
 	//if r.withinRange(estimatedRawSamples) || estimatedRawSamples < low || len(r.resolutionInASCOrder) == 0 {
 	//	return nil
 	//}
-	// -- DEBUG: to return always the lowest resolution.
-	//return r.getConfig(metricName, r.resolutionInASCOrder[len(r.resolutionInASCOrder)-1]), true
+	//-- DEBUG: to return always the lowest resolution.
+	return r.getConfig(metricName, r.resolutionInASCOrder[len(r.resolutionInASCOrder)-1])
 	var acceptableResolution []time.Duration
 	for _, resolution := range r.schemaResolutionCache {
 		estimate := estimateSamples(resolution)
@@ -138,7 +142,7 @@ func (r *rollupDecider) decide(minSeconds, maxSeconds int64, metricName string) 
 	return r.getConfig(metricName, acceptableResolution[0])
 }
 
-func (r *rollupDecider) withinRange(totalSamples int64) bool {
+func (r *Manager) withinRange(totalSamples int64) bool {
 	return low <= totalSamples && totalSamples <= high
 }
 
@@ -151,23 +155,13 @@ var metricTypeColumnRelationship = map[string]string{
 	"GAUGE": "(sum / count)",
 }
 
-type RollupConfig struct {
-	columnClause string
-	schemaName   string
-	interval     time.Duration
-}
-
-func (r *RollupConfig) Interval() time.Duration {
-	return r.interval
-}
-
-func (r *rollupDecider) getConfig(metricName string, resolution time.Duration) *RollupConfig {
+func (r *Manager) getConfig(metricName string, resolution time.Duration) *Config {
 	schemaName := r.getSchemaFor(resolution)
-	metricType, ok := r.metricMetadataCache[metricName]
+	metricType, ok := r.metricTypeCache[metricName]
 	if !ok {
 		log.Debug("msg", fmt.Sprintf("metric metadata not found for %s. Refreshing and trying again", metricName))
 		r.refreshMetricMetadata()
-		metricType, ok = r.metricMetadataCache[metricName]
+		metricType, ok = r.metricTypeCache[metricName]
 		if ok {
 			goto checkMetricColumnRelationship
 		}
@@ -178,14 +172,15 @@ checkMetricColumnRelationship:
 	if !ok {
 		return nil
 	}
-	return &RollupConfig{
+	return &Config{
 		columnClause: columnString,
 		schemaName:   schemaName,
 		interval:     r.schemaResolutionCache[schemaName],
+		managerRef:   r,
 	}
 }
 
-func (r *rollupDecider) getSchemaFor(resolution time.Duration) string {
+func (r *Manager) getSchemaFor(resolution time.Duration) string {
 	for schema, res := range r.schemaResolutionCache {
 		if res == resolution {
 			return schema

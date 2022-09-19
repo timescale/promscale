@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	pgQuerier "github.com/timescale/promscale/pkg/pgmodel/querier"
+	"github.com/timescale/promscale/pkg/pgmodel/querier/rollup"
 	"github.com/timescale/promscale/pkg/promql"
 )
 
@@ -65,7 +66,13 @@ func (q *samplesQuerier) Close() {
 	}
 }
 
-func (q *samplesQuerier) Select(sortSeries bool, hints *storage.SelectHints, qh *pgQuerier.QueryHints, path []parser.Node, matchers ...*labels.Matcher) (seriesSet storage.SeriesSet, topNode parser.Node, config *pgQuerier.RollupConfig) {
+func (q *samplesQuerier) Select(
+	sortSeries bool,
+	hints *storage.SelectHints,
+	qh *pgQuerier.QueryHints,
+	path []parser.Node,
+	matchers ...*labels.Matcher,
+) (seriesSet storage.SeriesSet, topNode parser.Node, config *rollup.Config) {
 	qry := q.metricsReader.SamplesQuerier()
 	ss, n, cfg := qry.Select(q.mint, q.maxt, sortSeries, hints, qh, path, matchers...)
 	q.seriesSets = append(q.seriesSets, ss)

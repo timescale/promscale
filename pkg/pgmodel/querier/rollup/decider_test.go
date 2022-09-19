@@ -1,4 +1,4 @@
-package querier
+package rollup
 
 import (
 	"context"

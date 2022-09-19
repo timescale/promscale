@@ -36,6 +36,7 @@ import (
 	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
+	"github.com/timescale/promscale/pkg/pgmodel/querier/rollup"
 )
 
 var (
@@ -110,7 +111,7 @@ type QuerierWrapper struct {
 	storage.Querier
 }
 
-func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ *querier.QueryHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node, *querier.RollupConfig) {
+func (t *QuerierWrapper) Select(b bool, sh *storage.SelectHints, _ *querier.QueryHints, _ []parser.Node, m ...*labels.Matcher) (storage.SeriesSet, parser.Node, *rollup.Config) {
 	ss := t.Querier.Select(b, sh, m...)
 	return ss, nil, nil
 }

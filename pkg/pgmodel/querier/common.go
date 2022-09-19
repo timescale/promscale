@@ -45,8 +45,9 @@ func fromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, erro
 
 // QueryHints contain additional metadata which promscale requires
 type QueryHints struct {
-	CurrentNode parser.Node
-	Lookback    time.Duration
+	CurrentNode    parser.Node
+	Lookback       time.Duration
+	IsInstantQuery bool
 }
 
 func GetMetricNameSeriesIds(conn pgxconn.PgxConn, metadata *evalMetadata) (metrics, schemas []string, correspondingSeriesIDs [][]model.SeriesID, err error) {

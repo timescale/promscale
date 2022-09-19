@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/timescale/promscale/pkg/pgmodel/querier/rollup"
 )
 
 // promqlMetadata is metadata received directly from our native PromQL engine.
@@ -39,8 +40,8 @@ type evalMetadata struct {
 	timeFilter      timeFilter
 	clauses         []string
 	values          []interface{}
+	rollupConfig    *rollup.Config
 	*promqlMetadata
-	*RollupConfig
 }
 
 func GetMetadata(clauses []string, values []interface{}) *evalMetadata {
