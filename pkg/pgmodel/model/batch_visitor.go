@@ -11,17 +11,19 @@ import (
 
 type batchVisitor struct {
 	batch       *Batch
-	lowestEpoch SeriesEpoch
+	lowestEpoch *SeriesEpoch
 	minTime     int64
 }
 
+var MaxDate = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+
 func getBatchVisitor(batch *Batch) *batchVisitor {
-	return &batchVisitor{batch, SeriesEpoch(math.MaxInt64), math.MaxInt64}
+	return &batchVisitor{batch, NewSeriesEpoch(MaxDate), math.MaxInt64}
 }
 
 // LowestEpoch returns the lowest epoch value encountered while visiting insertables.
 // It must be called after Visit() has completed.
-func (vtr *batchVisitor) LowestEpoch() SeriesEpoch {
+func (vtr *batchVisitor) LowestEpoch() *SeriesEpoch {
 	return vtr.lowestEpoch
 }
 
@@ -35,11 +37,11 @@ func (vtr *batchVisitor) Visit(
 ) error {
 	var (
 		seriesId    SeriesID
-		seriesEpoch SeriesEpoch
+		seriesEpoch *SeriesEpoch
 		err         error
 	)
-	updateEpoch := func(epoch SeriesEpoch) {
-		if epoch < vtr.lowestEpoch {
+	updateEpoch := func(epoch *SeriesEpoch) {
+		if vtr.lowestEpoch.After(epoch) {
 			vtr.lowestEpoch = epoch
 		}
 	}
