@@ -269,8 +269,8 @@ func Run(cfg *Config) error {
 		},
 	)
 
-	if !cfg.VacuumCfg.Disable && !cfg.APICfg.ReadOnly {
-		ve := vacuum.NewEngine(client.ReadOnlyConnection(), cfg.VacuumCfg.RunFrequency, cfg.VacuumCfg.Parallelism)
+	if !cfg.VacuumCfg.Disable {
+		ve := vacuum.NewEngine(client.MaintenanceConnection(), cfg.VacuumCfg.RunFrequency, cfg.VacuumCfg.Parallelism)
 		group.Add(
 			func() error {
 				log.Info("msg", "Starting vacuum engine")
@@ -345,7 +345,7 @@ func Run(cfg *Config) error {
 }
 
 func initTelemetryEngine(client *pgclient.Client) (telemetry.Engine, error) {
-	t, err := telemetry.NewEngine(client.ReadOnlyConnection(), PromscaleID, client.Queryable())
+	t, err := telemetry.NewEngine(client.MaintenanceConnection(), PromscaleID, client.Queryable())
 	if err != nil {
 		log.Debug("msg", "err creating telemetry engine", "err", err.Error())
 		return nil, err

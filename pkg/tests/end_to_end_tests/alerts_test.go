@@ -47,7 +47,7 @@ func TestAlerts(t *testing.T) {
 			MaxConnections: -1,
 		}
 
-		pgClient, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), conf, 1, db, db, tenancy.NewNoopAuthorizer(), false)
+		pgClient, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), conf, 1, db, db, nil, tenancy.NewNoopAuthorizer(), false)
 		require.NoError(t, err)
 		defer pgClient.Close()
 		err = pgClient.InitPromQLEngine(&query.Config{

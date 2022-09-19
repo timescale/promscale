@@ -312,3 +312,664 @@ func TestConfig_GetConnectionStr(t *testing.T) {
 		})
 	}
 }
+
+func TestConfig_GetPoolSizes(t *testing.T) {
+	type config struct {
+		WriterPoolSize int
+		ReaderPoolSize int
+		MaintPoolSize  int
+		MaxConnections int
+		UsesHA         bool
+	}
+	type args struct {
+		readOnly bool
+		maxConns int
+	}
+	tests := []struct {
+		name               string
+		config             config
+		args               args
+		wantReaderPoolSize int
+		wantWriterPoolSize int
+		wantMaintPoolSize  int
+		wantErr            bool
+	}{
+		{
+			name: "read only defaults max 100",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: true,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 50,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "read only defaults max 75",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: true,
+				maxConns: 75,
+			},
+			wantReaderPoolSize: 37,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "read only defaults HA max 100",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         true,
+			},
+			args: args{
+				readOnly: true,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 25,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "small max conn",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         true,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 10,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "read only too high",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: 110,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: true,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "read only HA too high",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: 220,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         true,
+			},
+			args: args{
+				readOnly: true,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "reader too high",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: 101,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "writer too high",
+			config: config{
+				WriterPoolSize: 101,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "maint too high",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  101,
+				MaxConnections: -1,
+				UsesHA:         true,
+			},
+			args: args{
+				readOnly: true,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "defaults",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 25,
+			wantWriterPoolSize: 50,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "defaults HA",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         true,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 15,
+			wantWriterPoolSize: 25,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "exact 1",
+			config: config{
+				WriterPoolSize: 50,
+				ReaderPoolSize: 25,
+				MaintPoolSize:  5,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 25,
+			wantWriterPoolSize: 50,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "exacts greater than default db.connections-max",
+			config: config{
+				WriterPoolSize: 51,
+				ReaderPoolSize: 25,
+				MaintPoolSize:  5,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "exacts greater than specified db.connections-max",
+			config: config{
+				WriterPoolSize: 50,
+				ReaderPoolSize: 25,
+				MaintPoolSize:  5,
+				MaxConnections: 79,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "exact HA",
+			config: config{
+				WriterPoolSize: 50,
+				ReaderPoolSize: 25,
+				MaintPoolSize:  5,
+				MaxConnections: -1,
+				UsesHA:         true,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 25,
+			wantWriterPoolSize: 50,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "exact = max_connections",
+			config: config{
+				WriterPoolSize: 50,
+				ReaderPoolSize: 45,
+				MaintPoolSize:  5,
+				MaxConnections: 100,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 45,
+			wantWriterPoolSize: 50,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "exact = max_connections 2",
+			config: config{
+				WriterPoolSize: 50,
+				ReaderPoolSize: 45,
+				MaintPoolSize:  5,
+				MaxConnections: 1000,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 45,
+			wantWriterPoolSize: 50,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "exact > cfg max",
+			config: config{
+				WriterPoolSize: 50,
+				ReaderPoolSize: 45,
+				MaintPoolSize:  15,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "exact > db max",
+			config: config{
+				WriterPoolSize: 50,
+				ReaderPoolSize: 45,
+				MaintPoolSize:  15,
+				MaxConnections: 1000,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "explicit reader",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: 15,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 15,
+			wantWriterPoolSize: 50,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "explicit reader 2",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: 45,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "explicit writer",
+			config: config{
+				WriterPoolSize: 50,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 25,
+			wantWriterPoolSize: 50,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "explicit writer 2",
+			config: config{
+				WriterPoolSize: 60,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "explicit writer & maint",
+			config: config{
+				WriterPoolSize: 60,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  10,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "explicit writer & maint 2",
+			config: config{
+				WriterPoolSize: 30,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  10,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 30,
+			wantWriterPoolSize: 30,
+			wantMaintPoolSize:  10,
+			wantErr:            false,
+		},
+		{
+			name: "explicit reader & maint",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: 40,
+				MaintPoolSize:  10,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "explicit reader & maint 2",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: 20,
+				MaintPoolSize:  10,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 20,
+			wantWriterPoolSize: 50,
+			wantMaintPoolSize:  10,
+			wantErr:            false,
+		},
+		{
+			name: "maint = 1",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "reader = 1",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: 1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "writer = 1",
+			config: config{
+				WriterPoolSize: 1,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 0,
+			wantWriterPoolSize: 0,
+			wantMaintPoolSize:  0,
+			wantErr:            true,
+		},
+		{
+			name: "ha writer = 2",
+			config: config{
+				WriterPoolSize: 2,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         true,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 15,
+			wantWriterPoolSize: 2,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "ha reader = 2",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: 2,
+				MaintPoolSize:  -1,
+				MaxConnections: -1,
+				UsesHA:         true,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 2,
+			wantWriterPoolSize: 25,
+			wantMaintPoolSize:  5,
+			wantErr:            false,
+		},
+		{
+			name: "maint = 2",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  2,
+				MaxConnections: -1,
+				UsesHA:         false,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 28,
+			wantWriterPoolSize: 50,
+			wantMaintPoolSize:  2,
+			wantErr:            false,
+		},
+		{
+			name: "ha maint = 2",
+			config: config{
+				WriterPoolSize: -1,
+				ReaderPoolSize: -1,
+				MaintPoolSize:  2,
+				MaxConnections: -1,
+				UsesHA:         true,
+			},
+			args: args{
+				readOnly: false,
+				maxConns: 100,
+			},
+			wantReaderPoolSize: 15,
+			wantWriterPoolSize: 25,
+			wantMaintPoolSize:  2,
+			wantErr:            false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				WriterPoolSize: tt.config.WriterPoolSize,
+				ReaderPoolSize: tt.config.ReaderPoolSize,
+				MaintPoolSize:  tt.config.MaintPoolSize,
+				UsesHA:         tt.config.UsesHA,
+				MaxConnections: tt.config.MaxConnections,
+			}
+			gotReaderPoolSize, gotWriterPoolSize, gotMaintPoolSize, err := cfg.GetPoolSizes(tt.args.readOnly, tt.args.maxConns)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetPoolSizes() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotReaderPoolSize != tt.wantReaderPoolSize {
+				t.Errorf("GetPoolSizes() gotReaderPoolSize = %v, want %v", gotReaderPoolSize, tt.wantReaderPoolSize)
+			}
+			if gotWriterPoolSize != tt.wantWriterPoolSize {
+				t.Errorf("GetPoolSizes() gotWriterPoolSize = %v, want %v", gotWriterPoolSize, tt.wantWriterPoolSize)
+			}
+			if gotMaintPoolSize != tt.wantMaintPoolSize {
+				t.Errorf("GetPoolSizes() gotMaintPoolSize = %v, want %v", gotMaintPoolSize, tt.wantMaintPoolSize)
+			}
+		})
+	}
+}

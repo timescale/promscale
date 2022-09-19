@@ -78,6 +78,7 @@ func TestMigrateLock(t *testing.T) {
 				CacheConfig:    cache.DefaultConfig,
 				WriterPoolSize: pgclient.MinPoolSize,
 				ReaderPoolSize: pgclient.MinPoolSize,
+				MaintPoolSize:  pgclient.MinPoolSize,
 			},
 		}
 		conn.Release()

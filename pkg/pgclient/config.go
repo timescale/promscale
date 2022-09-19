@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/timescale/promscale/pkg/limits"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
 	"github.com/timescale/promscale/pkg/version"
@@ -38,6 +39,7 @@ type Config struct {
 	WriterPoolSize          int
 	WriterSynchronousCommit bool
 	ReaderPoolSize          int
+	MaintPoolSize           int
 	MaxConnections          int
 	UsesHA                  bool
 	DbUri                   string
@@ -59,8 +61,10 @@ const (
 	defaultDbStatementsCache       = true
 	MinPoolSize                    = 2
 	defaultPoolSize                = -1
+	defaultMaintPoolSize           = 5
 	defaultMaxConns                = -1
 	defaultWriterSynchronousCommit = false
+	defaultMaxConnsPercentage      = 0.8
 )
 
 var (
@@ -89,8 +93,9 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.IntVar(&cfg.WriterPoolSize, "db.connections.writer-pool.size", defaultPoolSize, "Maximum size of the writer pool of database connections. This defaults to 50% of max_connections "+
 		"allowed by the database.")
 	fs.BoolVar(&cfg.WriterSynchronousCommit, "db.connections.writer-pool.synchronous-commit", defaultWriterSynchronousCommit, "Enable/disable synchronous_commit on database connections in the writer pool.")
-	fs.IntVar(&cfg.ReaderPoolSize, "db.connections.reader-pool.size", defaultPoolSize, "Maximum size of the reader pool of database connections. This defaults to 30% of max_connections "+
-		"allowed by the database.")
+	fs.IntVar(&cfg.ReaderPoolSize, "db.connections.reader-pool.size", defaultPoolSize, "Maximum size of the reader pool of database connections. This defaults to roughly 30% of max_connections "+
+		"allowed by the database. 50% in read-only mode")
+	fs.IntVar(&cfg.MaintPoolSize, "db.connections.maint-pool.size", defaultMaintPoolSize, "Maximum size of the maintenance pool of database connections. This defaults to 5")
 	fs.IntVar(&cfg.MaxConnections, "db.connections-max", defaultMaxConns, "Maximum number of connections to the database that should be opened at once. "+
 		"It defaults to 80% of the maximum connections that the database can handle. ")
 	fs.StringVar(&cfg.DbUri, "db.uri", defaultDBUri, "TimescaleDB/Vanilla Postgres DB URI. "+
@@ -154,35 +159,82 @@ func (cfg *Config) GetConnectionStr() string {
 	return cfg.DbUri
 }
 
-// GetPoolSize returns the max pool size based on the max_connections allowed by database and the defaultFraction.
-// Arg inputPoolSize is the pool size provided in the CLI flag.
-func (cfg *Config) GetPoolSize(poolName string, defaultFraction float64, inputPoolSize int) (int, error) {
-	maxConns, err := cfg.maxConn()
-	if err != nil {
-		return 0, fmt.Errorf("max connections: %w", err)
+// GetPoolSizes returns the pool sizes adjusted according to defaults, read only settings, and max connections available.
+func (cfg *Config) GetPoolSizes(readOnly bool, dbMaxConns int) (readerPoolSize, writerPoolSize, maintPoolSize int, err error) {
+	cfgMaxConns := cfg.cfgMaxConns(dbMaxConns)
+
+	// calc maint pool size
+	maintPoolSize = cfg.MaintPoolSize
+	if maintPoolSize == defaultPoolSize {
+		maintPoolSize = defaultMaintPoolSize
 	}
 
+	// calc writer pool size
+	if !readOnly {
+		writerPoolSize = cfg.calcPoolSize(dbMaxConns, cfg.WriterPoolSize, defaultConnFraction)
+	}
+
+	// calc reader pool size
+	readerFraction := defaultReaderFraction
+	if readOnly {
+		readerFraction = defaultConnFraction
+	}
+	readerPoolSize = cfg.calcPoolSize(dbMaxConns, cfg.ReaderPoolSize, readerFraction)
+	if cfg.ReaderPoolSize == defaultPoolSize && readerPoolSize+writerPoolSize+maintPoolSize > cfgMaxConns {
+		readerPoolSize = readerPoolSize - maintPoolSize
+	}
+
+	err = cfg.validatePoolSizes(readOnly, dbMaxConns, cfgMaxConns, readerPoolSize, writerPoolSize, maintPoolSize)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return readerPoolSize, writerPoolSize, maintPoolSize, nil
+}
+
+func (cfg *Config) cfgMaxConns(dbMaxConns int) int {
+	// if db.connections-max is the default, use 80% of the postgres max_connections setting
+	cfgMaxConns := cfg.MaxConnections
+	if cfgMaxConns == defaultMaxConns {
+		cfgMaxConns = int(float64(dbMaxConns) * defaultMaxConnsPercentage)
+	}
+	if cfgMaxConns > dbMaxConns {
+		log.Warn("msg", "configured db.connections-max is greater then postgres max_connections",
+			"db.connections-max", cfgMaxConns,
+			"max_connections", dbMaxConns,
+		)
+	}
+	return cfgMaxConns
+}
+
+func (cfg *Config) validatePoolSizes(readOnly bool, dbMaxConns, cfgMaxConns, readerPoolSize, writerPoolSize, maintPoolSize int) error {
 	switch {
-	case inputPoolSize == defaultPoolSize:
-		// For the default case, we need to take up defaultFraction of allowed connections.
-		poolSize := float64(maxConns) * defaultFraction
+	case maintPoolSize < MinPoolSize:
+		return fmt.Errorf("maint pool size canot be less than %d: received %d", MinPoolSize, maintPoolSize)
+	case !readOnly && writerPoolSize < MinPoolSize:
+		return fmt.Errorf("writer pool size canot be less than %d: received %d", MinPoolSize, writerPoolSize)
+	case readerPoolSize < MinPoolSize:
+		return fmt.Errorf("reader pool size canot be less than %d: received %d", MinPoolSize, readerPoolSize)
+	case readerPoolSize+writerPoolSize+maintPoolSize > dbMaxConns:
+		return fmt.Errorf("reader-pool (size=%d) + writer-pool (size=%d) + maint-pool (size=%d) more than postgres max_connections (%d). Decrease the pool-sizes", readerPoolSize, writerPoolSize, maintPoolSize, dbMaxConns)
+	case readerPoolSize+writerPoolSize+maintPoolSize > cfgMaxConns:
+		return fmt.Errorf("reader-pool (size=%d) + writer-pool (size=%d) + maint-pool (size=%d) more than db.connections-max (%d). Increase the db.connections-max or decrease the pool-sizes", readerPoolSize, writerPoolSize, maintPoolSize, cfgMaxConns)
+	default:
+		return nil
+	}
+}
+
+func (cfg *Config) calcPoolSize(dbMaxConns, inputPoolSize int, fraction float64) int {
+	if inputPoolSize == defaultPoolSize {
+		poolSize := float64(dbMaxConns) * fraction
 		if cfg.UsesHA {
 			poolSize /= 2
 		}
-		return int(poolSize), nil
-	case inputPoolSize < MinPoolSize:
-		return 0, fmt.Errorf("%s pool size canot be less than %d: received %d", poolName, MinPoolSize, inputPoolSize)
-	case inputPoolSize > maxConns:
-		return 0, fmt.Errorf("%s pool size canot be greater than the 'max_connections' allowed by the database", poolName)
-	default:
+		return int(poolSize)
 	}
-	if cfg.UsesHA {
-		inputPoolSize /= 2
-	}
-	return inputPoolSize, nil
+	return inputPoolSize
 }
 
-func (cfg *Config) maxConn() (int, error) {
+func (cfg *Config) dbMaxConns() (int, error) {
 	conn, err := pgx.Connect(context.Background(), cfg.GetConnectionStr())
 	if err != nil {
 		return 0, err
