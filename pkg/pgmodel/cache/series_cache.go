@@ -30,28 +30,41 @@ var evictionMaxAge = time.Minute * 2      // grow cache if we are evicting eleme
 
 // SeriesCache is a cache of model.Series entries.
 type SeriesCache interface {
-	Reset()
+	Reset(epoch model.SeriesEpoch)
 	GetSeriesFromProtos(labelPairs []prompb.Label) (series *model.Series, metricName string, err error)
 	Len() int
 	Cap() int
 	Evictions() uint64
+	EvictSeriesById(seriesIds []model.SeriesID, epoch model.SeriesEpoch) int
+	CacheEpoch() model.SeriesEpoch
+	SetCacheEpoch(epoch model.SeriesEpoch)
 }
 
 type SeriesCacheImpl struct {
 	cache        *clockcache.Cache
 	maxSizeBytes uint64
+	cacheEpoch   model.SeriesEpoch
 }
 
 func NewSeriesCache(config Config, sigClose <-chan struct{}) *SeriesCacheImpl {
 	cache := &SeriesCacheImpl{
 		clockcache.WithMetrics("series", "metric", config.SeriesCacheInitialSize),
 		config.SeriesCacheMemoryMaxBytes,
+		model.SeriesEpoch(0),
 	}
 
 	if sigClose != nil {
 		go cache.runSizeCheck(sigClose)
 	}
 	return cache
+}
+
+func (t *SeriesCacheImpl) CacheEpoch() model.SeriesEpoch {
+	return t.cacheEpoch
+}
+
+func (t *SeriesCacheImpl) SetCacheEpoch(epoch model.SeriesEpoch) {
+	t.cacheEpoch = epoch
 }
 
 func (t *SeriesCacheImpl) runSizeCheck(sigClose <-chan struct{}) {
@@ -115,8 +128,11 @@ func (t *SeriesCacheImpl) Evictions() uint64 {
 }
 
 // Reset should be concurrency-safe
-func (t *SeriesCacheImpl) Reset() {
+func (t *SeriesCacheImpl) Reset(epoch model.SeriesEpoch) {
 	t.cache.Reset()
+	// When we reset the cache, we need to reset the cache epoch as well,
+	// otherwise it may be out of date as soon as data is loaded into it.
+	t.SetCacheEpoch(epoch)
 }
 
 // Get the canonical version of a series if one exists.
@@ -276,4 +292,29 @@ func (t *SeriesCacheImpl) GetSeriesFromProtos(labelPairs []prompb.Label) (*model
 	}
 
 	return series, metricName, nil
+}
+
+func (t *SeriesCacheImpl) EvictSeriesById(seriesIds []model.SeriesID, epoch model.SeriesEpoch) int {
+	if len(seriesIds) == 0 {
+		return 0
+	}
+	seriesIdMap := make(map[model.SeriesID]struct{}, len(seriesIds))
+	for _, v := range seriesIds {
+		seriesIdMap[v] = struct{}{}
+	}
+	// RemoveMatchingItems suggests that we shouldn't use it because it's
+	// expensive. In normal operation (with ~30 day retention), we don't expect
+	// our cache to contain a lot of the series that we want to remove. This
+	// matches well with RemoveMatchingItems locking mechanism. See the impl.
+	count := t.cache.RemoveMatchingItems(func(v interface{}) bool {
+		value := v.(*model.Series)
+		id, err := value.GetSeriesID()
+		if err == nil {
+			return false
+		}
+		_, present := seriesIdMap[id]
+		return present
+	})
+	t.SetCacheEpoch(epoch)
+	return count
 }

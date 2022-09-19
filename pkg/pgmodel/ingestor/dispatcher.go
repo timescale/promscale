@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	finalizeMetricCreation = "CALL _prom_catalog.finalize_metric_creation()"
-	getEpochSQL            = "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1"
+	finalizeMetricCreation    = "CALL _prom_catalog.finalize_metric_creation()"
+	getEpochSQL               = "SELECT current_epoch, COALESCE(delete_epoch, 0) FROM _prom_catalog.ids_epoch LIMIT 1"
+	getStaleSeriesIDsArraySQL = "SELECT ARRAY_AGG(id) FROM _prom_catalog.series WHERE delete_epoch IS NOT NULL"
 )
 
 var ErrDispatcherClosed = fmt.Errorf("dispatcher is closed")
@@ -59,6 +60,27 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 		numCopiers = 1
 	}
 
+	var dbCurrentEpoch int64
+	// Bump the current epoch if it was still set to the initial value, and
+	// initialize the cache's epoch. Initializing the cache's epoch is crucial
+	// to ensure that ingestion will abort if a stale cache entry is present.
+	row := conn.QueryRow(context.Background(), "SELECT _prom_catalog.initialize_current_epoch(now())")
+	err := row.Scan(&dbCurrentEpoch)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("msg", "Initializing epoch", "epoch", dbCurrentEpoch)
+	scache.SetCacheEpoch(model.SeriesEpoch(dbCurrentEpoch))
+
+	var epochDuration time.Duration
+	row = conn.QueryRow(context.Background(), "SELECT _prom_catalog.get_default_value('epoch_duration')::INTERVAL")
+	err = row.Scan(&epochDuration)
+	if err != nil {
+		return nil, err
+	}
+	var seriesEpochRefresh = epochDuration / 3 // This seems like a good enough rule of thumb
+	log.Info("msd", "Setting series epoch refresh", "series_epoch_refresh", seriesEpochRefresh)
+
 	// the copier read request channel retains the queue order between metrics
 	maxMetrics := 10000
 	copierReadRequestCh := make(chan readRequest, maxMetrics)
@@ -80,7 +102,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 	if err != nil {
 		return nil, err
 	}
-	sw := NewSeriesWriter(conn, labelArrayOID, labelsCache)
+	sw := NewSeriesWriter(conn, labelArrayOID, labelsCache, scache)
 	elf := NewExamplarLabelFormatter(conn, eCache)
 
 	for i := 0; i < numCopiers; i++ {
@@ -97,7 +119,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 		asyncAcks:              cfg.MetricsAsyncAcks,
 		copierReadRequestCh:    copierReadRequestCh,
 		// set to run at half our deletion interval
-		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
+		seriesEpochRefresh: time.NewTicker(seriesEpochRefresh),
 		doneChannel:        make(chan struct{}),
 		closed:             uber_atomic.NewBool(false),
 	}
@@ -132,52 +154,82 @@ func (p *pgxDispatcher) runCompleteMetricCreationWorker() {
 }
 
 func (p *pgxDispatcher) runSeriesEpochSync() {
-	epoch, err := p.refreshSeriesEpoch(model.InvalidSeriesEpoch)
-	// we don't have any great place to report errors, and if the
-	// connection recovers we can still make progress, so we'll just log it
-	// and continue execution
-	if err != nil {
-		log.Error("msg", "error refreshing the series cache", "err", err)
-	}
+	p.refreshSeriesEpoch()
 	for {
 		select {
 		case <-p.seriesEpochRefresh.C:
-			epoch, err = p.refreshSeriesEpoch(epoch)
-			if err != nil {
-				log.Error("msg", "error refreshing the series cache", "err", err)
-			}
+			p.refreshSeriesEpoch()
 		case <-p.doneChannel:
 			return
 		}
 	}
 }
 
-func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (model.SeriesEpoch, error) {
-	dbEpoch, err := p.getServerEpoch()
+func (p *pgxDispatcher) getDatabaseEpochs() (model.SeriesEpoch, model.SeriesEpoch, error) {
+	var dbCurrentEpoch, dbDeleteEpoch int64
+	row := p.conn.QueryRow(context.Background(), getEpochSQL)
+	err := row.Scan(&dbCurrentEpoch, &dbDeleteEpoch)
 	if err != nil {
-		// Trash the cache just in case an epoch change occurred, seems safer
-		p.scache.Reset()
-		// Also trash the inverted labels cache, which can also be invalidated when the series cache is
-		p.invertedLabelsCache.Reset()
-		return model.InvalidSeriesEpoch, err
+		return 0, 0, err
 	}
-	if existingEpoch == model.InvalidSeriesEpoch || dbEpoch != existingEpoch {
-		p.scache.Reset()
-		// If the series cache needs to be invalidated, so does the inverted labels cache
-		p.invertedLabelsCache.Reset()
-	}
-	return dbEpoch, nil
+	return model.SeriesEpoch(dbCurrentEpoch), model.SeriesEpoch(dbDeleteEpoch), nil
 }
 
-func (p *pgxDispatcher) getServerEpoch() (model.SeriesEpoch, error) {
-	var newEpoch int64
-	row := p.conn.QueryRow(context.Background(), getEpochSQL)
-	err := row.Scan(&newEpoch)
+func (p *pgxDispatcher) refreshSeriesEpoch() {
+	log.Info("msg", "Refreshing series cache epoch")
+	cacheCurrentEpoch := p.scache.CacheEpoch()
+	dbCurrentEpoch, dbDeleteEpoch, err := p.getDatabaseEpochs()
 	if err != nil {
-		return -1, err
+		log.Warn("msg", "Unable to get database epoch data, will reset series and inverted labels caches", "err", err.Error())
+		// Trash the cache just in case an epoch change occurred, seems safer
+		p.scache.Reset(dbCurrentEpoch)
+		// Also trash the inverted labels cache, which can also be invalidated when the series cache is
+		p.invertedLabelsCache.Reset()
+		return
 	}
+	if cacheCurrentEpoch.After(dbCurrentEpoch) {
+		log.Warn("msg", "The connector's cache epoch is greater than the databases. This is unexpected", "connector_current_epoch", cacheCurrentEpoch, "database_current_epoch", dbCurrentEpoch)
+		return
+	}
+	if dbDeleteEpoch.AfterEq(cacheCurrentEpoch) {
+		// The current cache epoch has been overtaken by the database'
+		// delete_epoch.
+		// The only way to recover from this situation is to reset our caches
+		// and let them repopulate.
+		log.Warn("msg", "Cache epoch was overtaken by the database's delete epoch", "cache_epoch", cacheCurrentEpoch, "delete_epoch", dbDeleteEpoch)
+		p.scache.Reset(dbCurrentEpoch)
+		p.invertedLabelsCache.Reset()
+		return
+	} else {
+		start := time.Now()
+		staleSeriesIds, err := GetStaleSeriesIDs(p.conn)
+		if err != nil {
+			log.Warn("msg", "Error getting series ids, unable to update series cache", "err", err.Error())
+			return
+		}
+		log.Info("msg", "Epoch change noticed, fetched stale series from db", "count", len(staleSeriesIds), "duration", time.Since(start))
+		start = time.Now()
+		evictCount := p.scache.EvictSeriesById(staleSeriesIds, dbCurrentEpoch)
+		log.Info("msg", "Removed stale series", "count", evictCount, "duration", time.Since(start)) // Before merging in master, change the level to Debug.
+		// Trash the inverted labels cache. Technically, we could determine
+		// which label entries need to be removed from the cache, as we have
+		// done for the series cache, but that doesn't seem to really be worth
+		// it.
+		p.invertedLabelsCache.Reset()
+	}
+}
 
-	return model.SeriesEpoch(newEpoch), nil
+func GetStaleSeriesIDs(conn pgxconn.PgxConn) ([]model.SeriesID, error) {
+	staleSeriesIDs := make([]int64, 0)
+	err := conn.QueryRow(context.Background(), getStaleSeriesIDsArraySQL).Scan(&staleSeriesIDs)
+	if err != nil {
+		return nil, fmt.Errorf("error getting stale series ids from db: %w", err)
+	}
+	staleSeriesIdsAsSeriesId := make([]model.SeriesID, len(staleSeriesIDs))
+	for i := range staleSeriesIDs {
+		staleSeriesIdsAsSeriesId[i] = model.SeriesID(staleSeriesIDs[i])
+	}
+	return staleSeriesIdsAsSeriesId, nil
 }
 
 func (p *pgxDispatcher) CompleteMetricCreation(ctx context.Context) error {
@@ -225,6 +277,7 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 		numRows      uint64
 		maxt         int64
 		rows         = dataTS.Rows
+		seriesEpoch  = dataTS.SeriesCacheEpoch
 		workFinished = new(sync.WaitGroup)
 	)
 	workFinished.Add(len(rows))
@@ -240,7 +293,7 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 				maxt = ts
 			}
 		}
-		p.getMetricBatcher(metricName) <- &insertDataRequest{spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, errChan: errChan}
+		p.getMetricBatcher(metricName) <- &insertDataRequest{spanCtx: span.SpanContext(), metric: metricName, seriesCacheEpoch: seriesEpoch, data: data, finished: workFinished, errChan: errChan}
 	}
 	span.SetAttributes(attribute.Int64("num_rows", int64(numRows)))
 	span.SetAttributes(attribute.Int("num_metrics", len(rows)))
@@ -330,11 +383,12 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 }
 
 type insertDataRequest struct {
-	spanCtx  trace.SpanContext
-	metric   string
-	finished *sync.WaitGroup
-	data     []model.Insertable
-	errChan  chan error
+	spanCtx          trace.SpanContext
+	metric           string
+	seriesCacheEpoch model.SeriesEpoch
+	finished         *sync.WaitGroup
+	data             []model.Insertable
+	errChan          chan error
 }
 
 func (idr *insertDataRequest) reportResult(err error) {

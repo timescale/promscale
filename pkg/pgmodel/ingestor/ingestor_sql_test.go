@@ -62,6 +62,7 @@ func (c sVisitor) VisitSeries(cb func(info *pgmodel.MetricInfo, s *pgmodel.Serie
 func TestPGXInserterInsertSeries(t *testing.T) {
 	// Set test env so that cache metrics uses a new registry and avoid panic on duplicate register.
 	require.NoError(t, os.Setenv("IS_TEST", "true"))
+	initialTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	testCases := []struct {
 		name       string
 		series     []labels.Labels
@@ -84,7 +85,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
-					Results: model.RowResults{{int64(1)}},
+					Results: model.RowResults{{initialTime}},
 					Err:     error(nil),
 				},
 				{Sql: "COMMIT;"},
@@ -134,7 +135,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
-					Results: model.RowResults{{int64(1)}},
+					Results: model.RowResults{{initialTime}},
 					Err:     error(nil),
 				},
 				{Sql: "COMMIT;"},
@@ -186,7 +187,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
-					Results: model.RowResults{{int64(1)}},
+					Results: model.RowResults{{initialTime}},
 					Err:     error(nil),
 				},
 				{Sql: "COMMIT;"},
@@ -235,7 +236,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				{
 					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 					Args:    []interface{}(nil),
-					Results: model.RowResults{{int64(1)}},
+					Results: model.RowResults{{initialTime}},
 					Err:     error(nil),
 				},
 				{Sql: "COMMIT;"},
@@ -277,7 +278,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 			scache.Reset()
 			lCache, _ := cache.NewInvertedLabelsCache(10)
-			sw := NewSeriesWriter(mock, 0, lCache)
+			sw := NewSeriesWriter(mock, 0, lCache, scache)
 
 			lsi := make([]model.Insertable, 0)
 			for _, ser := range c.series {
@@ -288,7 +289,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				lsi = append(lsi, model.NewPromExemplars(ls, nil))
 			}
 
-			err := sw.PopulateOrCreateSeries(context.Background(), sVisitor(lsi))
+			_, err := sw.PopulateOrCreateSeries(context.Background(), sVisitor(lsi))
 			if err != nil {
 				foundErr := false
 				for _, q := range c.sqlQueries {
@@ -306,10 +307,9 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			if err == nil {
 				for _, si := range lsi {
-					si, se, err := si.Series().GetSeriesID()
+					si, err := si.Series().GetSeriesID()
 					require.NoError(t, err)
 					require.True(t, si > 0, "series id not set")
-					require.True(t, se > 0, "epoch not set")
 				}
 			}
 		})
@@ -328,6 +328,9 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		},
 	}
 
+	initialTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
+	newTime := time.Date(2022, 1, 1, 1, 0, 0, 0, time.UTC).Unix()
+
 	sqlQueries := []model.SqlQuery{
 
 		// first series cache fetch
@@ -335,7 +338,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{
 			Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 			Args:    []interface{}(nil),
-			Results: model.RowResults{{int64(1)}},
+			Results: model.RowResults{{initialTime}},
 			Err:     error(nil),
 		},
 		{Sql: "COMMIT;"},
@@ -371,7 +374,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{
 			Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 			Args:    []interface{}(nil),
-			Results: model.RowResults{{int64(1)}},
+			Results: model.RowResults{{initialTime}},
 			Err:     error(nil),
 		},
 
@@ -379,7 +382,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{
 			Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 			Args:    []interface{}(nil),
-			Results: model.RowResults{{int64(2)}},
+			Results: model.RowResults{{newTime}},
 			Err:     error(nil),
 		},
 		{Sql: "BEGIN;"},
@@ -388,7 +391,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		{
 			Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
 			Args:    []interface{}(nil),
-			Results: model.RowResults{{int64(2)}},
+			Results: model.RowResults{{newTime}},
 			Err:     error(nil),
 		},
 		{Sql: "COMMIT;"},
@@ -435,7 +438,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	mock := model.NewSqlRecorder(sqlQueries, t)
 	scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 	lcache, _ := cache.NewInvertedLabelsCache(10)
-	sw := NewSeriesWriter(mock, 0, lcache)
+	sw := NewSeriesWriter(mock, 0, lcache, scache)
 	inserter := pgxDispatcher{
 		conn:                mock,
 		scache:              scache,
@@ -455,7 +458,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	samples := makeSamples(series)
-	err := sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
+	_, err := sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +472,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		_, _, ok := si.Series().NameValues()
 		require.False(t, ok)
 		expectedId := expectedIds[index]
-		gotId, _, err := si.Series().GetSeriesID()
+		gotId, err := si.Series().GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
@@ -477,11 +480,11 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	// refreshing during the same epoch gives the same IDs without checking the DB
-	_, err = inserter.refreshSeriesEpoch(1)
+	inserter.refreshSeriesEpoch()
 	require.NoError(t, err)
 
 	samples = makeSamples(series)
-	err = sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
+	_, err = sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +493,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		_, _, ok := si.Series().NameValues()
 		require.False(t, ok)
 		expectedId := expectedIds[index]
-		gotId, _, err := si.Series().GetSeriesID()
+		gotId, err := si.Series().GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
@@ -498,12 +501,12 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	}
 
 	// trash the cache
-	_, err = inserter.refreshSeriesEpoch(1)
+	inserter.refreshSeriesEpoch()
 	require.NoError(t, err)
 
 	// retrying rechecks the DB and uses the new IDs
 	samples = makeSamples(series)
-	err = sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
+	_, err = sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -517,7 +520,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 		_, _, ok := si.Series().NameValues()
 		require.False(t, ok)
 		expectedId := expectedIds[index]
-		gotId, _, err := si.Series().GetSeriesID()
+		gotId, err := si.Series().GetSeriesID()
 		require.NoError(t, err)
 		if gotId != expectedId {
 			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
@@ -529,9 +532,10 @@ func TestPGXInserterInsertData(t *testing.T) {
 	if err := os.Setenv("IS_TEST", "true"); err != nil {
 		t.Fatal(err)
 	}
+	testTime := time.Now().Unix()
 	makeLabel := func() *model.Series {
 		l := &model.Series{}
-		l.SetSeriesID(1, 1)
+		l.SetSeriesID(1)
 		return l
 	}
 
@@ -575,8 +579,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{testTime},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
@@ -620,8 +624,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{testTime},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
@@ -680,8 +684,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 				{
 					//this is the attempt on the full batch
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{testTime},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     fmt.Errorf("epoch error"),
 				},
@@ -710,8 +714,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 				{
 					//this is the attempt on the individual copyRequests
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{testTime},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     fmt.Errorf("epoch error"),
 				},
@@ -833,8 +837,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{testTime},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
@@ -900,8 +904,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 				// epoch check after insert from temp table
 				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{testTime},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},

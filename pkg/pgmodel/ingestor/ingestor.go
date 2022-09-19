@@ -193,6 +193,14 @@ func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []p
 		insertables = make(map[string][]model.Insertable)
 	)
 
+	// Determine the value of the series cache epoch _before_ getting any items
+	// from the cache. In order to properly abort the insert transaction if the
+	// cache is out of date (epoch abort), we want to determine the minimum
+	// cache epoch for all samples in an ingest batch. We know that everything
+	// currently in the cache has this epoch, and everything that we load from
+	// the database later will have _at least_ that epoch.
+	epoch := ingestor.sCache.CacheEpoch()
+
 	for i := range timeseries {
 		var (
 			err        error
@@ -206,6 +214,7 @@ func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []p
 		}
 		// Normalize and canonicalize ts.Labels.
 		// After this point ts.Labels should never be used again.
+
 		series, metricName, err = ingestor.sCache.GetSeriesFromProtos(ts.Labels)
 		if err != nil {
 			return 0, err
@@ -237,7 +246,7 @@ func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []p
 	}
 	releaseMem()
 
-	numInsertablesIngested, errSamples := ingestor.dispatcher.InsertTs(ctx, model.Data{Rows: insertables, ReceivedTime: time.Now()})
+	numInsertablesIngested, errSamples := ingestor.dispatcher.InsertTs(ctx, model.Data{Rows: insertables, ReceivedTime: time.Now(), SeriesCacheEpoch: epoch})
 	if errSamples == nil && numInsertablesIngested != totalRowsExpected {
 		return numInsertablesIngested, fmt.Errorf("failed to insert all the data! Expected: %d, Got: %d", totalRowsExpected, numInsertablesIngested)
 	}

@@ -144,6 +144,7 @@ func persistBatch(ctx context.Context, conn pgxconn.PgxConn, sw *seriesWriter, e
 	defer span.End()
 	batch := copyBatch(insertBatch)
 	err := sw.PopulateOrCreateSeries(ctx, batch)
+
 	if err != nil {
 		return fmt.Errorf("copier: writing series: %w", err)
 	}
@@ -348,8 +349,8 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 	var sampleRows [][]interface{}
 	var exemplarRows [][]interface{}
 	insertStart := time.Now()
-	lowestEpoch := pgmodel.SeriesEpoch(math.MaxInt64)
 	lowestMinTime := int64(math.MaxInt64)
+	minCacheEpoch := pgmodel.SeriesEpoch(math.MaxInt64)
 	tx, err := conn.BeginTx(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start transaction for inserting metrics: %v", err), lowestMinTime
@@ -364,6 +365,10 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 
 	for r := range reqs {
 		req := &reqs[r]
+		epoch := req.data.batch.SeriesCacheEpoch()
+		if minCacheEpoch.After(epoch) {
+			minCacheEpoch = epoch
+		}
 		// Since seriesId order is not guaranteed we need to sort it to avoid row deadlock when duplicates are sent (eg. Prometheus retry)
 		// Samples inside series should be sorted by Prometheus
 		// We sort after PopulateOrCreateSeries call because we now have guarantees that all seriesIDs have been populated
@@ -408,10 +413,6 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 		)
 		if err != nil {
 			return err, lowestMinTime
-		}
-		epoch := visitor.LowestEpoch()
-		if epoch < lowestEpoch {
-			lowestEpoch = epoch
 		}
 		minTime := visitor.MinTime()
 		if minTime < lowestMinTime {
@@ -471,11 +472,12 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 		}
 	}
 
-	//note the epoch increment takes an access exclusive on the table before incrementing.
-	//thus we don't need row locking here. Note by doing this check at the end we can
-	//have some wasted work for the inserts before this fails but this is rare.
-	//avoiding an additional loop or memoization to find the lowest epoch ahead of time seems worth it.
-	row := tx.QueryRow(ctx, "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1", int64(lowestEpoch))
+	// Note: The epoch increment takes an access exclusive on the table before
+	// incrementing, thus we don't need row locking here. By doing this check
+	// at the end we can have some wasted work for the inserts before this
+	// fails but this is rare. Avoiding an additional loop or memoization to
+	// find the lowest epoch ahead of time seems worth it.
+	row := tx.QueryRow(ctx, "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1", minCacheEpoch)
 	var val []byte
 	if err = row.Scan(&val); err != nil {
 		return err, lowestMinTime

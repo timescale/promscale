@@ -415,3 +415,47 @@ func packUsedAndTimestamp(used bool, ts int32) uint32 {
 	}
 	return uint32(usedBit<<31) | uint32(ts)
 }
+
+// RemoveMatchingItems removes items whose value passes the check applied by
+// the passed `matcher` function. It returns the number of entries which were
+// removed from the cache.
+// Note: Due to the locks that this function takes, it is best used when very
+// few items stored in the cache are to be removed.
+func (self *Cache) RemoveMatchingItems(matcher func(value interface{}) bool) int {
+	// Note: we take an RLock to find matching items, then release it and take
+	// a full Lock to remove them. This has two assumptions:
+	// 1. len(matchingItems) << len(storage): taking a big lock should be fine.
+	// 2. Missing the addition of an item to the cache is not problematic.
+	//    Locking like this doesn't provide a consistent view of the cache
+	//    contents. Either an entry is removed or added under our feet. An
+	//    entry being removed is not a problem, we will just skip it. An entry
+	//    being added is fine for the one consumer of this method (cache
+	//    invalidation): if an item is added to the cache, then it was just
+	//    created/resurrected in the DB, so it wouldn't have been a candidate
+	//    for removal.
+
+	self.elementsLock.RLock()
+	matchingItems := make([]interface{}, 0)
+	for k, v := range self.elements {
+		if matcher(v.value) {
+			matchingItems = append(matchingItems, k)
+		}
+	}
+	self.elementsLock.RUnlock()
+	self.elementsLock.Lock()
+	for i := range matchingItems {
+		self.remove(i)
+	}
+	self.elementsLock.Unlock()
+	return len(matchingItems)
+}
+
+func (self *Cache) remove(key interface{}) {
+	value, present := self.elements[key]
+	if !present {
+		// do nothing
+		return
+	}
+	delete(self.elements, key)
+	*value = element{}
+}

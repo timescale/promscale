@@ -7,7 +7,6 @@ package ingestor
 import (
 	"context"
 	"fmt"
-
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 

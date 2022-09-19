@@ -79,4 +79,5 @@ func (p *pendingBuffer) release() {
 func (p *pendingBuffer) addReq(req *insertDataRequest) {
 	p.needsResponse = append(p.needsResponse, insertDataTask{finished: req.finished, errChan: req.errChan})
 	p.batch.AppendSlice(req.data)
+	p.batch.UpdateSeriesCacheEpoch(req.seriesCacheEpoch)
 }

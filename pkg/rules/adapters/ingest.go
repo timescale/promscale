@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/pkg/errors"
@@ -30,9 +31,10 @@ func NewIngestAdapter(inserter ingestor.DBInserter) *ingestAdapter {
 }
 
 type appenderAdapter struct {
-	data     map[string][]model.Insertable
-	inserter ingestor.DBInserter
-	closed   bool
+	data             map[string][]model.Insertable
+	inserter         ingestor.DBInserter
+	closed           bool
+	seriesCacheEpoch model.SeriesEpoch
 }
 
 // Appender creates a new appender for Prometheus rules manager.
@@ -47,8 +49,9 @@ type appenderAdapter struct {
 // Note: The rule manager does not call Rollback() yet.
 func (a ingestAdapter) Appender(_ context.Context) storage.Appender {
 	return &appenderAdapter{
-		data:     make(map[string][]model.Insertable),
-		inserter: a.inserter,
+		data:             make(map[string][]model.Insertable),
+		inserter:         a.inserter,
+		seriesCacheEpoch: model.SeriesEpoch(math.MaxInt64),
 	}
 }
 
@@ -59,6 +62,10 @@ func (app *appenderAdapter) Append(_ storage.SeriesRef, l labels.Labels, t int64
 	dbIngestor, err := getIngestor(app.inserter)
 	if err != nil {
 		return 0, fmt.Errorf("get ingestor: %w", err)
+	}
+	cacheEpoch := dbIngestor.SeriesCache().CacheEpoch()
+	if app.seriesCacheEpoch.After(cacheEpoch) {
+		app.seriesCacheEpoch = cacheEpoch
 	}
 	series, metricName, err := dbIngestor.SeriesCache().GetSeriesFromProtos(util.LabelToPrompbLabels(l))
 	if err != nil {
@@ -96,7 +103,7 @@ func (app *appenderAdapter) Commit() error {
 	if err != nil {
 		return fmt.Errorf("get ingestor: %w", err)
 	}
-	numInsertablesIngested, err := dbIngestor.Dispatcher().InsertTs(context.Background(), model.Data{Rows: app.data, ReceivedTime: time.Now()})
+	numInsertablesIngested, err := dbIngestor.Dispatcher().InsertTs(context.Background(), model.Data{Rows: app.data, ReceivedTime: time.Now(), SeriesCacheEpoch: app.seriesCacheEpoch})
 	if err == nil {
 		samplesIngested.Add(float64(numInsertablesIngested))
 	}

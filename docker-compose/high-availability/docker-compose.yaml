@@ -2,7 +2,8 @@ version: '3.0'
 
 services:
   db:
-    image: timescale/timescaledb-ha:pg14-latest
+    # TODO (james): replace this when Promscale extension 0.7.0 published
+    image: ghcr.io/timescale/dev_promscale_extension:jg-time-based-epoch-ts2-pg14
     ports:
       - 5432:5432/tcp
     environment:
@@ -44,6 +45,7 @@ services:
       PROMSCALE_METRICS_HIGH_AVAILABILITY: true
       PROMSCALE_DB_URI: postgres://postgres:password@db:5432/postgres?sslmode=allow
       PROMSCALE_METRICS_RULES_CONFIG_FILE: /prometheus.yml
+      PROMSCALE_STARTUP_UPGRADE_PRERELEASE_EXTENSIONS: true
 
   promscale-connector2:
     image: timescale/promscale:latest
@@ -61,6 +63,7 @@ services:
       PROMSCALE_METRICS_HIGH_AVAILABILITY: true
       PROMSCALE_DB_URI: postgres://postgres:password@db:5432/postgres?sslmode=allow
       PROMSCALE_METRICS_RULES_CONFIG_FILE: /prometheus.yml
+      PROMSCALE_STARTUP_UPGRADE_PRERELEASE_EXTENSIONS: true
 
   node_exporter:
     image: quay.io/prometheus/node-exporter
