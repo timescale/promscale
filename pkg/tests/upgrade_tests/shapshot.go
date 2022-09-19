@@ -347,7 +347,12 @@ func getTableInfosForSchema(t *testing.T, db *pgxpool.Pool, schema string) (out 
 		`SELECT array_agg(relname::TEXT order by relname::TEXT)
 			FROM pg_class 
 			WHERE relnamespace=$1::TEXT::regnamespace AND relkind='r'
-			AND (relnamespace, relname) != ('_ps_catalog'::regnamespace, 'migration')
+			AND (
+			    	(relnamespace, relname) != ('_ps_catalog'::regnamespace, 'migration') 
+			 		AND
+			    	-- skip ids_epoch because the current_epoch can change when promscale starts
+			     	(relnamespace, relname) != ('_prom_catalog'::regnamespace, 'ids_epoch')
+			    )
 			`,
 		schema,
 	)
@@ -359,7 +364,7 @@ func getTableInfosForSchema(t *testing.T, db *pgxpool.Pool, schema string) (out 
 	}
 
 	numTables := len(tables)
-	if schema == "_ps_catalog" {
+	if schema == "_ps_catalog" || schema == "_prom_catalog" {
 		numTables = numTables + 1
 	}
 	out = make([]tableInfo, numTables)
@@ -387,6 +392,34 @@ func getTableInfosForSchema(t *testing.T, db *pgxpool.Pool, schema string) (out 
 		out[numTables-1].name = "migration"
 		if err = row.Scan(&out[numTables-1].values); err != nil {
 			t.Errorf("error querying values from table _ps_catalog.migration: %v", err)
+			return
+		}
+	}
+	if schema == "_prom_catalog" {
+		// dynamically build a query to select all columns except for `current_epoch`
+		row = db.QueryRow(context.Background(),
+			`
+			WITH cols AS (
+				SELECT array_agg(format('%I', a.attname)) as cols
+				FROM pg_class c
+				JOIN pg_namespace n ON c.relnamespace = n.oid
+				JOIN pg_attribute a ON a.attrelid = c.oid
+				WHERE n.nspname = '_prom_catalog'
+				AND relname = 'ids_epoch'
+				AND a.attnum > 0
+				AND a.attname <> 'current_epoch'
+			)
+			SELECT 'SELECT array_agg((' || array_to_string((SELECT cols FROM cols), ', ') || ')::TEXT) FROM _prom_catalog.ids_epoch';
+			`)
+		var query string
+		if err = row.Scan(&query); err != nil {
+			t.Errorf("error building query: %v", err)
+			return
+		}
+		row = db.QueryRow(context.Background(), query)
+		out[numTables-1].name = "ids_epoch"
+		if err = row.Scan(&out[numTables-1].values); err != nil {
+			t.Errorf("error querying values from table _ps_catalog.ids_epoch: %v", err)
 			return
 		}
 	}

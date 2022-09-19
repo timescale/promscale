@@ -496,6 +496,163 @@ func TestSQLIngest(t *testing.T) {
 	}
 }
 
+func TestInsertAbort(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	samplesOne := []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "Test"},
+				{Name: "test", Value: "test"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 1, Value: 0.1},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "Test"},
+				{Name: "test", Value: "test"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 2, Value: 0.2},
+			},
+		},
+	}
+
+	samplesTwo := []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "Test"},
+				{Name: "test", Value: "test"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 3, Value: 0.1},
+			},
+		},
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "Test"},
+				{Name: "test", Value: "test"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 4, Value: 0.2},
+			},
+		},
+	}
+
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+
+		// Ingest some metrics
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(samplesOne)))
+		require.NoError(t, err)
+
+		err = ingestor.CompleteMetricCreation(context.Background())
+		require.NoError(t, err)
+
+		// Adjust database delete_epoch
+		_, err = db.Exec(context.Background(), "UPDATE _prom_catalog.ids_epoch SET delete_epoch = current_epoch, current_epoch = current_epoch + 14400")
+		require.NoError(t, err)
+
+		// Insert more samples
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(samplesTwo)))
+
+		// Assert that insert fails
+		require.Error(t, err, "")
+
+		// Insert more samples
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(samplesTwo)))
+
+		// Expect that insertion is successful
+		require.NoError(t, err)
+	})
+}
+
+func TestCacheEvictionBetweenInserts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	samplesOne := []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "Test"},
+				{Name: "test", Value: "test"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 1, Value: 0.1},
+			},
+		},
+	}
+
+	samplesTwo := []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "Test"},
+				{Name: "test", Value: "test"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: 2, Value: 0.2},
+			},
+		},
+	}
+
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
+		defer db.Close()
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+
+		// Ingest some metrics
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(samplesOne)))
+		require.NoError(t, err)
+
+		err = ingestor.CompleteMetricCreation(context.Background())
+		require.NoError(t, err)
+
+		// Mark all series for deletion, this will cause cache eviction if the epoch refresh runs
+		_, err = db.Exec(context.Background(), "UPDATE _prom_catalog.series SET delete_epoch = i.current_epoch FROM _prom_catalog.ids_epoch as i")
+		require.NoError(t, err)
+
+		// Adjust database current_epoch
+		_, err = db.Exec(context.Background(), "UPDATE _prom_catalog.ids_epoch SET current_epoch = current_epoch + 10")
+		require.NoError(t, err)
+
+		// Refresh series epoch, this will result in caches being emptied
+		ingestor.Dispatcher().(*ingstr.PgxDispatcher).RefreshSeriesEpoch()
+
+		// Here we expect all items to have been removed from the cache
+		// We can't dig into the cache directly, but we can observe that items
+		// were evicted by inserting into the same series again, and seeing
+		// that the `delete_epoch` is NULL in the database afterwards.
+
+		// Insert more samples for the series
+		_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(samplesTwo)))
+		require.NoError(t, err, "")
+
+		// Check how many series still have non-null delete_epoch
+		row := db.QueryRow(context.Background(), "SELECT count(*) FROM _prom_catalog.series WHERE delete_epoch IS NOT NULL")
+		var count int
+		err = row.Scan(&count)
+		require.NoError(t, err)
+
+		// We expect that there are no series with non-null delete epoch
+		require.Equal(t, 0, count)
+	})
+}
+
 func TestInsertCompressedDuplicates(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")

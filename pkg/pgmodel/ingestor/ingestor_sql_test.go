@@ -82,14 +82,6 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			sqlQueries: []model.SqlQuery{
 				{Sql: "BEGIN;"},
 				{
-					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}(nil),
-					Results: model.RowResults{{int64(1)}},
-					Err:     error(nil),
-				},
-				{Sql: "COMMIT;"},
-				{Sql: "BEGIN;"},
-				{
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
 					Args: []interface{}{
 						"metric_1",
@@ -130,14 +122,6 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
-				{Sql: "BEGIN;"},
-				{
-					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}(nil),
-					Results: model.RowResults{{int64(1)}},
-					Err:     error(nil),
-				},
-				{Sql: "COMMIT;"},
 				{Sql: "BEGIN;"},
 				{
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
@@ -184,14 +168,6 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			sqlQueries: []model.SqlQuery{
 				{Sql: "BEGIN;"},
 				{
-					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}(nil),
-					Results: model.RowResults{{int64(1)}},
-					Err:     error(nil),
-				},
-				{Sql: "COMMIT;"},
-				{Sql: "BEGIN;"},
-				{
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
 					Args: []interface{}{
 						"metric_1",
@@ -233,14 +209,6 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			sqlQueries: []model.SqlQuery{
 				{Sql: "BEGIN;"},
 				{
-					Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}(nil),
-					Results: model.RowResults{{int64(1)}},
-					Err:     error(nil),
-				},
-				{Sql: "COMMIT;"},
-				{Sql: "BEGIN;"},
-				{
 					Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
 					Args: []interface{}{
 						"metric_1",
@@ -275,9 +243,9 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			}
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
 			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
-			scache.Reset()
+			scache.Reset(pgmodel.SeriesEpoch(time.Now().Unix()))
 			lCache, _ := cache.NewInvertedLabelsCache(10)
-			sw := NewSeriesWriter(mock, 0, lCache)
+			sw := NewSeriesWriter(mock, 0, lCache, scache)
 
 			lsi := make([]model.Insertable, 0)
 			for _, ser := range c.series {
@@ -306,222 +274,12 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 
 			if err == nil {
 				for _, si := range lsi {
-					si, se, err := si.Series().GetSeriesID()
+					si, err := si.Series().GetSeriesID()
 					require.NoError(t, err)
 					require.True(t, si > 0, "series id not set")
-					require.True(t, se > 0, "epoch not set")
 				}
 			}
 		})
-	}
-}
-
-func TestPGXInserterCacheReset(t *testing.T) {
-	series := []labels.Labels{
-		{
-			{Name: "__name__", Value: "metric_1"},
-			{Name: "name_1", Value: "value_1"},
-		},
-		{
-			{Name: "name_1", Value: "value_2"},
-			{Name: "__name__", Value: "metric_1"},
-		},
-	}
-
-	sqlQueries := []model.SqlQuery{
-
-		// first series cache fetch
-		{Sql: "BEGIN;"},
-		{
-			Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
-			Args:    []interface{}(nil),
-			Results: model.RowResults{{int64(1)}},
-			Err:     error(nil),
-		},
-		{Sql: "COMMIT;"},
-		{Sql: "BEGIN;"},
-		{
-			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
-			Args: []interface{}{
-				"metric_1",
-				tableName,
-				[]string{"__name__", "name_1", "name_1"},
-				[]string{"metric_1", "value_1", "value_2"},
-			},
-			Results: model.RowResults{
-				{[]int32{1, 2, 2}, []int32{1, 2, 3}, []string{"__name__", "name_1", "name_1"}, []string{"metric_1", "value_1", "value_2"}},
-			},
-			Err: error(nil),
-		},
-		{Sql: "COMMIT;"},
-		{Sql: "BEGIN;"},
-		{
-			Sql: seriesInsertSQL,
-			Args: []interface{}{
-				metricID,
-				tableName,
-				getTestLabelArray(t, [][]int32{{1, 2}, {1, 3}}),
-			},
-			Results: model.RowResults{{int64(1), int64(1)}, {int64(2), int64(2)}},
-			Err:     error(nil),
-		},
-		{Sql: "COMMIT;"},
-
-		// first labels cache refresh, does not trash
-		{
-			Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
-			Args:    []interface{}(nil),
-			Results: model.RowResults{{int64(1)}},
-			Err:     error(nil),
-		},
-
-		// second labels cache refresh, trash the cache
-		{
-			Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
-			Args:    []interface{}(nil),
-			Results: model.RowResults{{int64(2)}},
-			Err:     error(nil),
-		},
-		{Sql: "BEGIN;"},
-
-		// repopulate the cache
-		{
-			Sql:     "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1",
-			Args:    []interface{}(nil),
-			Results: model.RowResults{{int64(2)}},
-			Err:     error(nil),
-		},
-		{Sql: "COMMIT;"},
-		{Sql: "BEGIN;"},
-		{
-			Sql: "SELECT * FROM _prom_catalog.get_or_create_label_ids($1, $2, $3, $4)",
-			Args: []interface{}{
-				"metric_1",
-				tableName,
-				[]string{"__name__", "name_1", "name_1"},
-				[]string{"metric_1", "value_1", "value_2"},
-			},
-			Results: model.RowResults{
-				{[]int32{1, 2, 2}, []int32{1, 2, 3}, []string{"__name__", "name_1", "name_1"}, []string{"metric_1", "value_1", "value_2"}},
-			},
-			Err: error(nil),
-		},
-		{Sql: "COMMIT;"},
-		{Sql: "BEGIN;"},
-		{
-			Sql: seriesInsertSQL,
-			Args: []interface{}{
-				metricID,
-				tableName,
-				getTestLabelArray(t, [][]int32{{1, 2}, {1, 3}}),
-			},
-			Results: model.RowResults{{int64(3), int64(1)}, {int64(4), int64(2)}},
-			Err:     error(nil),
-		},
-		{Sql: "COMMIT;"},
-	}
-
-	for i := range sqlQueries {
-		for j := range sqlQueries[i].Args {
-			if _, ok := sqlQueries[i].Args[j].([]string); ok {
-				tmp := &pgutf8str.TextArray{}
-				err := tmp.Set(sqlQueries[i].Args[j])
-				require.NoError(t, err)
-				sqlQueries[i].Args[j] = tmp
-			}
-		}
-	}
-
-	mock := model.NewSqlRecorder(sqlQueries, t)
-	scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
-	lcache, _ := cache.NewInvertedLabelsCache(10)
-	sw := NewSeriesWriter(mock, 0, lcache)
-	inserter := pgxDispatcher{
-		conn:                mock,
-		scache:              scache,
-		invertedLabelsCache: lcache,
-	}
-
-	makeSamples := func(series []labels.Labels) []model.Insertable {
-		lsi := make([]model.Insertable, 0)
-		for _, ser := range series {
-			ls, err := scache.GetSeriesFromLabels(ser)
-			if err != nil {
-				t.Errorf("invalid labels %+v, %v", ls, err)
-			}
-			lsi = append(lsi, model.NewPromSamples(ls, nil))
-		}
-		return lsi
-	}
-
-	samples := makeSamples(series)
-	err := sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expectedIds := []model.SeriesID{
-		model.SeriesID(1),
-		model.SeriesID(2),
-	}
-
-	for index, si := range samples {
-		_, _, ok := si.Series().NameValues()
-		require.False(t, ok)
-		expectedId := expectedIds[index]
-		gotId, _, err := si.Series().GetSeriesID()
-		require.NoError(t, err)
-		if gotId != expectedId {
-			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
-		}
-	}
-
-	// refreshing during the same epoch gives the same IDs without checking the DB
-	_, err = inserter.refreshSeriesEpoch(1)
-	require.NoError(t, err)
-
-	samples = makeSamples(series)
-	err = sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for index, si := range samples {
-		_, _, ok := si.Series().NameValues()
-		require.False(t, ok)
-		expectedId := expectedIds[index]
-		gotId, _, err := si.Series().GetSeriesID()
-		require.NoError(t, err)
-		if gotId != expectedId {
-			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
-		}
-	}
-
-	// trash the cache
-	_, err = inserter.refreshSeriesEpoch(1)
-	require.NoError(t, err)
-
-	// retrying rechecks the DB and uses the new IDs
-	samples = makeSamples(series)
-	err = sw.PopulateOrCreateSeries(context.Background(), sVisitor(samples))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expectedIds = []model.SeriesID{
-		model.SeriesID(3),
-		model.SeriesID(4),
-	}
-
-	for index, si := range samples {
-		_, _, ok := si.Series().NameValues()
-		require.False(t, ok)
-		expectedId := expectedIds[index]
-		gotId, _, err := si.Series().GetSeriesID()
-		require.NoError(t, err)
-		if gotId != expectedId {
-			t.Errorf("incorrect ID:\ngot: %v\nexpected: %v", gotId, expectedId)
-		}
 	}
 }
 
@@ -529,9 +287,12 @@ func TestPGXInserterInsertData(t *testing.T) {
 	if err := os.Setenv("IS_TEST", "true"); err != nil {
 		t.Fatal(err)
 	}
+	testTime := time.Now().Unix()
+	testEpochDuration := 1 * time.Hour
+	seriesCacheEpoch := pgmodel.SeriesEpoch(testTime - 10)
 	makeLabel := func() *model.Series {
 		l := &model.Series{}
-		l.SetSeriesID(1, 1)
+		l.SetSeriesID(1)
 		return l
 	}
 
@@ -544,6 +305,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 		{
 			name: "Zero data",
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT _prom_catalog.initialize_current_epoch(now())", Results: model.RowResults{{testTime}}},
+				{Sql: "SELECT _prom_catalog.get_default_value('epoch_duration')::INTERVAL", Results: model.RowResults{{testEpochDuration}}},
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -555,6 +318,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				"metric_0": {model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1))},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT _prom_catalog.initialize_current_epoch(now())", Results: model.RowResults{{testTime}}},
+				{Sql: "SELECT _prom_catalog.get_default_value('epoch_duration')::INTERVAL", Results: model.RowResults{{testEpochDuration}}},
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -575,8 +340,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(seriesCacheEpoch)},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
@@ -591,6 +356,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT _prom_catalog.initialize_current_epoch(now())", Results: model.RowResults{{testTime}}},
+				{Sql: "SELECT _prom_catalog.get_default_value('epoch_duration')::INTERVAL", Results: model.RowResults{{testEpochDuration}}},
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -620,8 +387,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(seriesCacheEpoch)},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
@@ -639,6 +406,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT _prom_catalog.initialize_current_epoch(now())", Results: model.RowResults{{testTime}}},
+				{Sql: "SELECT _prom_catalog.get_default_value('epoch_duration')::INTERVAL", Results: model.RowResults{{testEpochDuration}}},
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -658,6 +427,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT _prom_catalog.initialize_current_epoch(now())", Results: model.RowResults{{testTime}}},
+				{Sql: "SELECT _prom_catalog.get_default_value('epoch_duration')::INTERVAL", Results: model.RowResults{{testEpochDuration}}},
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -680,8 +451,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 				{
 					//this is the attempt on the full batch
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(seriesCacheEpoch)},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     fmt.Errorf("epoch error"),
 				},
@@ -710,8 +481,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 				{
 					//this is the attempt on the individual copyRequests
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(seriesCacheEpoch)},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     fmt.Errorf("epoch error"),
 				},
@@ -730,6 +501,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 			},
 
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT _prom_catalog.initialize_current_epoch(now())", Results: model.RowResults{{testTime}}},
+				{Sql: "SELECT _prom_catalog.get_default_value('epoch_duration')::INTERVAL", Results: model.RowResults{{testEpochDuration}}},
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -790,6 +563,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT _prom_catalog.initialize_current_epoch(now())", Results: model.RowResults{{testTime}}},
+				{Sql: "SELECT _prom_catalog.get_default_value('epoch_duration')::INTERVAL", Results: model.RowResults{{testEpochDuration}}},
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -812,6 +587,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 			},
 			metricsGetErr: fmt.Errorf("some metrics error"),
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT _prom_catalog.initialize_current_epoch(now())", Results: model.RowResults{{testTime}}},
+				{Sql: "SELECT _prom_catalog.get_default_value('epoch_duration')::INTERVAL", Results: model.RowResults{{testEpochDuration}}},
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -833,8 +610,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Err:     error(nil),
 				},
 				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(seriesCacheEpoch)},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
@@ -850,6 +627,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 			},
 
 			sqlQueries: []model.SqlQuery{
+				{Sql: "SELECT _prom_catalog.initialize_current_epoch(now())", Results: model.RowResults{{testTime}}},
+				{Sql: "SELECT _prom_catalog.get_default_value('epoch_duration')::INTERVAL", Results: model.RowResults{{testEpochDuration}}},
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
@@ -900,8 +679,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 				// epoch check after insert from temp table
 				{
-					Sql:     "SELECT CASE current_epoch > $1::BIGINT + 1 WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
-					Args:    []interface{}{int64(1)},
+					Sql:     "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1",
+					Args:    []interface{}{int64(seriesCacheEpoch)},
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
@@ -938,7 +717,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			}
 			defer inserter.Close()
 
-			_, err = inserter.InsertTs(ctx, model.Data{Rows: c.rows})
+			_, err = inserter.InsertTs(ctx, model.Data{Rows: c.rows, SeriesCacheEpoch: seriesCacheEpoch})
 
 			var expErr error
 			switch {

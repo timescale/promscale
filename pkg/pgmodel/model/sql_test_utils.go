@@ -413,6 +413,10 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			if d, ok := dest[i].(*time.Time); ok {
 				*d = s
 			}
+		case time.Duration:
+			if d, ok := dest[i].(*time.Duration); ok {
+				*d = s
+			}
 		case float64:
 			if _, ok := dest[i].(float64); !ok {
 				return fmt.Errorf("wrong value type float64")

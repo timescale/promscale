@@ -136,7 +136,7 @@ func TestInitializeMetricBatcher(t *testing.T) {
 func TestSendBatches(t *testing.T) {
 	makeSeries := func(seriesID int) *model.Series {
 		l := &model.Series{}
-		l.SetSeriesID(pgmodel.SeriesID(seriesID), 1)
+		l.SetSeriesID(pgmodel.SeriesID(seriesID))
 		return l
 	}
 	var workFinished sync.WaitGroup
@@ -154,7 +154,7 @@ func TestSendBatches(t *testing.T) {
 
 	// we make sure that we receive batch data
 	for i := 0; i < 3; i++ {
-		id, _, err := batch.data.batch.Data()[i].Series().GetSeriesID()
+		id, err := batch.data.batch.Data()[i].Series().GetSeriesID()
 		if err != nil {
 			t.Fatal(err)
 		}
