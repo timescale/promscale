@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgtype"
 	"github.com/timescale/promscale/pkg/log"
@@ -142,7 +143,7 @@ func (h *seriesWriter) PopulateOrCreateSeries(ctx context.Context, sv SeriesVisi
 			continue
 		}
 
-		//transaction per metric to avoid cross-metric locks
+		// transaction per metric to avoid cross-metric locks
 		batch.Queue("BEGIN;")
 		batch.Queue(seriesInsertSQL, info.metricInfo.MetricID, info.metricInfo.TableName, info.labelArraySet)
 		batch.Queue("COMMIT;")
@@ -196,7 +197,7 @@ func (h *seriesWriter) PopulateOrCreateSeries(ctx context.Context, sv SeriesVisi
 	return nil
 }
 
-func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMetricInfo, labelMap map[cache.LabelKey]cache.LabelInfo) (model.SeriesEpoch, error) {
+func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMetricInfo, labelMap map[cache.LabelKey]cache.LabelInfo) (*model.SeriesEpoch, error) {
 	_, span := tracer.Default().Start(ctx, "fill-label-ids")
 	defer span.End()
 	//we cannot use the label cache here because that maps label ids => name, value.
@@ -204,7 +205,7 @@ func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMe
 	//we may want a new cache for that, at a later time.
 
 	batch := h.conn.NewBatch()
-	var dbEpoch model.SeriesEpoch
+	var dbEpoch *model.SeriesEpoch
 
 	// The epoch will never decrease, so we can check it once at the beginning,
 	// at worst we'll store too small an epoch, which is always safe
@@ -257,10 +258,12 @@ func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMe
 	if _, err := br.Exec(); err != nil {
 		return dbEpoch, fmt.Errorf("error filling labels on begin: %w", err)
 	}
-	err = br.QueryRow().Scan(&dbEpoch)
+	var epochTime time.Time
+	err = br.QueryRow().Scan(&epochTime)
 	if err != nil {
 		return dbEpoch, fmt.Errorf("error filling labels: %w", err)
 	}
+	dbEpoch = pgmodel.NewSeriesEpoch(epochTime)
 	if _, err := br.Exec(); err != nil {
 		return dbEpoch, fmt.Errorf("error filling labels on commit: %w", err)
 	}

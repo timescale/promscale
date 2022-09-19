@@ -497,7 +497,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 				t.Errorf("unexpected series count: %v @ %v", count, loc)
 			}
 
-			err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE delete_epoch IS NOT NULL`).Scan(&count)
+			err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE mark_for_deletion_epoch IS NOT NULL`).Scan(&count)
 			if err != nil {
 				t.Error(loc, err)
 			}
@@ -545,7 +545,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 				t.Errorf("unexpected series count: %v @ %v", count, loc)
 			}
 
-			err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE delete_epoch IS NOT NULL`).Scan(&count)
+			err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE mark_for_deletion_epoch IS NOT NULL`).Scan(&count)
 			if err != nil {
 				t.Error(loc, err)
 			}
@@ -608,7 +608,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 				t.Errorf("unexpected series count: %v @ %v", count, loc)
 			}
 
-			err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE delete_epoch IS NOT NULL`).Scan(&count)
+			err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE mark_for_deletion_epoch IS NOT NULL`).Scan(&count)
 			if err != nil {
 				t.Error(loc, err)
 			}
@@ -753,7 +753,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			t.Errorf("unexpected series count: %v", count)
 		}
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE delete_epoch IS NOT NULL`).Scan(&count)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE mark_for_deletion_epoch IS NOT NULL`).Scan(&count)
 		if err != nil {
 			t.Error(err)
 		}
@@ -817,7 +817,7 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			t.Errorf("unexpected series count: %v", count)
 		}
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE delete_epoch IS NOT NULL`).Scan(&count)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE mark_for_deletion_epoch IS NOT NULL`).Scan(&count)
 		if err != nil {
 			t.Error(err)
 		}
