@@ -133,7 +133,7 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 		}
 	}
 
-	isTimescaleDB, isLicenseOSS, err := getDatabaseDetails(conn)
+	_, isLicenseOSS, err := getDatabaseDetails(conn)
 	if err != nil {
 		return nil, fmt.Errorf("fetching license information: %w", err)
 	}
@@ -166,7 +166,7 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 	}
 
 	if cfg.DatasetConfig != "" {
-		err = ApplyDatasetConfig(conn, cfg.DatasetConfig, isTimescaleDB)
+		err = ApplyDatasetConfig(conn, cfg.DatasetConfig)
 		if err != nil {
 			return nil, fmt.Errorf("error applying dataset configuration: %w", err)
 		}
@@ -226,8 +226,8 @@ func isBGWLessThanDBs(conn *pgx.Conn) (bool, error) {
 	return false, nil
 }
 
-func ApplyDatasetConfig(conn *pgx.Conn, cfgFilename string, withTimescaleDB bool) error {
-	cfg, err := dataset.NewConfig(cfgFilename, withTimescaleDB)
+func ApplyDatasetConfig(conn *pgx.Conn, cfgFilename string) error {
+	cfg, err := dataset.NewConfig(cfgFilename)
 	if err != nil {
 		return err
 	}

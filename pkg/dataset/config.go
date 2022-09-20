@@ -34,8 +34,6 @@ var (
 type Config struct {
 	Metrics `yaml:"metrics"`
 	Traces  `yaml:"traces"`
-
-	withTimescaleDB bool
 }
 
 // Metrics contains dataset configuration options for metrics data.
@@ -52,11 +50,9 @@ type Traces struct {
 	RetentionPeriod DayDuration `yaml:"default_retention_period"`
 }
 
-// NewConfig creates a new dataset config based on the configuration YAML contents and
-// whether or now we are running TimescaleDB (used for determining default compression setting).
-func NewConfig(contents string, withTimescaleDB bool) (cfg Config, err error) {
+// NewConfig creates a new dataset config based on the configuration YAML contents.
+func NewConfig(contents string) (cfg Config, err error) {
 	err = yaml.Unmarshal([]byte(contents), &cfg)
-	cfg.withTimescaleDB = withTimescaleDB
 	return cfg, err
 }
 
@@ -94,13 +90,7 @@ func (c *Config) applyDefaults() {
 		c.Metrics.ChunkInterval = DayDuration(defaultMetricChunkInterval)
 	}
 	if c.Metrics.Compression == nil {
-		switch c.withTimescaleDB {
-		case false:
-			// No TSDB, no compression.
-			c.Metrics.Compression = &c.withTimescaleDB
-		default:
-			c.Metrics.Compression = &defaultMetricCompressionVar
-		}
+		c.Metrics.Compression = &defaultMetricCompressionVar
 	}
 	if c.Metrics.HALeaseRefresh <= 0 {
 		c.Metrics.HALeaseRefresh = DayDuration(defaultMetricHALeaseRefresh)
