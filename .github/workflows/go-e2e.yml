@@ -76,11 +76,11 @@ jobs:
     strategy:
       matrix:
         test-setups:
-        - {name: "Singlenode (14)", shortname: "singlenode-14", tsdb: true, multi: false, pg: 14}
-        - {name: "Singlenode (13)", shortname: "singlenode-13", tsdb: true, multi: false, pg: 13}
-        - {name: "Singlenode (12)", shortname: "singlenode-12", tsdb: true, multi: false, pg: 12}
+        - {name: "Singlenode (14)", shortname: "singlenode-14", multi: false, pg: 14}
+        - {name: "Singlenode (13)", shortname: "singlenode-13", multi: false, pg: 13}
+        - {name: "Singlenode (12)", shortname: "singlenode-12", multi: false, pg: 12}
         # TODO (james): Skipping multinode because tests are broken for now
-        # - {name: "Multinode",                shortname: "multinode",      tsdb: true,  multi: true,  pg: 14}
+        # - {name: "Multinode",                shortname: "multinode",      multi: true,  pg: 14}
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v3
@@ -115,10 +115,9 @@ jobs:
     - name: Test ${{ matrix.test-setups.name }}
       env:
         DOCKER_IMAGE: ${{  needs.pick_docker_image.outputs[ format('docker_image_{0}', matrix.test-setups.pg) ] }}
-        TSDB: ${{ matrix.test-setups.tsdb }}
         MULTI: ${{ matrix.test-setups.multi }}
         SHORTNAME: ${{ matrix.test-setups.shortname }}
-      run: go test -race -timeout=30m ./pkg/tests/end_to_end_tests/ -use-timescaledb=$TSDB -use-multinode=$MULTI -timescale-docker-image=$DOCKER_IMAGE
+      run: go test -race -timeout=30m ./pkg/tests/end_to_end_tests/ -use-multinode=$MULTI -timescale-docker-image=$DOCKER_IMAGE
 
   upgrade_test:
     name: upgrade_tests

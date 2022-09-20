@@ -48,9 +48,6 @@ func telemetryEngineForE2E(t testing.TB, conn pgxconn.PgxConn, qryable promql.Qu
 }
 
 func TestPromscaleTobsMetadata(t *testing.T) {
-	if !*useTimescaleDB {
-		t.Skip("telemetry requires TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -74,9 +71,6 @@ func TestPromscaleTobsMetadata(t *testing.T) {
 }
 
 func TestTelemetryInfoTableWrite(t *testing.T) {
-	if !*useTimescaleDB {
-		t.Skip("telemetry requires TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -142,9 +136,6 @@ func TestOnlyOneHousekeeper(t *testing.T) {
 }
 
 func TestHousekeeper(t *testing.T) {
-	if !*useTimescaleDB {
-		t.Skip("telemetry requires TimescaleDB and the Promscale extension")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -177,9 +168,6 @@ func TestHousekeeper(t *testing.T) {
 }
 
 func TestCleanStalePromscales(t *testing.T) {
-	if !*useTimescaleDB {
-		t.Skip("telemetry requires TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -250,9 +238,6 @@ func TestCleanStalePromscales(t *testing.T) {
 }
 
 func TestTelemetryEngineWhenTelemetryIsSetToOff(t *testing.T) {
-	if !*useTimescaleDB {
-		t.Skip("telemetry requires TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -284,9 +269,6 @@ func testIfTelemetryIsOff(t testing.TB, conn pgxconn.PgxConn) {
 }
 
 func TestTelemetrySQLStats(t *testing.T) {
-	if !*useTimescaleDB {
-		t.Skip("telemetry requires TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
 		defer db.Close()
@@ -325,23 +307,7 @@ func TestTelemetrySQLStats(t *testing.T) {
 	})
 }
 
-func TestTelemetryWithoutTimescaleDB(t *testing.T) {
-	if *useTimescaleDB {
-		t.Skip("test requires unavailability of TimescaleDB")
-	}
-	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
-		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
-		defer db.Close()
-
-		engine := telemetryEngineForE2E(t, pgxconn.NewPgxConn(db), nil)
-		require.False(t, engine.IsActive())
-	})
-}
-
 func TestPromQLBasedTelemetry(t *testing.T) {
-	if !*useTimescaleDB {
-		t.Skip("telemetry requires TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		conn, err := dbOwner.Acquire(context.Background())
 		if err != nil {

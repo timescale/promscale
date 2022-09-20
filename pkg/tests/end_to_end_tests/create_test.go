@@ -138,9 +138,6 @@ func TestSQLChunkInterval(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useTimescaleDB {
-		t.Skip("chunk intervals meaningless without TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
 		defer db.Close()
@@ -503,9 +500,6 @@ func TestInsertCompressedDuplicates(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useTimescaleDB {
-		t.Skip("compression meaningless without TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -621,9 +615,6 @@ func TestMetricBatcherLabelsBatching(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useTimescaleDB {
-		t.Skip("compression meaningless without TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -690,9 +681,6 @@ func TestMetricBatcherLabelsBatching(t *testing.T) {
 func TestInsertCompressed(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
-	}
-	if !*useTimescaleDB {
-		t.Skip("compression meaningless without TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
@@ -781,9 +769,6 @@ func verifyNumDataNodes(t testing.TB, db *pgxpool.Pool, tableName string, expect
 func TestInsertMultinodeAddNodes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
-	}
-	if !*useTimescaleDB {
-		t.Skip("compression meaningless without TimescaleDB")
 	}
 	if !*useMultinode {
 		t.Skip("Only applies for multinode")
@@ -876,9 +861,6 @@ func insertMultinodeAddNodes(t *testing.T, attachExisting bool) {
 func TestCompressionSetting(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
-	}
-	if !*useTimescaleDB {
-		t.Skip("compression meaningless without TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
@@ -994,9 +976,6 @@ func TestCompressionSetting(t *testing.T) {
 func TestCustomCompressionJob(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
-	}
-	if !*useTimescaleDB {
-		t.Skip("compression meaningless without TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
@@ -1204,9 +1183,6 @@ func TestExecuteMaintenanceCompressionJob(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useTimescaleDB {
-		t.Skip("compression meaningless without TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
 		defer dbJob.Close()
@@ -1366,9 +1342,6 @@ func TestExecuteCompressionMetricsLocked(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useTimescaleDB {
-		t.Skip("compression meaningless without TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
 		defer dbJob.Close()
@@ -1494,9 +1467,6 @@ func TestConfigMaintenanceJobs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useTimescaleDB {
-		t.Skip("jobs meaningless without TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
 		defer db.Close()
@@ -1583,9 +1553,6 @@ func TestConfigMaintenanceJobs(t *testing.T) {
 func TestExecuteMaintJob(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
-	}
-	if !*useTimescaleDB {
-		t.Skip("jobs meaningless without TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))

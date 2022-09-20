@@ -20,7 +20,7 @@ func TestDatasetConfigApply(t *testing.T) {
 
 		pgxConn := conn.Conn()
 		require.Equal(t, 8*time.Hour, getMetricsDefaultChunkInterval(t, pgxConn))
-		require.Equal(t, *useTimescaleDB, getMetricsDefaultCompressionSetting(t, pgxConn))
+		require.Equal(t, true, getMetricsDefaultCompressionSetting(t, pgxConn))
 		require.Equal(t, 10*time.Second, getMetricsDefaultHALeaseRefresh(t, pgxConn))
 		require.Equal(t, 1*time.Minute, getMetricsDefaultHALeaseTimeout(t, pgxConn))
 		require.Equal(t, 90*24*time.Hour, getMetricsDefaultRetention(t, pgxConn))
@@ -50,14 +50,14 @@ func TestDatasetConfigApply(t *testing.T) {
 		require.Equal(t, 10*24*time.Hour, getTracesDefaultRetention(t, pgxConn))
 
 		// Set to default if chunk interval is not specified.
-		cfg, err = dataset.NewConfig("", *useTimescaleDB)
+		cfg, err = dataset.NewConfig("", true)
 		require.NoError(t, err)
 
 		err = cfg.Apply(pgxConn)
 		require.NoError(t, err)
 
 		require.Equal(t, 8*time.Hour, getMetricsDefaultChunkInterval(t, pgxConn))
-		require.Equal(t, *useTimescaleDB, getMetricsDefaultCompressionSetting(t, pgxConn))
+		require.Equal(t, true, getMetricsDefaultCompressionSetting(t, pgxConn))
 		require.Equal(t, 10*time.Second, getMetricsDefaultHALeaseRefresh(t, pgxConn))
 		require.Equal(t, 1*time.Minute, getMetricsDefaultHALeaseTimeout(t, pgxConn))
 		require.Equal(t, 90*24*time.Hour, getMetricsDefaultRetention(t, pgxConn))

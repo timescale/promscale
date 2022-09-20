@@ -16,9 +16,6 @@ import (
 )
 
 func TestDatabaseMetrics(t *testing.T) {
-	if !*useTimescaleDB {
-		t.Skip("test meaningless without TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
@@ -93,9 +90,6 @@ func TestDatabaseMetrics(t *testing.T) {
 }
 
 func TestDatabaseMetricsAfterCompression(t *testing.T) {
-	if !*useTimescaleDB {
-		t.Skip("test meaningless without TimescaleDB")
-	}
 	ts := generateSmallTimeseries()
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)

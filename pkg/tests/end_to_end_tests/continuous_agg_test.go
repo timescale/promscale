@@ -29,9 +29,6 @@ func TestContinuousAggDownsampling(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useTimescaleDB {
-		t.Skip("continuous aggregates need TimescaleDB support")
-	}
 	if *useMultinode {
 		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")
 	}
@@ -334,9 +331,6 @@ func TestContinuousAggDataRetention(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useTimescaleDB {
-		t.Skip("continuous aggregates need TimescaleDB support")
-	}
 	if *useMultinode {
 		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")
 	}
@@ -421,9 +415,6 @@ WITH (timescaledb.continuous) AS
 func TestContinuousAgg2StepAgg(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
-	}
-	if !*useTimescaleDB {
-		t.Skip("continuous aggregates require TimescaleDB")
 	}
 	if *useMultinode {
 		t.Skip("continuous aggregates not supported in multinode TimescaleDB setup")

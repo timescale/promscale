@@ -137,9 +137,6 @@ func TestSQLDropChunk(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useTimescaleDB {
-		t.Skip("This test only runs on installs with TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
 		defer dbJob.Close()
@@ -224,9 +221,6 @@ func TestSQLDropChunk(t *testing.T) {
 func TestSQLDropChunkWithLocked(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
-	}
-	if !*useTimescaleDB {
-		t.Skip("This test only runs on installs with TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
@@ -331,9 +325,6 @@ func TestSQLDropDataWithoutTimescaleDB(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if *useTimescaleDB {
-		t.Skip("This test only runs on installs without TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		//a chunk way back in 2009
 		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
@@ -415,9 +406,6 @@ func TestSQLDropMetricChunk(t *testing.T) {
 	t.Skip() // Skip the test for now, since it causes failure in promscale_extension repo CI. More info at https://github.com/timescale/promscale/pull/1484
 	if testing.Short() {
 		t.Skip("skipping integration test")
-	}
-	if !*useTimescaleDB {
-		t.Skip("This test only runs on installs with TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
@@ -721,12 +709,10 @@ func TestSQLDropAllMetricData(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if *useTimescaleDB {
-			//owner not admin since using timescale func to avoid randomness
-			_, err = dbOwner.Exec(context.Background(), "SELECT public.set_chunk_time_interval('prom_data.test', interval '8 hour')")
-			if err != nil {
-				t.Fatal(err)
-			}
+		//owner not admin since using timescale func to avoid randomness
+		_, err = dbOwner.Exec(context.Background(), "SELECT public.set_chunk_time_interval('prom_data.test', interval '8 hour')")
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)

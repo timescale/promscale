@@ -37,7 +37,6 @@ var (
 	testDatabase          = flag.String("database", "tmp_db_timescale_migrate_test", "database to run integration tests on")
 	updateGoldenFiles     = flag.Bool("update", false, "update the golden files of this test")
 	useDocker             = flag.Bool("use-docker", true, "start database using a docker container")
-	useTimescaleDB        = flag.Bool("use-timescaledb", true, "use TimescaleDB")
 	timescaleDockerImage  = flag.String("timescale-docker-image", constants.PromscaleExtensionContainer, "TimescaleDB docker image to run tests against")
 	useMultinode          = flag.Bool("use-multinode", false, "use TimescaleDB Multinode")
 	useTimescaleDBNightly = flag.Bool("use-timescaledb-nightly", false, "use TimescaleDB nightly images")
@@ -77,9 +76,7 @@ func init() {
 
 // setExtensionState sets the value of testOptions based on the input flags.
 func setExtensionState() {
-	if *useTimescaleDB {
-		testOptions.UseTimescaleDB()
-	}
+	testOptions.UseTimescaleDB()
 
 	if *useTimescaleDBNightly {
 		testOptions.UseTimescaleNightly()
@@ -87,7 +84,6 @@ func setExtensionState() {
 
 	if *useMultinode {
 		testOptions.UseMultinode()
-		*useTimescaleDB = true
 	}
 
 	testOptions.SetTimescaleDockerImage(*timescaleDockerImage)
@@ -240,12 +236,11 @@ func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAd
 
 func performMigrate(t testing.TB, connectURL string) {
 	extOptions := extension.ExtensionMigrateOptions{Install: true, Upgrade: true, UpgradePreRelease: true}
-	if *useTimescaleDB {
-		migrateURL := connectURL
-		err := extension.InstallUpgradeTimescaleDBExtensions(migrateURL, extOptions)
-		if err != nil {
-			t.Fatal(err)
-		}
+
+	migrateURL := connectURL
+	err := extension.InstallUpgradeTimescaleDBExtensions(migrateURL, extOptions)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	migratePool, err := pgxpool.Connect(context.Background(), connectURL)
