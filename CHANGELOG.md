@@ -30,6 +30,7 @@ We use the following categories for changes:
 - Log throughput in the same line for samples, spans and metric metadata [#1643]
 - The `chunks_created` metrics was removed. [#1634]
 - Stop logging as an error grpc NotFound and Canceled status codes [#1645]
+- TimescaleDB is now mandatory [#1660].
 
 ### Fixed
 - Do not collect telemetry if `timescaledb.telemetry_level=off` [#1612]

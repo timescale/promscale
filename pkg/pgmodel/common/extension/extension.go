@@ -84,7 +84,7 @@ func CheckVersions(conn *pgx.Conn, migrationFailedDueToLockError bool, extOption
 		return fmt.Errorf("problem checking PostgreSQL version: %w", err)
 	}
 	if err := CheckExtensionsVersion(conn, migrationFailedDueToLockError, extOptions); err != nil {
-		return fmt.Errorf("problem checking extension version: %w", err)
+		return fmt.Errorf("problem with extension: %w", err)
 	}
 	return nil
 }
@@ -117,7 +117,7 @@ func checkPgVersion(conn *pgx.Conn) error {
 // it is at the right version
 func CheckExtensionsVersion(conn *pgx.Conn, migrationFailedDueToLockError bool, extOptions ExtensionMigrateOptions) error {
 	if err := checkTimescaleDBVersion(conn); err != nil {
-		return fmt.Errorf("problem checking timescaledb extension version: %w", err)
+		return err
 	}
 	if err := checkPromscaleExtensionVersion(conn, migrationFailedDueToLockError, extOptions); err != nil {
 		return fmt.Errorf("problem checking promscale extension version: %w", err)
@@ -131,8 +131,7 @@ func checkTimescaleDBVersion(conn *pgx.Conn) error {
 		return fmt.Errorf("could not get the installed extension version: %w", err)
 	}
 	if !isInstalled {
-		log.Warn("msg", "Running Promscale without TimescaleDB. Some features will be disabled.")
-		return nil
+		return fmt.Errorf("the timescaledb extension is not installed, unable to run Promscale without timescaledb")
 	}
 	if !version.VerifyTimescaleVersion(timescaleVersion) {
 		safeRanges := strings.Split(version.TimescaleVersionRangeString, " ")
