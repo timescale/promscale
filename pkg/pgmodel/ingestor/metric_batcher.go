@@ -248,7 +248,12 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 				numSeries := pending.batch.CountSeries()
 				metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
 				span.SetAttributes(attribute.Int("num_series", numSeries))
+				span.End()
+
 				pending = NewPendingBuffer()
+				pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
+				span.SetAttributes(attribute.String("metric", info.TableName))
+
 				state = WaitingRecvDone
 			case req, ok := <-recvCh:
 				if !ok {
@@ -265,10 +270,6 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 					span.End()
 					return
 				}
-				span.End()
-
-				pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
-				span.SetAttributes(attribute.String("metric", info.TableName))
 				if pending.IsEmpty() {
 					span.AddEvent("Buffer is empty")
 					req, ok := <-input
