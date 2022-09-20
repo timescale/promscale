@@ -71,6 +71,26 @@ func TestJaegerSpanBinarayTag(t *testing.T) {
 	})
 }
 
+func TestJaeger(t *testing.T) {
+	withDB(t, "jaeger_span_store_e2e", func(db *pgxpool.Pool, t testing.TB) {
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+		require.NoError(t, err)
+		defer ingestor.Close()
+
+		jaegerStore := jaegerstore.New(pgxconn.NewQueryLoggingPgxConn(db), ingestor, &store.DefaultConfig)
+
+		trace := getTraceFixtureExact(t, "./fixtures/tags_plus_operation_name/trace.json")
+		err = jaegerStore.WriteSpan(context.Background(), trace.GetSpans()[0])
+		require.NoError(t, err)
+		query := loadAndParseQuery(t, "./fixtures/tags_plus_operation_name/query.json")
+		traces, err := jaegerStore.FindTraces(context.Background(), query)
+		require.NoError(t, err)
+
+		trace = getTraceFixtureExact(t, "./fixtures/tags_plus_operation_name/trace.json")
+		CompareTraces(t, trace, traces[0])
+	})
+}
+
 func loadAndParseJSONPB(t testing.TB, path string, object proto.Message) {
 	// #nosec
 	inStr, err := os.ReadFile(path)

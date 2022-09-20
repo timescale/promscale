@@ -40,11 +40,11 @@ const (
 	   	inst_lib.name 				library_name,
 	   	inst_lib.version 			library_version,
 		inst_lib_url.url 			library_schema_url,
-		array_agg(lk.linked_trace_id ORDER BY lk.link_nbr) FILTER(WHERE lk IS NOT NULL)	links_linked_trace_ids,
-		array_agg(lk.linked_span_id ORDER BY lk.link_nbr)  FILTER(WHERE lk IS NOT NULL)	links_linked_span_ids,
-		array_agg(lk.trace_state ORDER BY lk.link_nbr)     FILTER(WHERE lk IS NOT NULL)	links_trace_states,
-		array_agg(lk.dropped_tags_count ORDER BY lk.link_nbr) FILTER(WHERE lk IS NOT NULL) 	links_dropped_tags_count,
-		array_agg(_ps_trace.tag_map_denormalize(lk.tags) ORDER BY lk.link_nbr) FILTER(WHERE lk IS NOT NULL)			links_tags
+		array_agg(lk.linked_trace_id ORDER BY lk.link_nbr) FILTER(WHERE lk.trace_id IS NOT NULL)	links_linked_trace_ids,
+		array_agg(lk.linked_span_id ORDER BY lk.link_nbr)  FILTER(WHERE lk.trace_id IS NOT NULL)	links_linked_span_ids,
+		array_agg(lk.trace_state ORDER BY lk.link_nbr)     FILTER(WHERE lk.trace_id IS NOT NULL)	links_trace_states,
+		array_agg(lk.dropped_tags_count ORDER BY lk.link_nbr) FILTER(WHERE lk.trace_id IS NOT NULL) 	links_dropped_tags_count,
+		array_agg(_ps_trace.tag_map_denormalize(lk.tags) ORDER BY lk.link_nbr) FILTER(WHERE lk.trace_id IS NOT NULL)			links_tags
 	FROM
 		_ps_trace.span s
 	INNER JOIN

@@ -42,7 +42,10 @@ func CompareTraces(t testing.TB, expected *model.Trace, actual *model.Trace) {
 		for _, d := range diff {
 			t.Logf("Expected and actual differ: %v\n", d)
 		}
-		out, err := json.Marshal(actual)
+		out, err := json.Marshal(expected)
+		assert.NoError(t, err)
+		t.Logf("Expect trace: %s", string(out))
+		out, err = json.Marshal(actual)
 		assert.NoError(t, err)
 		t.Logf("Actual trace: %s", string(out))
 		t.Fail()
