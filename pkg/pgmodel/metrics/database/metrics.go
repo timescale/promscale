@@ -194,6 +194,169 @@ var metrics = []metricQueryWrap{
 			prometheus.GaugeOpts{
 				Namespace: util.PromNamespace,
 				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_locks_access_exclusive",
+				Help:      "Number of AccessExclusiveLock locks held by Promscale maintenance workers.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_locks_access_share",
+				Help:      "Number of AccessShareLock locks held by Promscale maintenance workers.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_locks_exclusive",
+				Help:      "Number of ExclusiveLock locks held by Promscale maintenance workers.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_locks_row_exclusive",
+				Help:      "Number of RowExclusiveLock locks held by Promscale maintenance workers.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_locks_row_share",
+				Help:      "Number of RowShareLock locks held by Promscale maintenance workers.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_locks_share",
+				Help:      "Number of ShareLock locks held by Promscale maintenance workers.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_locks_share_update_exclusive",
+				Help:      "Number of ShareRowExclusiveLock locks held by Promscale maintenance workers.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_locks_share_row_exclusive",
+				Help:      "Number of ShareUpdateExclusiveLock locks held by Promscale maintenance workers.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_locks_total",
+				Help:      "Number of locks held by Promscale maintenance workers.",
+			},
+		),
+		query: `SELECT
+				COUNT(*) FILTER (WHERE l.mode = 'AccessExclusiveLock') :: BIGINT AS AccessExclusiveLock,
+				COUNT(*) FILTER (WHERE l.mode = 'AccessShareLock') :: BIGINT AS AccessShareLock,
+				COUNT(*) FILTER (WHERE l.mode = 'ExclusiveLock') :: BIGINT AS ExclusiveLock,
+				COUNT(*) FILTER (WHERE l.mode = 'RowExclusiveLock') :: BIGINT AS RowExclusiveLock,
+				COUNT(*) FILTER (WHERE l.mode = 'RowShareLock') :: BIGINT AS RowShareLock,
+				COUNT(*) FILTER (WHERE l.mode = 'ShareLock') :: BIGINT AS ShareLock,
+				COUNT(*) FILTER (WHERE l.mode = 'ShareUpdateExclusiveLock') :: BIGINT AS ShareUpdateExclusiveLock,
+				COUNT(*) FILTER (WHERE l.mode = 'ShareRowExclusiveLock') :: BIGINT AS ShareRowExclusiveLock,
+				--
+				COUNT(*) :: BIGINT AS total
+			FROM pg_stat_activity sa
+			JOIN pg_locks l ON l.pid = sa.pid
+			WHERE sa.application_name LIKE 'promscale maintenance%'`,
+	}, {
+		metrics: gauges(
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_long_running_buffer_pin",
+				Help:      "Number of Promscale maintenance workers executing long running queries, waiting on BufferPin events.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_long_running_io",
+				Help:      "Number of Promscale maintenance workers executing long running queries, waiting on IO events.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_long_running_ipc",
+				Help:      "Number of Promscale maintenance workers executing long running queries, waiting on IPC events.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_long_running_lock",
+				Help:      "Number of Promscale maintenance workers executing long running queries, waiting on Lock events.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_long_running_lwlock",
+				Help:      "Number of Promscale maintenance workers executing long running queries, waiting on LWLock events.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_long_running_timeout",
+				Help:      "Number of Promscale maintenance workers executing long running queries, waiting on Timeout events.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_long_running_compression",
+				Help:      "Number of Promscale maintenance workers executing long running queries, originating from compression jobs.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_long_running_retention_metric",
+				Help:      "Number of Promscale maintenance workers executing long running queries, originating from metric retention jobs.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_long_running_retention_tracing",
+				Help:      "Number of Promscale maintenance workers executing long running queries, originating from tracing retention jobs.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_long_running_total",
+				Help:      "Number of Promscale maintenance workers executing long running queries.",
+			},
+		),
+		query: `SELECT
+				-- by wait event type; not exhaustive
+				COUNT(*) FILTER (WHERE sa.wait_event_type = 'BufferPin') :: BIGINT AS buffer_pin_cnt,
+				COUNT(*) FILTER (WHERE sa.wait_event_type = 'IO') :: BIGINT AS io_cnt,
+				COUNT(*) FILTER (WHERE sa.wait_event_type = 'IPC') :: BIGINT AS ipc_cnt,
+				COUNT(*) FILTER (WHERE sa.wait_event_type = 'Lock') :: BIGINT AS lock_cnt,
+				COUNT(*) FILTER (WHERE sa.wait_event_type = 'LWLock') :: BIGINT AS lwlock_cnt,
+				COUNT(*) FILTER (WHERE sa.wait_event_type = 'Timeout') :: BIGINT AS timeout_cnt,
+				-- by workload type; exhaustive (the sum should equal the total)
+				COUNT(*) FILTER (WHERE sa.application_name LIKE '%compression%') :: BIGINT AS compression_cnt,
+				COUNT(*) FILTER (WHERE sa.application_name LIKE '%retention%' AND sa.application_name LIKE '%metric%') :: BIGINT AS metric_retention_cnt,
+				COUNT(*) FILTER (WHERE sa.application_name LIKE '%retention%' AND sa.application_name LIKE '%tracing%') :: BIGINT AS tracing_retention_cnt,
+				--
+				COUNT(*) :: BIGINT AS total
+			FROM pg_stat_activity sa
+			WHERE sa.application_name LIKE 'promscale maintenance%'
+			AND (now() - coalesce(sa.query_start, sa.xact_start)) > INTERVAL '10 seconds'
+			AND sa.state <> 'idle'`,
+	}, {
+		metrics: gauges(
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_long_running_longest_seconds",
+				Help:      "The duration in seconds of a longest running query, originating from a Promscale maintenance worker.",
+			},
+		),
+		query: `SELECT coalesce(extract(EPOCH FROM MAX(now() - coalesce(sa.query_start, sa.xact_start))) :: BIGINT, 0)
+			FROM pg_stat_activity sa WHERE sa.application_name LIKE 'promscale maintenance%'`,
+	}, {
+		metrics: gauges(
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
 				Name:      "compression_status",
 				Help:      "Compression status in TimescaleDB.",
 			},
@@ -264,8 +427,10 @@ var metrics = []metricQueryWrap{
 	},
 }
 
-// GetMetric returns the first metric whose Name matches the supplied name.
+// GetMetric returns the metric whose Description best matches the supplied name.
 func GetMetric(name string) (prometheus.Metric, error) {
+	var candidate prometheus.Metric = nil
+	candidateDescLen := 0
 	for _, ms := range metrics {
 		for _, m := range ms.metrics {
 			metric := getMetric(m)
@@ -273,12 +438,13 @@ func GetMetric(name string) (prometheus.Metric, error) {
 			if err != nil {
 				return nil, fmt.Errorf("extract metric string")
 			}
-			if strings.Contains(str, name) {
-				return metric, nil
+			if strings.Contains(str, name) && (len(str) < candidateDescLen || candidate == nil) {
+				candidate = metric
+				candidateDescLen = len(str)
 			}
 		}
 	}
-	return nil, nil
+	return candidate, nil
 }
 
 func getMetric(c prometheus.Collector) prometheus.Metric {

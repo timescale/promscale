@@ -7,9 +7,9 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 
-//returns a exponential histogram for a saturating metric. Grows exponentially
-//until max-10, and has another bucket for max.
-//This is done so we can tell from the histogram if the resource was saturated or not.
+// returns a exponential histogram for a saturating metric. Grows exponentially
+// until max-10, and has another bucket for max.
+// This is done so we can tell from the histogram if the resource was saturated or not.
 func HistogramBucketsSaturating(start float64, factor float64, max float64) []float64 {
 	if max-10 < 1 {
 		panic("HistogramBucketsSaturating needs a positive max")
