@@ -44,7 +44,6 @@ func TestNewConfig(t *testing.T) {
 			input: `metrics:
   default_retention_period: 3d2h`,
 			cfg: Config{
-				withTimescaleDB: true,
 				Metrics: Metrics{
 					RetentionPeriod: DayDuration(((3 * 24) + 2) * time.Hour),
 				},
@@ -61,7 +60,6 @@ func TestNewConfig(t *testing.T) {
 traces:
   default_retention_period: 15d`,
 			cfg: Config{
-				withTimescaleDB: true,
 				Metrics: Metrics{
 					ChunkInterval:   DayDuration(3 * time.Hour),
 					Compression:     &testCompressionSetting,
@@ -79,7 +77,7 @@ traces:
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
 
-			cfg, err := NewConfig(c.input, true)
+			cfg, err := NewConfig(c.input)
 
 			if c.err != "" {
 				require.EqualError(t, err, c.err)
@@ -92,13 +90,12 @@ traces:
 }
 
 func TestApplyDefaults(t *testing.T) {
-	c := Config{withTimescaleDB: true}
+	c := Config{}
 	c.applyDefaults()
 
 	require.Equal(
 		t,
 		Config{
-			withTimescaleDB: true,
 			Metrics: Metrics{
 				ChunkInterval:   DayDuration(defaultMetricChunkInterval),
 				Compression:     &defaultMetricCompressionVar,
@@ -130,22 +127,4 @@ func TestApplyDefaults(t *testing.T) {
 	copyConfig.applyDefaults()
 
 	require.Equal(t, untouched, copyConfig)
-
-	// No TSDB, no compression by default.
-	c = Config{withTimescaleDB: false}
-	noCompression := false
-	c.applyDefaults()
-
-	require.Equal(t, c, Config{
-		Metrics: Metrics{
-			ChunkInterval:   DayDuration(defaultMetricChunkInterval),
-			Compression:     &noCompression,
-			HALeaseRefresh:  DayDuration(defaultMetricHALeaseRefresh),
-			HALeaseTimeout:  DayDuration(defaultMetricHALeaseTimeout),
-			RetentionPeriod: DayDuration(defaultMetricRetentionPeriod),
-		},
-		Traces: Traces{
-			RetentionPeriod: DayDuration(defaultTraceRetentionPeriod),
-		},
-	})
 }
