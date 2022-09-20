@@ -150,9 +150,6 @@ func TestInstallFlagPromscaleExtension(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useTimescaleDB {
-		t.Skip("need timescaleDB extension for this test")
-	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, _ testing.TB) {
 		conn, err := db.Acquire(context.Background())
 		if err != nil {
@@ -215,20 +212,18 @@ func TestMigrateTwice(t *testing.T) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_writer")
 		defer db.Close()
 
-		if *useTimescaleDB {
-			_, err := telemetry.NewEngine(pgxconn.NewPgxConn(db), [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, nil)
-			if err != nil {
-				t.Fatal("creating telemetry engine: %w", err)
-			}
-			var versionString string
-			err = db.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key='promscale_version'").Scan(&versionString)
-			if err != nil {
-				t.Fatal(err)
-			}
+		_, err := telemetry.NewEngine(pgxconn.NewPgxConn(db), [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, nil)
+		if err != nil {
+			t.Fatal("creating telemetry engine: %w", err)
+		}
+		var versionString string
+		err = db.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key='promscale_version'").Scan(&versionString)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			if versionString != version.Promscale {
-				t.Fatalf("wrong version, expected %v got %v", version.Promscale, versionString)
-			}
+		if versionString != version.Promscale {
+			t.Fatalf("wrong version, expected %v got %v", version.Promscale, versionString)
 		}
 	})
 }

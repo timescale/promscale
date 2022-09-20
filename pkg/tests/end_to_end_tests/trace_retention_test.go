@@ -43,9 +43,6 @@ func TestTraceDropChunk(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	if !*useTimescaleDB {
-		t.Skip("This test only runs on installs with TimescaleDB")
-	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		var ctx = context.Background()
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
@@ -178,9 +175,6 @@ func TestTraceDropChunk(t *testing.T) {
 func TestTraceDropDataWithoutTimescaleDB(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
-	}
-	if *useTimescaleDB {
-		t.Skip("This test only runs on installs without TimescaleDB")
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		var ctx = context.Background()

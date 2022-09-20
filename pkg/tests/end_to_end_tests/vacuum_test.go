@@ -23,9 +23,6 @@ type compressedChunk struct {
 }
 
 func TestVacuumBlocking(t *testing.T) {
-	if !*useTimescaleDB {
-		t.Skip("vacuum engine needs TimescaleDB support")
-	}
 	testVacuum(t, func(e *vacuum.Engine, db *pgxpool.Pool) {
 		e.Run(context.Background())
 	})
@@ -34,9 +31,6 @@ func TestVacuumBlocking(t *testing.T) {
 func TestVacuumNonBlocking(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
-	}
-	if !*useTimescaleDB {
-		t.Skip("vacuum engine needs TimescaleDB support")
 	}
 	testVacuum(t, func(e *vacuum.Engine, db *pgxpool.Pool) {
 		go e.Start()

@@ -147,9 +147,6 @@ func TestDeleteWithCompressedChunks(t *testing.T) {
 	if *useMultinode && !*extendedTest {
 		t.Skip("delete tests run in extended mode only for multi-node configuration")
 	}
-	if !*useTimescaleDB {
-		t.Skip("skipping delete tests with compression: compression tests cannot run if timescaledb is not installed.")
-	}
 	matchers := []deleteStr{
 		// Normal matchers.
 		{

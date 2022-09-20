@@ -19,26 +19,6 @@ import (
 
 func TestInsertInCompressedChunks(t *testing.T) {
 	ts := generateSmallTimeseries()
-	if !*useTimescaleDB {
-		// Ingest in plain postgres to ensure everything works well even if TimescaleDB is not installed.
-		withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-			ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
-			require.NoError(t, err)
-			defer ingestor.Close()
-			_, _, err = ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(ts)))
-			require.NoError(t, err)
-			r, err := db.Query(context.Background(), "SELECT * from prom_data.\"firstMetric\";")
-			require.NoError(t, err)
-			defer r.Close()
-
-			count := 0
-			for r.Next() {
-				count++
-			}
-			require.Equal(t, 5, count)
-		})
-		return
-	}
 
 	sample := []prompb.TimeSeries{
 		{
