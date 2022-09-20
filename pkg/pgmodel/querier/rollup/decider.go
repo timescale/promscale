@@ -111,7 +111,7 @@ func (r *Manager) Decide(minSeconds, maxSeconds int64, metricName string) *Confi
 	//	return nil
 	//}
 	//-- DEBUG: to return always the lowest resolution.
-	return r.getConfig(metricName, r.resolutionInASCOrder[len(r.resolutionInASCOrder)-1])
+	//return r.getConfig(r.resolutionInASCOrder[len(r.resolutionInASCOrder)-1])
 	var acceptableResolution []time.Duration
 	for _, resolution := range r.schemaResolutionCache {
 		estimate := estimateSamples(resolution)
@@ -125,7 +125,7 @@ func (r *Manager) Decide(minSeconds, maxSeconds int64, metricName string) *Confi
 		for _, res := range r.resolutionInASCOrder {
 			estimate := estimateSamples(res)
 			if estimate < high {
-				return r.getConfig(metricName, res)
+				return r.getConfig(res)
 			}
 		}
 		// None of the resolutions were below the upper limit. Hence, respond with the lowest available resolution.
@@ -136,10 +136,10 @@ func (r *Manager) Decide(minSeconds, maxSeconds int64, metricName string) *Confi
 		//
 		// Note: For understanding resolutions, in a case of resolutions [1m, 5m, 15m, 1h, 1w],
 		// 1m is the highest resolution (since maximum granularity) and 1w is the lowest resolution (due to lowest granularity).
-		return r.getConfig(metricName, lowestResolution)
+		return r.getConfig(lowestResolution)
 	}
 	// Choose the highest resolution for maximum granularity.
-	return r.getConfig(metricName, acceptableResolution[0])
+	return r.getConfig(acceptableResolution[0])
 }
 
 func (r *Manager) withinRange(totalSamples int64) bool {
@@ -155,28 +155,12 @@ var metricTypeColumnRelationship = map[string]string{
 	"GAUGE": "(sum / count)",
 }
 
-func (r *Manager) getConfig(metricName string, resolution time.Duration) *Config {
+func (r *Manager) getConfig(resolution time.Duration) *Config {
 	schemaName := r.getSchemaFor(resolution)
-	metricType, ok := r.metricTypeCache[metricName]
-	if !ok {
-		log.Debug("msg", fmt.Sprintf("metric metadata not found for %s. Refreshing and trying again", metricName))
-		r.refreshMetricMetadata()
-		metricType, ok = r.metricTypeCache[metricName]
-		if ok {
-			goto checkMetricColumnRelationship
-		}
-		return nil
-	}
-checkMetricColumnRelationship:
-	columnString, ok := metricTypeColumnRelationship[metricType]
-	if !ok {
-		return nil
-	}
 	return &Config{
-		columnClause: columnString,
-		schemaName:   schemaName,
-		interval:     r.schemaResolutionCache[schemaName],
-		managerRef:   r,
+		schemaName: schemaName,
+		interval:   r.schemaResolutionCache[schemaName],
+		managerRef: r,
 	}
 }
 

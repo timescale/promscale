@@ -1,53 +1,59 @@
 package rollup
 
-import "github.com/prometheus/prometheus/promql/parser"
-
-type SqlOptimizer struct {
-	columnName, instantQueryAgg string
-}
-
-func (s SqlOptimizer) ColumnName() string {
-	return s.columnName
-}
-
-func (s SqlOptimizer) InstantQueryAgg() string {
-	return s.instantQueryAgg
-}
-
-type (
-	metricType     string
-	promqlFuncName string
-)
-
-var supportedPromQLFunc = map[metricType]map[promqlFuncName]SqlOptimizer{
-	"GAUGE": {
-		"min_over_time":   {columnName: "min", instantQueryAgg: "min(value)"},
-		"max_over_time":   {columnName: "max", instantQueryAgg: "max(value)"},
-		"avg_over_time":   {columnName: "sum / count"},
-		"sum_over_time":   {},
-		"count_over_time": {},
-	},
-}
-
-func (c *Config) SupportsFunctionalOptimization(functionalCall parser.Node, metricName string) *SqlOptimizer {
+func (c *Config) GetOptimizer(metricName string) *SqlOptimizer {
 	typ, ok := c.managerRef.metricTypeCache[metricName]
 	if !ok {
 		// No metadata found, hence no optimization.
 		return nil
 	}
-	node, isFuncCall := functionalCall.(*parser.Call)
-	if !isFuncCall {
-		return nil
+	return &SqlOptimizer{
+		typ: metricType(typ),
 	}
-	fnName := node.Func.Name
+}
 
-	supportedOptimizations, found := supportedPromQLFunc[metricType(typ)]
-	if !found {
-		return nil
+type (
+	metricType        string
+	promqlFuncName    string
+	columnInformation struct {
+		columnName      string
+		instantQueryAgg string
 	}
-	optimizer, ok := supportedOptimizations[promqlFuncName(fnName)]
-	if !ok {
-		return nil
+)
+
+var metricFuncRelation = map[metricType]map[promqlFuncName]columnInformation{
+	"GAUGE": {
+		"":                {columnName: "sum / count"}, // When no function is used.
+		"avg_over_time":   {columnName: "sum / count", instantQueryAgg: "avg(value)"},
+		"min_over_time":   {columnName: "min", instantQueryAgg: "min(value)"},
+		"max_over_time":   {columnName: "max", instantQueryAgg: "max(value)"},
+		"sum_over_time":   {columnName: "sum", instantQueryAgg: "sum(value)"},
+		"count_over_time": {columnName: "count", instantQueryAgg: "sum(value)"}, // Since we want to sum all the counts of each bucket.
+	},
+}
+
+type SqlOptimizer struct {
+	typ metricType
+}
+
+func (s *SqlOptimizer) RegularColumnName() string {
+	r := metricFuncRelation[s.typ]
+	return r[""].columnName
+}
+
+func (s *SqlOptimizer) GetColumnClause(funcName string) string {
+	r := metricFuncRelation[s.typ]
+	c, supported := r[promqlFuncName(funcName)]
+	if !supported {
+		return ""
 	}
-	return &optimizer
+	return c.columnName
+}
+
+func (s *SqlOptimizer) GetAggForInstantQuery(funcName string) string {
+	r := metricFuncRelation[s.typ]
+	c, supported := r[promqlFuncName(funcName)]
+	if !supported {
+		return ""
+	}
+	return c.instantQueryAgg
 }

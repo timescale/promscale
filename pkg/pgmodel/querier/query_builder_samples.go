@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
-	"github.com/timescale/promscale/pkg/pgmodel/querier/rollup"
 )
 
 const (
@@ -136,17 +135,35 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 
 	qf, node := getAggregators(metadata.promqlMetadata, metadata.rollupConfig != nil)
 
-	var (
-		rollupOptimizer          *rollup.SqlOptimizer
-		useInstantQueryOptimizer bool
-		grandparent              parser.Node
-	)
+	filter := metadata.timeFilter
+	column := filter.column
+	samplesSchema := filter.schema
+
+	var instantQueryAgg string
 	if metadata.rollupConfig != nil {
+		samplesSchema = metadata.rollupConfig.SchemaName()
+
+		rollupOptimizer := metadata.rollupConfig.GetOptimizer(metadata.metric)
+		column = rollupOptimizer.RegularColumnName()
+
+		// See if we can optimize the query aggregation, like min_over_time(metric[1h])
 		path := metadata.promqlMetadata.path
 		if len(path) >= 2 {
-			grandparent = path[len(path)-2]
-			rollupOptimizer = metadata.rollupConfig.SupportsFunctionalOptimization(grandparent, metadata.metric)
-			useInstantQueryOptimizer = rollupOptimizer != nil && metadata.queryHints.IsInstantQuery
+			// May contain a functional call. Let's check it out.
+			grandparent := path[len(path)-2]
+			if callNode, isPromQLFunc := grandparent.(*parser.Call); isPromQLFunc {
+				fnName := callNode.Func.Name
+
+				columnClause := rollupOptimizer.GetColumnClause(fnName)
+				if columnClause != "" {
+					column = columnClause
+
+					if metadata.queryHints.IsInstantQuery {
+						instantQueryAgg = rollupOptimizer.GetAggForInstantQuery(fnName)
+						node = grandparent // We have already evaluated the aggregation, hence no need to compute in PromQL engine. Hence, sent as a pushdown response.
+					}
+				}
+			}
 		}
 	}
 
@@ -162,9 +179,8 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		}
 		selectors = append(selectors, "result.time_array")
 
-		if useInstantQueryOptimizer {
+		if instantQueryAgg != "" {
 			selectorClauses = append(selectorClauses, " current_timestamp::timestamptz as time_array")
-			node = grandparent // Send the optimization as top node so that evaluator in PromQL engine does not reevaluate.
 		} else {
 			selectorClauses = append(selectorClauses, timeClauseBound+" as time_array")
 		}
@@ -174,10 +190,10 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		return "", nil, nil, nil, false, err
 	}
 	selectors = append(selectors, "result.value_array")
-	valueWithoutAggregation := false
 
-	if useInstantQueryOptimizer {
-		selectorClauses = append(selectorClauses, rollupOptimizer.InstantQueryAgg()+" as value_array")
+	valueWithoutAggregation := false
+	if instantQueryAgg != "" {
+		selectorClauses = append(selectorClauses, instantQueryAgg+" as value_array")
 		valueWithoutAggregation = true
 	} else {
 		selectorClauses = append(selectorClauses, valueClauseBound+" as value_array")
@@ -235,7 +251,6 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 	// The selectHints' time range is calculated by `getTimeRangesForSelector`,
 	// which determines the correct `scan_start` for the current expression.
 
-	filter := metadata.timeFilter
 	sh := metadata.selectHints
 	var start, end string
 	// selectHints are non-nil when the query was initiated through the `query`
@@ -245,16 +260,6 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		start, end = toRFC3339Nano(sh.Start), toRFC3339Nano(sh.End)
 	} else {
 		start, end = metadata.timeFilter.start, metadata.timeFilter.end
-	}
-
-	samplesSchema, column := filter.schema, filter.column
-	if metadata.rollupConfig != nil {
-		// Use rollups.
-		samplesSchema = metadata.rollupConfig.SchemaName()
-		column = metadata.rollupConfig.ColumnClause()
-		if rollupOptimizer != nil {
-			column = rollupOptimizer.ColumnName()
-		}
 	}
 
 	finalSQL := fmt.Sprintf(template,
