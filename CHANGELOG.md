@@ -25,6 +25,7 @@ We use the following categories for changes:
 - Sizes of maintenance worker backlogs exposed as database metrics on the Promscale dashboard [#1634]
 - Added a vacuum engine that detects and vacuums/freezes compressed chunks [#1648]
 - Add pool of database connections for maintenance jobs e.g. telemetry [#1657]
+- Metrics for long-running statements and locks originating from maintenance jobs. [#1661]
 
 ### Changed
 - Log throughput in the same line for samples, spans and metric metadata [#1643]
