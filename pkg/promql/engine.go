@@ -691,6 +691,8 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 			panic(errors.Errorf("promql.Engine.exec: invalid expression type %q", val.Type()))
 		}
 
+		fmt.Println("query instant: total samples", mat.TotalSamples())
+
 		query.matrix = mat
 		switch s.Expr.Type() {
 		case parser.ValueTypeVector:
@@ -757,6 +759,8 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 		panic(errors.Errorf("promql.Engine.exec: invalid expression type %q", val.Type()))
 	}
 	query.matrix = mat
+
+	fmt.Println("query range: total samples", mat.TotalSamples())
 
 	if err := contextDone(ctx, "expression evaluation"); err != nil {
 		return nil, warnings, err
@@ -1406,7 +1410,6 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		}, e.Param, e.Expr)
 
 	case *parser.Call:
-		fmt.Println("into call")
 		call := FunctionCalls[e.Func.Name]
 		if e.Func.Name == "timestamp" {
 			// Matrix evaluation always returns the evaluation time,
@@ -1693,6 +1696,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 			ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
 		}
 		mat := make(Matrix, 0, len(e.Series))
+		fmt.Println("ev.lookbackDelta", ev.lookbackDelta)
 		it := storage.NewMemoizedEmptyIterator(durationMilliseconds(ev.lookbackDelta))
 		for i, s := range e.Series {
 			it.Reset(s.Iterator())
@@ -1701,18 +1705,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 				Points: getPointSlice(numSteps),
 			}
 
-			//fmt.Println("rollupInterval", ev.rollupInterval)
-			//if ev.rollupInterval.Milliseconds() > ev.interval {
-			//	// Rollup evaluated the step interval. Hence, just use the step in rollup.
-			//	// This is important, as it **avoids unnecessary samples** (with sample `v`) due to `ts += ev.interval` (in the for loop in else block)
-			//	// thereby **speeding up evaluation** involving rollups.
-			//	itr := e.Series[i].Iterator()
-			//	for itr.Next() {
-			//		ts, v := itr.At()
-			//		ss.Points = append(ss.Points, Point{V: v, T: ts})
-			//		ev.currentSamples++
-			//	}
-			//} else {
+			fmt.Println("ev.startTimestamp", ev.startTimestamp, "ev.endTimestamp", ev.endTimestamp)
 			for ts, step := ev.startTimestamp, -1; ts <= ev.endTimestamp; ts += ev.interval {
 				step++
 				_, v, ok := ev.vectorSelectorSingle(it, e, ts)
@@ -1726,7 +1719,6 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 					}
 				}
 			}
-			//}
 
 			if len(ss.Points) > 0 {
 				mat = append(mat, ss)

@@ -112,13 +112,18 @@ func (r *Manager) Decide(minSeconds, maxSeconds int64, metricName string) *Confi
 	//}
 	//-- DEBUG: to return always the lowest resolution.
 	//return r.getConfig(r.resolutionInASCOrder[len(r.resolutionInASCOrder)-1])
+	//return nil
+	//return r.getConfig(time.Hour)
+	//return r.getConfig(time.Minute * 5)
 	var acceptableResolution []time.Duration
 	for _, resolution := range r.schemaResolutionCache {
 		estimate := estimateSamples(resolution)
+		fmt.Println("resolution=>", resolution, "estimate=>", estimate)
 		if r.withinRange(estimate) {
 			acceptableResolution = append(acceptableResolution, resolution)
 		}
 	}
+	fmt.Println("acceptableResolution", acceptableResolution)
 	if len(acceptableResolution) == 0 {
 		// No resolution was found to fit within the permitted range.
 		// Hence, find the highest resolution that is below upper (max) limit and respond.

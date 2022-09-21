@@ -40,6 +40,18 @@ func (q *querySamples) Select(mint, maxt int64, _ bool, hints *storage.SelectHin
 		return errorSeriesSet{err: err}, nil, nil
 	}
 	responseSeriesSet := buildSeriesSet(sampleRows, q.tools.labelsReader)
+
+	// debug
+	//for responseSeriesSet.Next() {
+	//	at := responseSeriesSet.At()
+	//	itr := at.Iterator()
+	//	c := 0
+	//	for itr.Next() {
+	//		c++
+	//	}
+	//	fmt.Println("debug count", at.Labels(), c)
+	//}
+	// debug
 	return responseSeriesSet, topNode, rollupCfg
 }
 

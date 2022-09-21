@@ -2,6 +2,7 @@ package querier
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sync"
 
 	"github.com/jackc/pgtype"
@@ -190,6 +191,7 @@ func appendSampleRows(out []sampleRow, in pgxconn.PgxRows, tsSeries TimestampSer
 			} else {
 				row.err = in.Scan(&row.labelIds, &timesWrapper, &valuesWrapper)
 			}
+			fmt.Println("sql layer, total raw samples", len(valuesWrapper.Elements))
 			row.timeArrayOwnership = times
 			row.times = newRowTimestampSeries(times)
 		} else {
