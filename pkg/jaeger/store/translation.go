@@ -159,17 +159,17 @@ func addRefTypeAttributeToLinks(span *model.Span, links ptrace.SpanLinkSlice) {
 
 	for i := 0; i < links.Len(); i++ {
 		link := links.At(i)
-		spanID := spanIDToJaegerProto(link.SpanID().Bytes())
+		spanID := spanIDToJaegerProto(link.SpanID())
 
 		// Everything that's not ChildOf will be set as FollowsFrom.
 		if _, ok := otherParentsSpanIDs[spanID]; ok {
-			link.Attributes().InsertString(
+			link.Attributes().PutString(
 				conventions.AttributeOpentracingRefType,
 				conventions.AttributeOpentracingRefTypeChildOf,
 			)
 			continue
 		}
-		link.Attributes().InsertString(
+		link.Attributes().PutString(
 			conventions.AttributeOpentracingRefType,
 			conventions.AttributeOpentracingRefTypeFollowsFrom,
 		)
@@ -239,10 +239,10 @@ func getOtherParents(traces ptrace.Traces) map[model.SpanID][]int {
 				for l := 0; l < links.Len(); l++ {
 					link := links.At(l)
 					v, ok := link.Attributes().Get(conventions.AttributeOpentracingRefType)
-					if !ok || v.StringVal() != conventions.AttributeOpentracingRefTypeChildOf {
+					if !ok || v.Str() != conventions.AttributeOpentracingRefTypeChildOf {
 						continue
 					}
-					spanID := spanIDToJaegerProto(span.SpanID().Bytes())
+					spanID := spanIDToJaegerProto(span.SpanID())
 					pIdxs, ok := otherParents[spanID]
 					if !ok {
 						pIdxs = []int{}
@@ -257,9 +257,9 @@ func getOtherParents(traces ptrace.Traces) map[model.SpanID][]int {
 }
 
 func uInt64ToSpanID(id uint64) pcommon.SpanID {
-	spanID := [8]byte{}
+	spanID := pcommon.SpanID{}
 	binary.BigEndian.PutUint64(spanID[:], id)
-	return pcommon.NewSpanID(spanID)
+	return spanID
 }
 
 // SpanIDToUInt64 converts the pcommon.SpanID to uint64 representation.

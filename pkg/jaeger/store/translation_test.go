@@ -15,27 +15,26 @@ func TestSpanMultipleParentProtoFromTraces(t *testing.T) {
 	// Given a Span
 	traces := ptrace.NewTraces()
 	span := traces.ResourceSpans().AppendEmpty().ScopeSpans().AppendEmpty().Spans().AppendEmpty()
-	rawTraceID := [16]byte{'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5', '6'}
-	traceID := pcommon.NewTraceID(rawTraceID)
+	traceID := pcommon.TraceID{'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5', '6'}
 	span.SetTraceID(traceID)
 
 	// With a ParentSpanID set
-	parentSpanID := [8]byte{'1', '2', '3', '4', '5', '6', '7', '8'}
-	span.SetParentSpanID(pcommon.NewSpanID(parentSpanID))
+	parentSpanID := pcommon.SpanID{'1', '2', '3', '4', '5', '6', '7', '8'}
+	span.SetParentSpanID(parentSpanID)
 
 	// And two links
 	// And the first of the 2 links doesn't specify any RefType
 	followsFromLink := span.Links().AppendEmpty()
-	followsFromSpanID := [8]byte{'1', '2', '3', '4', '5', '6', '7', '1'}
-	followsFromLink.SetSpanID(pcommon.NewSpanID(followsFromSpanID))
+	followsFromSpanID := pcommon.SpanID{'1', '2', '3', '4', '5', '6', '7', '1'}
+	followsFromLink.SetSpanID(followsFromSpanID)
 	followsFromLink.SetTraceID(traceID)
 	// And the second of the links specifies the ChildOf attribute from the
 	// OpenTracing semantic convention.
 	childOfLink := span.Links().AppendEmpty()
-	otherParentSpanID := [8]byte{'1', '2', '3', '4', '5', '6', '7', '9'}
-	childOfLink.SetSpanID(pcommon.NewSpanID(otherParentSpanID))
+	otherParentSpanID := pcommon.SpanID{'1', '2', '3', '4', '5', '6', '7', '9'}
+	childOfLink.SetSpanID(otherParentSpanID)
 	childOfLink.SetTraceID(traceID)
-	childOfLink.Attributes().InsertString(
+	childOfLink.Attributes().PutString(
 		conventions.AttributeOpentracingRefType,
 		conventions.AttributeOpentracingRefTypeChildOf,
 	)
@@ -121,7 +120,7 @@ func TestSpanWithMultipleParentProtoToTraces(t *testing.T) {
 	assert.Equal(t, 1, followsFromLink.Attributes().Len())
 	refType, ok := followsFromLink.Attributes().Get(conventions.AttributeOpentracingRefType)
 	assert.True(t, ok)
-	assert.Equal(t, conventions.AttributeOpentracingRefTypeFollowsFrom, refType.StringVal())
+	assert.Equal(t, conventions.AttributeOpentracingRefTypeFollowsFrom, refType.Str())
 
 	// And the other ChildOf Reference is transformed into a Link with the
 	// ChildOF attribute from the OpenTracing semantic convention.
@@ -130,5 +129,5 @@ func TestSpanWithMultipleParentProtoToTraces(t *testing.T) {
 	assert.Equal(t, 1, otherParentLink.Attributes().Len())
 	refType, ok = otherParentLink.Attributes().Get(conventions.AttributeOpentracingRefType)
 	assert.True(t, ok)
-	assert.Equal(t, conventions.AttributeOpentracingRefTypeChildOf, refType.StringVal())
+	assert.Equal(t, conventions.AttributeOpentracingRefTypeChildOf, refType.Str())
 }

@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 )
 
-func NewTraceServer(i ingestor.DBInserter) ptraceotlp.Server {
+func NewTraceServer(i ingestor.DBInserter) ptraceotlp.GRPCServer {
 	return &tracesServer{
 		ingestor: i,
 	}
