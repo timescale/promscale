@@ -26,8 +26,8 @@ func TestVacuumBlocking(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("vacuum engine needs TimescaleDB support")
 	}
-	testVacuum(t, func(e *vacuum.Engine) {
-		e.RunOnce()
+	testVacuum(t, func(e *vacuum.Engine, db *pgxpool.Pool) {
+		e.Run(context.Background())
 	})
 }
 
@@ -38,14 +38,30 @@ func TestVacuumNonBlocking(t *testing.T) {
 	if !*useTimescaleDB {
 		t.Skip("vacuum engine needs TimescaleDB support")
 	}
-	testVacuum(t, func(e *vacuum.Engine) {
+	testVacuum(t, func(e *vacuum.Engine, db *pgxpool.Pool) {
 		go e.Start()
-		time.Sleep(20 * time.Second)
+		// wait until view returns 0 or 20 second elapse which ever comes first
+		wait(db)
 		e.Stop()
 	})
 }
 
-func testVacuum(t *testing.T, do func(e *vacuum.Engine)) {
+func wait(db *pgxpool.Pool) {
+	ctx := context.Background()
+	for i := 0; i < 20; i++ {
+		time.Sleep(time.Second)
+		var nbr int64
+		err := db.QueryRow(ctx, "select count(*) from _ps_catalog.chunks_to_freeze").Scan(&nbr)
+		if err != nil {
+			continue
+		}
+		if nbr == 0 {
+			return
+		}
+	}
+}
+
+func testVacuum(t *testing.T, do func(e *vacuum.Engine, db *pgxpool.Pool)) {
 	/*
 		create two hypertables with compression enabled but the policy set that it doesn't compress automatically
 		load enough samples to create a bunch of chunks
@@ -68,7 +84,7 @@ func testVacuum(t *testing.T, do func(e *vacuum.Engine)) {
 		compressed := view(t, ctx, db)
 		require.Equal(t, count, len(compressed), "Expected to find %d compressed chunks but got %d", count, len(compressed))
 		engine := vacuum.NewEngine(pgxconn.NewPgxConn(db), time.Second, count)
-		do(engine)
+		do(engine, db)
 		viewEmpty(t, ctx, db)
 	})
 }

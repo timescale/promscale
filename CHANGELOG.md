@@ -28,7 +28,6 @@ We use the following categories for changes:
 ### Changed
 - Log throughput in the same line for samples, spans and metric metadata [#1643]
 - The `chunks_created` metrics was removed. [#1634]
-  requests [#1205].
 
 ### Fixed
 - Do not collect telemetry if `timescaledb.telemetry_level=off` [#1612]

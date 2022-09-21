@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	sqlStart            = "SELECT _prom_catalog.lock_for_vacuum_engine()"
+	sqlAcquireLock      = "SELECT _prom_catalog.lock_for_vacuum_engine()"
 	sqlListChunks       = "SELECT format('%I.%I', schema_name, table_name) FROM _ps_catalog.chunks_to_freeze WHERE coalesce(last_vacuum, '-infinity'::timestamptz) < now() - interval '15 minutes' LIMIT 1000"
 	sqlVacuumFmt        = "VACUUM (FREEZE, ANALYZE) %s"
-	sqlStop             = "SELECT _prom_catalog.unlock_for_vacuum_engine()"
+	sqlReleaseLock      = "SELECT _prom_catalog.unlock_for_vacuum_engine()"
 	delay               = 10 * time.Second
 	defaultDisable      = false
 	defaultRunFrequency = 10 * time.Minute
@@ -71,7 +71,7 @@ func NewEngine(pool pgxconn.PgxConn, runFreq time.Duration, parallelism int) *En
 // Start starts the Engine
 // Blocks forever unless Stop is called
 func (e *Engine) Start() {
-	var execute, kill = every(e.runFreq, e.RunOnce)
+	var execute, kill = every(e.runFreq, e.Run)
 	func() {
 		e.mu.Lock()
 		defer e.mu.Unlock()
@@ -93,26 +93,26 @@ func (e *Engine) Stop() {
 // returns an execute function which when called will block
 // and execute task periodically, and a kill function which will
 // terminate the execution function if called
-func every(every time.Duration, task func()) (execute, kill func()) {
+func every(every time.Duration, task func(ctx context.Context)) (execute, kill func()) {
 	var ticker = time.NewTicker(every)
 	var once sync.Once
-	var die = make(chan struct{}, 1)
+	var ctx, cancel = context.WithCancel(context.Background())
 
 	kill = func() {
 		once.Do(func() {
 			ticker.Stop()
-			close(die)
+			cancel()
 		})
 	}
 
 	execute = func() {
-		defer kill() // be sure to clean up our ticker and channel
-		// loop forever, or until the die signal is received
+		defer kill()
+		// loop forever, or until the done signal is received
 		for {
 			select {
 			case <-ticker.C:
-				task()
-			case <-die:
+				task(ctx)
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -120,16 +120,16 @@ func every(every time.Duration, task func()) (execute, kill func()) {
 	return
 }
 
-// RunOnce attempts vacuum a batch of compressed chunks
-func (e *Engine) RunOnce() {
-	con, err := e.pool.Acquire(context.Background())
+// Run attempts vacuum a batch of compressed chunks
+func (e *Engine) Run(ctx context.Context) {
+	con, err := e.pool.Acquire(ctx)
 	if err != nil {
 		log.Error("msg", "failed to acquire a db connection", "error", err)
 		return
 	}
 	defer con.Release() // return the connection to the pool when finished with it
 	acquired := false
-	err = con.QueryRow(context.Background(), sqlStart).Scan(&acquired)
+	err = con.QueryRow(ctx, sqlAcquireLock).Scan(&acquired)
 	if err != nil {
 		log.Error("msg", "failed to attempt to acquire advisory lock", "error", err)
 		return
@@ -140,7 +140,9 @@ func (e *Engine) RunOnce() {
 	}
 	// release the advisory lock when we're done
 	defer func() {
-		_, err := con.Exec(context.Background(), sqlStop)
+		// don't use the passed context.
+		// we need to release the lock even if the context was cancelled
+		_, err := con.Exec(context.Background(), sqlReleaseLock)
 		if err != nil {
 			log.Error("msg", "vacuum engine failed to release advisory lock", "error", err)
 		}
@@ -148,7 +150,7 @@ func (e *Engine) RunOnce() {
 	// we limit ourselves to batches of 1000 chunks
 	// since we already have the advisory lock, continue to vacuum batches as needed until none left
 	for {
-		chunks, err := e.listChunks(con)
+		chunks, err := e.listChunks(ctx, con)
 		if err != nil {
 			log.Error("msg", "failed to list chunks for vacuuming", "error", err)
 			return
@@ -164,15 +166,15 @@ func (e *Engine) RunOnce() {
 			// if parallelism is 6, but we only have 5 chunks to work on, use 5 workers
 			p = len(chunks)
 		}
-		runWorkers(p, chunks, e.worker)
+		runWorkers(ctx, p, chunks, e.worker)
 		// in some cases, have seen it take up to 10 seconds for the stats to be updated post vacuum
 		time.Sleep(delay)
 	}
 }
 
 // listChunks identifies chunks which need to be vacuumed
-func (e *Engine) listChunks(con *pgxpool.Conn) ([]string, error) {
-	rows, err := con.Query(context.Background(), sqlListChunks)
+func (e *Engine) listChunks(ctx context.Context, con *pgxpool.Conn) ([]string, error) {
+	rows, err := con.Query(ctx, sqlListChunks)
 	if err != nil {
 		return nil, err
 	}
@@ -191,15 +193,15 @@ func (e *Engine) listChunks(con *pgxpool.Conn) ([]string, error) {
 
 // runWorkers kicks off a number of goroutines to work on the chunks in parallel
 // blocks until the workers complete
-func runWorkers(parallelism int, chunks []string, worker func(int, <-chan string)) {
+func runWorkers(ctx context.Context, parallelism int, chunks []string, worker func(context.Context, int, <-chan string)) {
 	todo := make(chan string, len(chunks))
 	var wg sync.WaitGroup
 	wg.Add(parallelism)
 	for id := 0; id < parallelism; id++ {
-		go func(id int, todo <-chan string) {
+		go func(ctx context.Context, id int, todo <-chan string) {
 			defer wg.Done()
-			worker(id, todo)
-		}(id, todo)
+			worker(ctx, id, todo)
+		}(ctx, id, todo)
 	}
 	for _, chunk := range chunks {
 		todo <- chunk
@@ -209,11 +211,11 @@ func runWorkers(parallelism int, chunks []string, worker func(int, <-chan string
 }
 
 // worker pulls chunks from a channel and vacuums them
-func (e *Engine) worker(id int, todo <-chan string) {
+func (e *Engine) worker(ctx context.Context, id int, todo <-chan string) {
 	for chunk := range todo {
 		log.Info("msg", "vacuuming a chunk", "worker", id, "chunk", chunk)
 		sql := fmt.Sprintf(sqlVacuumFmt, chunk)
-		_, err := e.pool.Exec(context.Background(), sql)
+		_, err := e.pool.Exec(ctx, sql)
 		if err != nil {
 			log.Error("msg", "failed to vacuum chunk", "chunk", chunk, "worker", id, "error", err)
 			// don't return error here. attempt to vacuum other chunks. keep working

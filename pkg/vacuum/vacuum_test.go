@@ -1,6 +1,7 @@
 package vacuum
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"sync"
@@ -29,13 +30,13 @@ func Test_runWorkers(t *testing.T) {
 			// the work will consist of adding the char to worked slice
 			chunks := strings.Split(tt.work, "")
 			worked := make([]string, 0)
-			runWorkers(tt.parallelism, chunks, func(id int, todo <-chan string) {
+			runWorkers(context.Background(), tt.parallelism, chunks, func(ctx context.Context, id int, todo <-chan string) {
 				for chunk := range todo {
-					func(id int, chunk string) {
+					func(ctx context.Context, id int, chunk string) {
 						mu.Lock()
 						defer mu.Unlock()
 						worked = append(worked, chunk)
-					}(id, chunk)
+					}(ctx, id, chunk)
 				}
 			})
 			sort.Strings(chunks)
@@ -52,7 +53,7 @@ func Test_every(t *testing.T) {
 	var count = 0
 	var mu sync.Mutex
 	timer := time.NewTimer(time.Millisecond * 450)
-	execute, kill := every(time.Millisecond*100, func() {
+	execute, kill := every(time.Millisecond*100, func(ctx context.Context) {
 		mu.Lock()
 		defer mu.Unlock()
 		count = count + 1
