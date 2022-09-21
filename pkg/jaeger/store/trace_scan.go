@@ -106,6 +106,12 @@ func ScanRow(row pgxconn.PgxRows, traces *ptrace.Traces) error {
 	return nil
 }
 
+func newMapFromRaw(m map[string]interface{}) pcommon.Map {
+	pm := pcommon.NewMap()
+	pm.FromRaw(m)
+	return pm
+}
+
 func populateSpan(
 	// From span table.
 	resourceSpan ptrace.ResourceSpans,
@@ -115,7 +121,7 @@ func populateSpan(
 	if err != nil {
 		return fmt.Errorf("making resource tags: %w", err)
 	}
-	pcommon.NewMapFromRaw(attr).CopyTo(resourceSpan.Resource().Attributes())
+	newMapFromRaw(attr).CopyTo(resourceSpan.Resource().Attributes())
 
 	instrumentationLibSpan := resourceSpan.ScopeSpans().AppendEmpty()
 	if dbResult.instLibSchemaUrl != nil {
@@ -152,7 +158,9 @@ func populateSpan(
 	ref.SetParentSpanID(parentId)
 
 	if dbResult.traceState.Status == pgtype.Present {
-		ref.SetTraceState(ptrace.TraceState(dbResult.traceState.String))
+		ts := pcommon.NewTraceState()
+		ts.FromRaw(dbResult.traceState.String)
+		ts.MoveTo(ref.TraceState())
 	}
 
 	if dbResult.schemaUrl.Status == pgtype.Present {
@@ -180,7 +188,7 @@ func populateSpan(
 	if err != nil {
 		return fmt.Errorf("making span tags: %w", err)
 	}
-	pcommon.NewMapFromRaw(attr).CopyTo(ref.Attributes())
+	newMapFromRaw(attr).CopyTo(ref.Attributes())
 
 	if dbResult.eventNames != nil {
 		if err := populateEvents(ref.Events(), dbResult); err != nil {
@@ -220,7 +228,7 @@ func populateEvents(
 		if err != nil {
 			return fmt.Errorf("making event tags: %w", err)
 		}
-		pcommon.NewMapFromRaw(attr).CopyTo(event.Attributes())
+		newMapFromRaw(attr).CopyTo(event.Attributes())
 	}
 	return nil
 }
@@ -231,7 +239,7 @@ func populateLinks(
 
 	n := len(*dbResult.linksLinkedSpanIds)
 
-	var linkedTraceIds [][16]byte
+	var linkedTraceIds []pcommon.TraceID
 	if err := dbResult.linksLinkedTraceIds.AssignTo(&linkedTraceIds); err != nil {
 		return fmt.Errorf("linksLinkedTraceIds: AssignTo: %w", err)
 	}
@@ -239,21 +247,23 @@ func populateLinks(
 	for i := 0; i < n; i++ {
 		link := spanEventSlice.AppendEmpty()
 
-		link.SetTraceID(pcommon.NewTraceID(linkedTraceIds[i]))
+		link.SetTraceID(linkedTraceIds[i])
 
 		spanId := makeSpanId(&(*dbResult.linksLinkedSpanIds)[i])
 		link.SetSpanID(spanId)
 
 		if (*dbResult.linksTraceStates)[i] != nil {
 			traceState := *((*dbResult.linksTraceStates)[i])
-			link.SetTraceState(ptrace.TraceState(traceState))
+			ts := pcommon.NewTraceState()
+			ts.FromRaw(traceState)
+			ts.MoveTo(link.TraceState())
 		}
 		link.SetDroppedAttributesCount(uint32((*dbResult.linksDroppedTagsCount)[i]))
 		attr, err := makeAttributes(dbResult.linksTags.Elements[i])
 		if err != nil {
 			return fmt.Errorf("making link tags: %w", err)
 		}
-		pcommon.NewMapFromRaw(attr).CopyTo(link.Attributes())
+		newMapFromRaw(attr).CopyTo(link.Attributes())
 	}
 	return nil
 }
@@ -286,19 +296,19 @@ func isIntegral(val float64) bool {
 }
 
 func makeTraceId(s pgtype.UUID) (pcommon.TraceID, error) {
-	var bSlice [16]byte
-	if err := s.AssignTo(&bSlice); err != nil {
+	var traceId pcommon.TraceID
+	if err := s.AssignTo(&traceId); err != nil {
 		return pcommon.TraceID{}, fmt.Errorf("trace id assign to: %w", err)
 	}
-	return pcommon.NewTraceID(bSlice), nil
+	return traceId, nil
 }
 
 func makeSpanId(s *int64) pcommon.SpanID {
 	if s == nil {
 		// Send an empty Span ID.
-		return pcommon.NewSpanID([8]byte{})
+		return pcommon.SpanID{}
 	}
 
 	b8 := trace.Int64ToByteArray(*s)
-	return pcommon.NewSpanID(b8)
+	return pcommon.SpanID(b8)
 }

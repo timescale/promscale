@@ -19,8 +19,8 @@ import (
 const TracesEntryCount = 5932 // All entries in the traces-dataset.sz file.
 
 var (
-	TraceID1               = [16]byte{'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5', '6'}
-	TraceID2               = [16]byte{'0', '2', '3', '4', '0', '6', '7', '8', '9', '0', '0', '2', '3', '4', '0', '6'}
+	TraceID1               = pcommon.TraceID{'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5', '6'}
+	TraceID2               = pcommon.TraceID{'0', '2', '3', '4', '0', '6', '7', '8', '9', '0', '0', '2', '3', '4', '0', '6'}
 	TestSpanStartTime      = time.Date(2020, 2, 11, 20, 26, 12, 321000, time.UTC)
 	TestSpanStartTimestamp = pcommon.NewTimestampFromTime(TestSpanStartTime)
 
@@ -32,7 +32,7 @@ var (
 
 	Service0 = "service-name-0"
 
-	spanAttributes = pcommon.NewMapFromRaw(
+	spanAttributes = newMapFromRaw(
 		map[string]interface{}{
 			"span-attr":                  "span-attr-val",
 			"host.name":                  "hostname1",
@@ -41,13 +41,19 @@ var (
 			"isExpired":                  true,
 		},
 	)
-	spanEventAttributes = pcommon.NewMapFromRaw(map[string]interface{}{"span-event-attr": "span-event-attr-val"})
-	spanLinkAttributes  = pcommon.NewMapFromRaw(map[string]interface{}{
+	spanEventAttributes = newMapFromRaw(map[string]interface{}{"span-event-attr": "span-event-attr-val"})
+	spanLinkAttributes  = newMapFromRaw(map[string]interface{}{
 		"span-link-attr": "span-link-attr-val",
 		// In Jaeger terms this means that the span has 2 parents.
 		conventions.AttributeOpentracingRefType: conventions.AttributeOpentracingRefTypeChildOf,
 	})
 )
+
+func newMapFromRaw(m map[string]interface{}) pcommon.Map {
+	pm := pcommon.NewMap()
+	pm.FromRaw(m)
+	return pm
+}
 
 func GetTraceId(bSlice [16]byte) string {
 	return hex.EncodeToString(bSlice[:])
@@ -88,7 +94,7 @@ func GenerateTestTrace() ptrace.Traces {
 	}
 	ids := make([]pcommon.SpanID, 0)
 	for i := 0; i < spanCount; i++ {
-		sid := pcommon.NewSpanID(generateRandSpanID())
+		sid := generateRandSpanID()
 		fillSpanTwo(libSpans.Spans().AppendEmpty(), sid)
 		ids = append(ids, sid)
 	}
@@ -118,7 +124,7 @@ func GenerateTestTraces(count int) []ptrace.Traces {
 					fillSpanOne(libSpans.Spans().AppendEmpty())
 				}
 				for i := 0; i < spanCount; i++ {
-					fillSpanTwo(libSpans.Spans().AppendEmpty(), pcommon.NewSpanID(generateRandSpanID()))
+					fillSpanTwo(libSpans.Spans().AppendEmpty(), generateRandSpanID())
 				}
 			}
 		}
@@ -141,7 +147,7 @@ func initInstLib(dest ptrace.ScopeSpans, index int) {
 }
 
 func initResourceAttributes(dest pcommon.Map, index int) {
-	tmpl := pcommon.NewMapFromRaw(map[string]interface{}{
+	tmpl := newMapFromRaw(map[string]interface{}{
 		"resource-attr": fmt.Sprintf("resource-attr-val-%d", index%2),
 		"service.name":  fmt.Sprintf("service-name-%d", index),
 		"test-slice":    []string{},
@@ -165,7 +171,8 @@ func initSpanLinkAttributes(dest pcommon.Map) {
 	spanLinkAttributes.CopyTo(dest)
 }
 
-func generateRandSpanID() (result [8]byte) {
+func generateRandSpanID() (result pcommon.SpanID) {
+	result = pcommon.NewSpanIDEmpty()
 	_, err := rand.Read(result[:]) //#nosec
 	if err != nil {
 		panic("failed trying to generate random spanID")
@@ -174,13 +181,15 @@ func generateRandSpanID() (result [8]byte) {
 }
 
 func fillSpanOne(span ptrace.Span) {
-	span.SetTraceID(pcommon.NewTraceID(TraceID1))
-	span.SetSpanID(pcommon.NewSpanID(generateRandSpanID()))
+	span.SetTraceID(TraceID1)
+	span.SetSpanID(generateRandSpanID())
 	span.SetName("operationA")
 	span.SetStartTimestamp(TestSpanStartTimestamp)
 	span.SetEndTimestamp(TestSpanEndTimestamp)
 	span.SetDroppedAttributesCount(1)
-	span.SetTraceState("span-trace-state1")
+	ts := span.TraceState()
+	ts.FromRaw("span-trace-state1")
+	ts.CopyTo(span.TraceState())
 	span.SetKind(ptrace.SpanKindClient)
 	initSpanAttributes(span.Attributes())
 	evs := span.Events()
@@ -194,15 +203,19 @@ func fillSpanOne(span ptrace.Span) {
 	ev1.SetName("event")
 	ev1.SetDroppedAttributesCount(2)
 	link0 := span.Links().AppendEmpty()
-	link0.SetTraceID(pcommon.NewTraceID([16]byte{'1'}))
-	link0.SetSpanID(pcommon.NewSpanID(generateRandSpanID()))
+	link0.SetTraceID(pcommon.TraceID{'1'})
+	link0.SetSpanID(generateRandSpanID())
 	link0.SetDroppedAttributesCount(4)
-	link0.SetTraceState("link-trace-state1")
+	ts = link0.TraceState()
+	ts.FromRaw("link-trace-state1")
+	ts.CopyTo(link0.TraceState())
 	link1 := span.Links().AppendEmpty()
 	link1.SetDroppedAttributesCount(4)
-	link1.SetTraceID(pcommon.NewTraceID([16]byte{'1'}))
-	link1.SetSpanID(pcommon.NewSpanID(generateRandSpanID()))
-	link1.SetTraceState("link-trace-state2")
+	link1.SetTraceID(pcommon.TraceID{'1'})
+	link1.SetSpanID(generateRandSpanID())
+	ts = link0.TraceState()
+	ts.FromRaw("link-trace-state2")
+	ts.CopyTo(link0.TraceState())
 	span.SetDroppedEventsCount(1)
 	status := span.Status()
 	status.SetCode(ptrace.StatusCodeError)
@@ -210,30 +223,36 @@ func fillSpanOne(span ptrace.Span) {
 }
 
 func fillSpanTwo(span ptrace.Span, spanID pcommon.SpanID) {
-	span.SetTraceID(pcommon.NewTraceID(TraceID2))
+	span.SetTraceID(TraceID2)
 	span.SetSpanID(spanID)
 	span.SetName("operationB")
 	span.SetStartTimestamp(TestSpanStartTimestamp)
 	span.SetEndTimestamp(TestSpanEndTimestamp)
-	span.SetTraceState("span-trace-state2")
+	ts := span.TraceState()
+	ts.FromRaw("span-trace-state2")
+	ts.CopyTo(span.TraceState())
 	initSpanAttributes(span.Attributes())
 	link0 := span.Links().AppendEmpty()
 	initSpanLinkAttributes(link0.Attributes())
-	link0.SetTraceID(pcommon.NewTraceID([16]byte{'1'}))
-	link0.SetSpanID(pcommon.NewSpanID(generateRandSpanID()))
+	link0.SetTraceID(pcommon.TraceID{'1'})
+	link0.SetSpanID(generateRandSpanID())
 	link0.SetDroppedAttributesCount(4)
-	link0.SetTraceState("link-trace-state1")
+	tsln0 := link0.TraceState()
+	tsln0.FromRaw("link-trace-state1")
+	tsln0.CopyTo(link0.TraceState())
 	link1 := span.Links().AppendEmpty()
 	link1.SetDroppedAttributesCount(4)
-	link1.SetTraceID(pcommon.NewTraceID([16]byte{'1'}))
-	link1.SetSpanID(pcommon.NewSpanID(generateRandSpanID()))
-	link1.SetTraceState("link-trace-state2")
+	link1.SetTraceID(pcommon.TraceID{'1'})
+	link1.SetSpanID(generateRandSpanID())
+	tsln1 := link1.TraceState()
+	tsln1.FromRaw("link-trace-state2")
+	tsln1.CopyTo(link0.TraceState())
 	span.SetDroppedLinksCount(3)
 }
 
 func fillSpanThree(span ptrace.Span, parentSpanID pcommon.SpanID) {
-	span.SetTraceID(pcommon.NewTraceID(TraceID2))
-	span.SetSpanID(pcommon.NewSpanID(generateRandSpanID()))
+	span.SetTraceID(TraceID2)
+	span.SetSpanID(generateRandSpanID())
 	span.SetParentSpanID(parentSpanID)
 	span.SetName("operationC")
 	span.SetStartTimestamp(TestSpanStartTimestamp)

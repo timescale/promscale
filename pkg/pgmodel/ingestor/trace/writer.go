@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/timestamp"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	"github.com/jackc/pgtype"
@@ -85,7 +86,7 @@ func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagB
 	}
 	for i := 0; i < links.Len(); i++ {
 		link := links.At(i)
-		linkedSpanID := getSpanID(link.SpanID().Bytes())
+		linkedSpanID := getSpanID(link.SpanID())
 		if linkedSpanID.Status != pgtype.Present {
 			return fmt.Errorf("linkedSpanID must be set")
 		}
@@ -94,7 +95,7 @@ func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagB
 		if err != nil {
 			return err
 		}
-		*linkRows = append(*linkRows, []interface{}{traceID, spanID, spanStartTime, TraceIDToUUID(link.TraceID().Bytes()),
+		*linkRows = append(*linkRows, []interface{}{traceID, spanID, spanStartTime, TraceIDToUUID(link.TraceID()),
 			linkedSpanID, getTraceStateValue(link.TraceState()), jsonTags, link.DroppedAttributesCount(), i})
 
 	}
@@ -266,12 +267,12 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces ptrace.Traces
 			spans := instLibSpan.Spans()
 			for k := 0; k < spans.Len(); k++ {
 				span := spans.At(k)
-				traceID := TraceIDToUUID(span.TraceID().Bytes())
-				spanID := getSpanID(span.SpanID().Bytes())
+				traceID := TraceIDToUUID(span.TraceID())
+				spanID := getSpanID(span.SpanID())
 				if spanID.Status != pgtype.Present {
 					return fmt.Errorf("spanID must be set")
 				}
-				parentSpanID := getSpanID(span.ParentSpanID().Bytes())
+				parentSpanID := getSpanID(span.ParentSpanID())
 				spanName := span.Name()
 				spanKind, err := getPGKindEnum(span.Kind())
 				if err != nil {
@@ -471,11 +472,12 @@ func getEventTimeRange(events ptrace.SpanEventSlice) (result pgtype.Tstzrange) {
 	return result
 }
 
-func getTraceStateValue(ts ptrace.TraceState) (result pgtype.Text) {
-	if string(ts) == "" {
+func getTraceStateValue(ts pcommon.TraceState) (result pgtype.Text) {
+	tsRaw := ts.AsRaw()
+	if tsRaw == "" {
 		result.Status = pgtype.Null
 	} else {
-		result.String = string(ts)
+		result.String = tsRaw
 		result.Status = pgtype.Present
 	}
 

@@ -94,7 +94,7 @@ func (td *Dispatcher) getBatcherIdx(ctx context.Context, traces ptrace.Traces) (
 	if traces.ResourceSpans().Len() == 1 {
 		scopeSpans := traces.ResourceSpans().At(0).ScopeSpans()
 		if scopeSpans.Len() == 1 && scopeSpans.At(0).Spans().Len() == 1 {
-			traceID := scopeSpans.At(0).Spans().At(0).TraceID().Bytes()
+			traceID := scopeSpans.At(0).Spans().At(0).TraceID()
 			hash := xxhash.Sum64(traceID[:])
 			return int(hash % uint64(numberOfBatchers)), nil
 		}
