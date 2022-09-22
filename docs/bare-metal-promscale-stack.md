@@ -58,9 +58,9 @@ sudo timescaledb-tune
 sudo service postgresql restart
 ```
 
-#### Making Promscale Extension Available (optional)
+#### Making Promscale Extension Available
 
-The Promscale extension contains support functions to improve performance of Promscale. While Promscale will run without it, adding this extension will support it to perfrom better.
+The Promscale extension is an integral component of the Promscale installation.
 
 Follow the steps to compile Promscale extension from source available on [Promscale extension page](https://github.com/timescale/promscale_extension).
 
