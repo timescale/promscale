@@ -37,6 +37,168 @@ func BenchmarkStringCache(b *testing.B) {
 	}
 }
 
+type Key struct {
+	index int64
+	value string
+}
+
+type Value struct {
+	name, value string
+}
+
+// tests cache speed and memory usage for struct key and value
+func BenchmarkStructKeyValueCacheEviction(b *testing.B) {
+	cacheSize := b.N / 1000
+	if cacheSize == 0 {
+		cacheSize = 1
+	}
+
+	keys := make([]Key, b.N)
+	values := make([]Value, b.N)
+	for i := range keys {
+		keys[i] = Key{
+			index: int64(i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+		values[i] = Value{
+			name:  fmt.Sprintf("name-%d", i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+	}
+
+	cache := WithMax(uint64(cacheSize))
+
+	// populate the cache
+	for i := 0; i < cacheSize; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+
+	// randomize key access order
+	rand.Shuffle(len(keys), func(i, j int) {
+		keys[i], keys[j] = keys[j], keys[i]
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+}
+
+var value interface{}
+
+func BenchmarkStructKeyValueCacheGetNoEviction(b *testing.B) {
+	cacheSize := b.N / 1000
+	if cacheSize == 0 {
+		cacheSize = 1
+	}
+
+	keys := make([]Key, cacheSize)
+	values := make([]Value, cacheSize)
+	for i := range keys {
+		keys[i] = Key{
+			index: int64(i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+		values[i] = Value{
+			name:  fmt.Sprintf("name-%d", i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+	}
+
+	// make the cache 1000x smaller than the number of values we will get, so
+	// there will be some eviction
+	cache := WithMax(uint64(cacheSize))
+
+	// populate the cache
+	for i := 0; i < cacheSize; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+
+	// randomize key access order
+	rand.Shuffle(len(keys), func(i, j int) {
+		keys[i], keys[j] = keys[j], keys[i]
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		value, _ = cache.Get(keys[i%cacheSize])
+	}
+}
+
+// tests cache speed and memory usage for int64 key and struct value
+func BenchmarkStructValueCacheEviction(b *testing.B) {
+	// we want the cache to be quite a bit smaller than the number of tests
+	cacheSize := b.N / 1000
+	if cacheSize == 0 {
+		cacheSize = 1
+	}
+
+	keys := make([]int64, b.N)
+	values := make([]Value, b.N)
+	for i := range keys {
+		keys[i] = int64(i)
+		values[i] = Value{
+			name:  fmt.Sprintf("name-%d", i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+	}
+
+	cache := WithMax(uint64(cacheSize))
+
+	for i := 0; i < cacheSize; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+
+	// randomize key access order
+	rand.Shuffle(len(keys), func(i, j int) {
+		keys[i], keys[j] = keys[j], keys[i]
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+}
+
+// tests cache speed and memory usage for int64 key and struct value
+func BenchmarkStructValueCacheGetNoEviction(b *testing.B) {
+	// we want the cache to be quite a bit smaller than the number of tests
+	cacheSize := b.N / 1000
+	if cacheSize == 0 {
+		cacheSize = 1
+	}
+
+	keys := make([]int64, b.N)
+	values := make([]Value, b.N)
+	for i := range keys {
+		keys[i] = int64(i)
+		values[i] = Value{
+			name:  fmt.Sprintf("name-%d", i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+	}
+
+	cache := WithMax(uint64(cacheSize))
+
+	for i := 0; i < cacheSize; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+
+	// randomize key access order
+	rand.Shuffle(len(keys), func(i, j int) {
+		keys[i], keys[j] = keys[j], keys[i]
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		value, _ = cache.Get(keys[i])
+	}
+}
+
 // microbenchmark. measure the time it takes to evict on a fully-used cache.
 // attempts to measure worst-cache eviction time, but under-measures contention.
 func BenchmarkEviction(b *testing.B) {
