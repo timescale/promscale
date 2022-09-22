@@ -141,23 +141,64 @@ func Migrate(conn *pgx.Conn, appVersion VersionInfo, leaseLock *util.PgAdvisoryL
 		return fmt.Errorf("failed to determine whether the prom_schema_migrations table existed: %w", err)
 	}
 	if schemaMigrationTableExists {
-		mig := NewMigrator(conn, migrations.MigrationFiles, TableOfContents)
-		if err = mig.Migrate(appSemver); err != nil {
-			return fmt.Errorf("Error encountered during migration: %w", err)
+		if err = upgradeThroughAllBalls(conn, appSemver, extOptions); err != nil {
+			return err
 		}
-		if err = removeOldExtensionIfExists(conn); err != nil {
-			return fmt.Errorf("error while dropping old promscale extension: %w", err)
+	} else {
+		if err = installUpgradePromscaleExtension(conn, extOptions); err != nil {
+			return err
 		}
-		if err = installExtensionAllBalls(conn); err != nil {
-			return fmt.Errorf("error while installing promscale extension version 0.0.0: %w", err)
-		}
-		log.Info("msg", "upgrading old version of Promscale to version 0.11.0, the Promscale database extension is required moving forward")
 	}
+	return nil
+}
 
+func upgradeThroughAllBalls(conn *pgx.Conn, appSemver semver.Version, extOptions extension.ExtensionMigrateOptions) error {
+	var err error
+	ctx := context.Background()
+	// apply any pending migrations from the "old" way
+	mig := NewMigrator(conn, migrations.MigrationFiles, TableOfContents)
+	if err = mig.Migrate(appSemver); err != nil {
+		return fmt.Errorf("Error encountered during migration: %w", err)
+	}
+	// now that we're up-to-date, remove the old extension, install version 0.0.0, and then upgrade to latest
+	if _, err := conn.Exec(ctx, "BEGIN"); err != nil {
+		return fmt.Errorf("unable to start transaction: %w", err)
+	}
+	defer func() {
+		_, _ = conn.Exec(ctx, "ROLLBACK")
+	}()
+	if err = removeOldExtensionIfExists(conn); err != nil {
+		return fmt.Errorf("error while dropping old promscale extension: %w", err)
+	}
+	if err = installExtensionAllBalls(conn); err != nil {
+		return fmt.Errorf("error while installing promscale extension version 0.0.0: %w", err)
+	}
+	log.Info("msg", "upgrading old version of Promscale to version 0.11.0, the Promscale database extension is required moving forward")
 	err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)
 	if err != nil {
 		return fmt.Errorf("failed to install/upgrade promscale extension: %w", err)
 	}
+	if _, err := conn.Exec(ctx, "COMMIT"); err != nil {
+		return fmt.Errorf("unable to commit migration transaction: %w", err)
+	}
+	return nil
+}
 
+func installUpgradePromscaleExtension(conn *pgx.Conn, extOptions extension.ExtensionMigrateOptions) error {
+	var err error
+	ctx := context.Background()
+	if _, err := conn.Exec(ctx, "BEGIN"); err != nil {
+		return fmt.Errorf("unable to start transaction: %w", err)
+	}
+	defer func() {
+		_, _ = conn.Exec(ctx, "ROLLBACK")
+	}()
+	err = extension.InstallUpgradePromscaleExtensions(conn, extOptions)
+	if err != nil {
+		return fmt.Errorf("failed to install/upgrade promscale extension: %w", err)
+	}
+	if _, err := conn.Exec(ctx, "COMMIT"); err != nil {
+		return fmt.Errorf("unable to commit migration transaction: %w", err)
+	}
 	return nil
 }
