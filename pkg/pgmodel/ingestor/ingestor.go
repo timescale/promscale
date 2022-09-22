@@ -96,6 +96,9 @@ func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces ptrace.Trac
 	}
 	_, span := tracer.Default().Start(ctx, "ingest-traces")
 	defer span.End()
+	inflight := metrics.IngestorInflightRequests.WithLabelValues("trace")
+	defer inflight.Dec()
+	inflight.Inc()
 	return ingestor.tWriter.InsertTraces(ctx, traces)
 }
 
@@ -109,6 +112,9 @@ func (ingestor *DBIngestor) IngestMetrics(ctx context.Context, r *prompb.WriteRe
 	}
 	ctx, span := tracer.Default().Start(ctx, "db-ingest")
 	defer span.End()
+	inflight := metrics.IngestorInflightRequests.WithLabelValues("metric")
+	defer inflight.Dec()
+	inflight.Inc()
 	metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata"}).Inc()
 	defer metrics.IngestorActiveWriteRequests.With(prometheus.Labels{"type": "metric", "kind": "sample_or_metadata"}).Dec()
 	var (

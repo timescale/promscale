@@ -157,6 +157,14 @@ var (
 			Help:      "Total requests bytes ingested for traces or metrics",
 		}, []string{"type"},
 	)
+	IngestorInflightRequests = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "inflight_requests",
+			Help:      "Requests which are yet to be answered",
+		}, []string{"type"},
+	)
 	IngestorRequests = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: util.PromNamespace,
@@ -225,6 +233,7 @@ func init() {
 		IngestorBatchFlushTotal,
 		IngestorPendingBatches,
 		IngestorRequestsQueued,
+		IngestorInflightRequests,
 	)
 }
 
