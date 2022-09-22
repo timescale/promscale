@@ -34,6 +34,7 @@ We use the following categories for changes:
 - Do not collect telemetry if `timescaledb.telemetry_level=off` [#1612]
 - Fix broken cache eviction in clockcache [#1603]
 - Possible goroutine leak due to unbuffered channel in select block [#1604]
+- Wrap extension upgrades in an explicit transaction [#1665]
 
 ## [0.14.0] - 2022-08-30
 
