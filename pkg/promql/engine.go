@@ -715,6 +715,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 
 	// Range evaluation.
 	var intervalMs int64
+
 	if rollupInterval > s.Interval {
 		// Rollups evaluated the step interval. Hence, just use this step in rollup.
 		// This is important, as it **avoids unnecessary samples** due to .Seek() as the values remain the same
@@ -1691,12 +1692,12 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		return String{V: e.Val, T: ev.startTimestamp}, nil
 
 	case *parser.VectorSelector:
+
 		ws, err := checkAndExpandSeriesSet(ev.ctx, e)
 		if err != nil {
 			ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
 		}
 		mat := make(Matrix, 0, len(e.Series))
-		fmt.Println("ev.lookbackDelta", ev.lookbackDelta)
 		it := storage.NewMemoizedEmptyIterator(durationMilliseconds(ev.lookbackDelta))
 		for i, s := range e.Series {
 			it.Reset(s.Iterator())

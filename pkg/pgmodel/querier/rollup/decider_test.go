@@ -2,7 +2,6 @@ package rollup
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -14,8 +13,10 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
+const noRollupSchema = ""
+
 func TestDecideRollup(t *testing.T) {
-	r := &rollupDecider{
+	r := &Manager{
 		conn: mockPgxConn{},
 		schemaResolutionCache: map[string]time.Duration{
 			"hour":      time.Hour,
@@ -56,12 +57,25 @@ func TestDecideRollup(t *testing.T) {
 			min:                0,
 			max:                24 * time.Hour,
 			expectedSchemaName: "5_minute",
-		}, {
+		},
+		{
 			name:               "7 days",
 			min:                0,
 			max:                7 * 24 * time.Hour,
 			expectedSchemaName: "15_minute",
-		}, {
+			// DRY RUN on 200 - 2000 logic
+			// --------
+			//
+			// Assumed default scrape interval being 15 secs
+			// raw 		-> 40320
+			//
+			// And, when using following rollup resolutions, num samples:
+			// 5 mins 	-> 2016
+			// 15 mins 	-> 672
+			// 1 hour 	-> 168
+			// 1 week 	-> 1
+		},
+		{
 			name:               "30 days",
 			min:                0,
 			max:                30 * 24 * time.Hour,
@@ -79,15 +93,11 @@ func TestDecideRollup(t *testing.T) {
 		},
 	}
 	for _, tc := range tcs {
-		cfg, shouldUseRollup := r.decide(int64(tc.min.Seconds()), int64(tc.max.Seconds()), "")
+		cfg := r.Decide(int64(tc.min.Seconds()), int64(tc.max.Seconds()), "")
 		if tc.expectedSchemaName == noRollupSchema {
-			require.False(t, shouldUseRollup, tc.name)
 			require.Nil(t, cfg)
 			continue
-		} else {
-			require.True(t, shouldUseRollup, tc.name)
 		}
-		fmt.Println("test name", tc.name)
 		require.Equal(t, tc.expectedSchemaName, cfg.schemaName, tc.name)
 	}
 }
