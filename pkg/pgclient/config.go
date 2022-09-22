@@ -78,12 +78,12 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 
 	fs.StringVar(&cfg.AppName, "db.app", DefaultApp, "This sets the application_name in database connection string. "+
 		"This is helpful during debugging when looking at pg_stat_activity.")
-	fs.StringVar(&cfg.Host, "db.host", defaultDBHost, "Host for TimescaleDB/Vanilla Postgres.")
-	fs.IntVar(&cfg.Port, "db.port", defaultDBPort, "TimescaleDB/Vanilla Postgres connection password.")
-	fs.StringVar(&cfg.User, "db.user", defaultDBUser, "TimescaleDB/Vanilla Postgres user.")
-	fs.StringVar(&cfg.Password, "db.password", defaultDBPassword, "Password for connecting to TimescaleDB/Vanilla Postgres.")
+	fs.StringVar(&cfg.Host, "db.host", defaultDBHost, "Host for TimescaleDB.")
+	fs.IntVar(&cfg.Port, "db.port", defaultDBPort, "Port for TimescaleDB.")
+	fs.StringVar(&cfg.User, "db.user", defaultDBUser, "TimescaleDB user.")
+	fs.StringVar(&cfg.Password, "db.password", defaultDBPassword, "Password for connecting to TimescaleDB.")
 	fs.StringVar(&cfg.Database, "db.name", defaultDBName, "Database name.")
-	fs.StringVar(&cfg.SslMode, "db.ssl-mode", defaultSSLMode, "TimescaleDB/Vanilla Postgres connection ssl mode. If you do not want to use ssl, pass 'allow' as value.")
+	fs.StringVar(&cfg.SslMode, "db.ssl-mode", defaultSSLMode, "TimescaleDB connection ssl mode. If you do not want to use ssl, pass 'allow' as value.")
 	fs.DurationVar(&cfg.DbConnectionTimeout, "db.connection-timeout", defaultConnectionTime, "Timeout for establishing the connection between Promscale and TimescaleDB.")
 	fs.BoolVar(&cfg.IgnoreCompressedChunks, "metrics.ignore-samples-written-to-compressed-chunks", false, "Ignore/drop samples that are being written to compressed chunks. "+
 		"Setting this to false allows Promscale to ingest older data by decompressing chunks that were earlier compressed. "+
@@ -98,7 +98,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.IntVar(&cfg.MaintPoolSize, "db.connections.maint-pool.size", defaultMaintPoolSize, "Maximum size of the maintenance pool of database connections. This defaults to 5")
 	fs.IntVar(&cfg.MaxConnections, "db.connections-max", defaultMaxConns, "Maximum number of connections to the database that should be opened at once. "+
 		"It defaults to 80% of the maximum connections that the database can handle. ")
-	fs.StringVar(&cfg.DbUri, "db.uri", defaultDBUri, "TimescaleDB/Vanilla Postgres DB URI. "+
+	fs.StringVar(&cfg.DbUri, "db.uri", defaultDBUri, "TimescaleDB URI. "+
 		"Example DB URI `postgres://postgres:password@localhost:5432/timescale?sslmode=require`")
 	fs.BoolVar(&cfg.EnableStatementsCache, "db.statements-cache", defaultDbStatementsCache, "Whether database connection pool should use cached prepared statements. "+
 		"Disable if using PgBouncer")
