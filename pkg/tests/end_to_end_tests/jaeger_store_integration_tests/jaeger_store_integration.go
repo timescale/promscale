@@ -28,7 +28,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +57,8 @@ type StorageIntegration struct {
 	// TODO: remove this flag after all storage plugins returns spanKind with operationNames
 	NotSupportSpanKindWithOperation bool
 	FixturesPath                    string
+	// List of tests which has to be skipped, it can be regex too.
+	SkipList []string
 
 	// CleanUp() should ensure that the storage backend is clean before another test.
 	// called either before or after each test, and should be idempotent
@@ -92,6 +94,17 @@ func (s *StorageIntegration) refresh(t *testing.T) {
 	require.NoError(t, s.Refresh())
 }
 
+func (s *StorageIntegration) skipIfNeeded(t *testing.T) {
+	for _, pat := range s.SkipList {
+		ok, err := regexp.MatchString(pat, t.Name())
+		assert.NoError(t, err)
+		if ok {
+			t.Skip()
+			return
+		}
+	}
+}
+
 func (s *StorageIntegration) waitForCondition(t *testing.T, predicate func(t *testing.T) bool) bool {
 	for i := 0; i < iterations; i++ {
 		t.Logf("Waiting for storage backend to update documents, iteration %d out of %d", i+1, iterations)
@@ -124,9 +137,7 @@ func (s *StorageIntegration) testGetServices(t *testing.T) {
 }
 
 func (s *StorageIntegration) testGetLargeSpan(t *testing.T) {
-	if os.Getenv("RUN_UNSUPPORTED_JAEGER_TEST") == "" {
-		t.Skip("not yet supported")
-	}
+	s.skipIfNeeded(t)
 	defer s.cleanUp(t)
 
 	t.Log("Testing Large Trace over 10K ...")
@@ -212,9 +223,6 @@ func (s *StorageIntegration) testGetTrace(t *testing.T) {
 var fixtures embed.FS
 
 func (s *StorageIntegration) testFindTraces(t *testing.T) {
-	if os.Getenv("RUN_UNSUPPORTED_JAEGER_TEST") == "" {
-		t.Skip("not yet supported")
-	}
 	defer s.cleanUp(t)
 
 	// Note: all cases include ServiceName + StartTime range
@@ -241,6 +249,7 @@ func (s *StorageIntegration) testFindTraces(t *testing.T) {
 	s.refresh(t)
 	for i, queryTestCase := range s.Fixtures {
 		t.Run(queryTestCase.Caption, func(t *testing.T) {
+			s.skipIfNeeded(t)
 			expected := expectedTracesPerTestCase[i]
 			actual := s.findTracesByQuery(t, queryTestCase.Query, expected)
 			CompareSliceOfTraces(t, expected, actual)
