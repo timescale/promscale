@@ -37,7 +37,7 @@ func TestJaegerStorageIntegration(t *testing.T) {
 				cfg := &ingestor.Cfg{
 					InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
 					NumCopiers:              runtime.NumCPU() / 2,
-					TracesAsyncAcks:         true,
+					TracesAsyncAcks:         true, // To make GetLargeSpans happy, otherwise it takes quite a few time to ingest.
 				}
 				ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), cfg)
 				require.NoError(t, err)
@@ -53,6 +53,23 @@ func TestJaegerStorageIntegration(t *testing.T) {
 					SpanWriter: writer,
 					CleanUp:    func() error { return nil },
 					Refresh:    func() error { return nil },
+					SkipList: []string{
+						"GetLargeSpans",
+						"FindTraces/Tags_in_one_spot_-_Tags",
+						"FindTraces/Tags_in_one_spot_-_Logs",
+						"FindTraces/Tags_in_one_spot_-_Process",
+						"FindTraces/default",
+						"FindTraces/Tags_\\+_Operation_name$",
+						"FindTraces/Tags_\\+_Operation_name_\\+_max_Duration$",
+						"FindTraces/Tags_\\+_Operation_name_\\+_Duration_range$",
+						"FindTraces/Tags_\\+_Duration_range$",
+						"FindTraces/Tags_\\+_max_Duration$",
+						"FindTraces/Multi-spot_Tags_\\+_Operation_name_\\+_max_Duration",
+						"FindTraces/Multi-spot_Tags_\\+_Operation_name_\\+_Duration_range",
+						"FindTraces/Multi-spot_Tags_\\+_Duration_range",
+						"FindTraces/Multi-spot_Tags_\\+_max_Duration",
+						"FindTraces/Multiple_Traces",
+					},
 				}
 				si.IntegrationTestAll(t.(*testing.T))
 			})
