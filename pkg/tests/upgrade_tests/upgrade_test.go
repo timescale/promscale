@@ -192,6 +192,69 @@ func turnOffCompressionOnMetric(t *testing.T) {
 	db.Close()
 }
 
+func createCagg(t *testing.T) {
+	db, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(context.Background(), `CREATE MATERIALIZED VIEW cagg_1
+	WITH (timescaledb.continuous) AS
+	  SELECT
+			timezone('UTC',
+			  time_bucket('1 hour', time) AT TIME ZONE 'UTC' +'1 hour')
+				as time,
+			series_id,
+			min(value) as min,
+			max(value) as max,
+			avg(value) as avg
+		FROM prom_data.test_cagg
+		GROUP BY time_bucket('1 hour', time), series_id`)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	/*_, err = db.Exec(context.Background(), `SELECT prom_api.register_metric_view('public', 'cagg_1');`)
+
+	if err != nil {
+		t.Fatal(err)
+	}*/
+
+	_, err = db.Exec(context.Background(), `CREATE MATERIALIZED VIEW cagg_2_unregistered
+	WITH (timescaledb.continuous) AS
+	  SELECT
+			timezone('UTC',
+			  time_bucket('2 hour', time) AT TIME ZONE 'UTC' +'1 hour')
+				as time,
+			series_id,
+			min(value) as min,
+			max(value) as max,
+			avg(value) as avg
+		FROM prom_data.test_cagg
+		GROUP BY time_bucket('2 hour', time), series_id`)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = db.Exec(context.Background(), `CREATE MATERIALIZED VIEW prom_data.cagg_3_prom_data_unregistered
+	WITH (timescaledb.continuous) AS
+	  SELECT
+			timezone('UTC',
+			  time_bucket('3 hour', time) AT TIME ZONE 'UTC' +'1 hour')
+				as time,
+			series_id,
+			min(value) as min,
+			max(value) as max,
+			avg(value) as avg
+		FROM prom_data.test_cagg
+		GROUP BY time_bucket('3 hour', time), series_id`)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionState testhelpers.TestOptions) (upgradedDbInfo dbSnapshot) {
 	// We test that upgrading from both the earliest and the directly-previous versions works
 	// While it may seem that the earliest version is sufficient, idempotent scripts are only
@@ -222,8 +285,9 @@ func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionSta
 
 			writeUrl := fmt.Sprintf("http://%s/write", net.JoinHostPort(connectorHost, connectorPort.Port()))
 
-			doWrite(t, &client, writeUrl, preUpgradeData1, preUpgradeData2, preUpgradeData3)
+			doWrite(t, &client, writeUrl, preUpgradeData1, preUpgradeData2, preUpgradeData3, preUpgradeData4)
 			turnOffCompressionOnMetric(t)
+			createCagg(t)
 		},
 		/* postUpgrade */
 		func(dbContainer testcontainers.Container, dbTmpDir string) {
@@ -272,7 +336,8 @@ func getPristineDbInfo(t *testing.T, noData bool, extensionState testhelpers.Tes
 			}
 			defer ing.Close()
 
-			doIngest(t, ing, preUpgradeData1, preUpgradeData2, preUpgradeData3)
+			doIngest(t, ing, preUpgradeData1, preUpgradeData2, preUpgradeData3, preUpgradeData4)
+			createCagg(t)
 		},
 		/* postRestart */
 		func(container testcontainers.Container, _ string, db *pgxpool.Pool, tmpDir string) {
@@ -330,6 +395,18 @@ var (
 		{
 			Labels: []prompb.Label{
 				{Name: model.MetricNameLabelName, Value: "test_uncompressed"},
+				{Name: "foo", Value: "bar"},
+			},
+			Samples: []prompb.Sample{
+				{Timestamp: startTime + 4, Value: 2.2},
+			},
+		},
+	}
+
+	preUpgradeData4 = []prompb.TimeSeries{
+		{
+			Labels: []prompb.Label{
+				{Name: model.MetricNameLabelName, Value: "test_cagg"},
 				{Name: "foo", Value: "bar"},
 			},
 			Samples: []prompb.Sample{
