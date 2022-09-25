@@ -182,6 +182,7 @@ func copierGetBatch(ctx context.Context, batch []copyRequest, in <-chan readRequ
 		return batch, stats, false
 	}
 	batch = append(batch, copyRequest)
+	cnt := copyRequest.data.batch.CountPoints()
 	stats.Update(copyRequest)
 
 	totalPoints := atomic.LoadInt64(&metrics.BatchingPoints)
@@ -195,7 +196,6 @@ func copierGetBatch(ctx context.Context, batch []copyRequest, in <-chan readRequ
 	//we use a small timeout to prevent low-pressure systems from using up too many
 	//txns and putting pressure on system
 	timeout := time.After(100 * time.Millisecond)
-	cnt := 0
 hot_gather:
 	for len(batch) < cap(batch) && cnt < targetPoints {
 		select {
