@@ -193,6 +193,8 @@ func copierGetBatch(ctx context.Context, batch []copyRequest, in <-chan readRequ
 		targetPoints = 1000
 	}
 
+	metrics.IngestorBatchTargetPoints.With(labelsCopier).Observe(float64(targetPoints))
+
 	//we use a small timeout to prevent low-pressure systems from using up too many
 	//txns and putting pressure on system
 	timeout := time.After(100 * time.Millisecond)

@@ -6,6 +6,7 @@ package metrics
 
 import (
 	"os"
+	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/timescale/promscale/pkg/util"
@@ -22,8 +23,32 @@ const (
 
 var (
 	// MaxSentTs is the max timestamp sent to the database.
-	MaxSentTs          = int64(0)
-	BatchingPoints     = int64(0)
+	MaxSentTs      = int64(0)
+	BatchingPoints = int64(0)
+
+	BatchingPointsGauge = prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace:   util.PromNamespace,
+			Subsystem:   "ingest",
+			Name:        "batch_points_total",
+			Help:        "Amount of points being batched",
+			ConstLabels: map[string]string{"type": "metric", "subsystem": "metric_batcher", "kind": "sample"},
+		},
+		func() float64 {
+			return float64(atomic.LoadInt64(&BatchingPoints))
+		},
+	)
+
+	IngestorBatchTargetPoints = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "batch_target_points",
+			Help:      "Number of rows targeted for copier batch",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 17),
+		}, []string{"type", "subsystem"},
+	)
+
 	IngestorDuplicates = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: util.PromNamespace,
@@ -96,7 +121,7 @@ var (
 			Subsystem: "ingest",
 			Name:      "rows_per_batch",
 			Help:      "Number of rows inserted in a single transaction.",
-			Buckets:   prometheus.ExponentialBuckets(1, 2, 15),
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 17),
 		}, []string{"type", "subsystem"},
 	)
 	IngestorRowsPerInsert = prometheus.NewHistogramVec(
