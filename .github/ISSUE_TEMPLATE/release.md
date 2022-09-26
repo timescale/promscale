@@ -8,7 +8,6 @@
       contains the fixes. For example, if we added some fixes to the already
       released `release-0.12` branch, then it will be the base for our `0.12.1`
       release.
-  - [ ] Update `version` and `appVersion` in `deploy/helm-chart/Chart.yml`
   - [ ] Update Promscale in `pkg/version/version.go` update. If required, update
     the values for PrevReleaseVersion, PgVersionNumRange and
     ExtVersionRangeString.
@@ -16,7 +15,6 @@
   - [ ] If the release includes changes to prom-migrator, update the `version`
     variable at `migration-tool/cmd/prom-migrator/main.go`.
   - [ ] (optionally) Update `prom-migrator` version in `.goreleaser.yml` (2 places)
-  - [ ] Run `./scripts/generate-deploy-script.sh`
   - [ ] Finalize CHANGELOG, adding release version and date
   - [ ] Commit: `git commit -a -m "Prepare for the 0.1.0-alpha.4 release"`
   - Create PR:
