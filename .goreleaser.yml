@@ -104,7 +104,7 @@ archives:
   format: binary
   builds:
   - prom-migrator
-  name_template: "{{ .Binary }}_0.0.5_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
+  name_template: "{{ .Binary }}_0.0.6_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
   replacements:
     darwin: Darwin
     linux: Linux
@@ -165,7 +165,7 @@ dockers:
   - pkg
   - migration-tool
   image_templates:
-  - "timescale/prom-migrator:0.0.5"
+  - "timescale/prom-migrator:0.0.6"
   - "timescale/prom-migrator:latest"
 
 docker_manifests:

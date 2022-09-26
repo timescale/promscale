@@ -38,7 +38,7 @@ var (
 	// It is customary to bump the version by incrementing the numeral after
 	// the `dev` tag. The SQL migration script name must correspond to the /new/ version.
 
-	Promscale                  = "0.15.0-dev.0"
+	Promscale                  = "0.15.0"
 	PrevReleaseVersion         = "0.14.0"
 	CommitHash                 = ""      // Comes from -ldflags settings
 	Branch                     = ""      // Comes from -ldflags settings
@@ -51,7 +51,7 @@ var (
 	TimescaleVersionRange       = semver.MustParseRange(TimescaleVersionRangeString)
 
 	// ExtVersionRangeString is a range of required promscale extension versions
-	ExtVersionRangeString = ">=0.6.0 <0.7.99"
+	ExtVersionRangeString = ">=0.7.0 <0.7.99"
 	ExtVersionRange       = semver.MustParseRange(ExtVersionRangeString)
 
 	// Expose build info through Prometheus metric
