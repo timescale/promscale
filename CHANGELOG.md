@@ -13,6 +13,8 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## [0.15.0] - 2022-10-11
+
 ### Added
 - prom-migrator: Support for passing custom HTTP headers via command line arguments for both
   reader and writer [#1020]
