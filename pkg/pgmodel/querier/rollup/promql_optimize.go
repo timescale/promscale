@@ -23,7 +23,7 @@ type (
 var metricFuncRelation = map[metricType]map[promqlFuncName]columnInformation{
 	"GAUGE": {
 		"":                {columnName: "sum / count"}, // When no function is used.
-		"avg_over_time":   {columnName: "sum / count", instantQueryAgg: "avg(value)"},
+		"avg_over_time":   {columnName: "sum, count", instantQueryAgg: "sum(sum) / sum(value)"},
 		"min_over_time":   {columnName: "min", instantQueryAgg: "min(value)"},
 		"max_over_time":   {columnName: "max", instantQueryAgg: "max(value)"},
 		"sum_over_time":   {columnName: "sum", instantQueryAgg: "sum(value)"},
