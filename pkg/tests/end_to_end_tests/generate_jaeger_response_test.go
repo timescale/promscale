@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
+	"github.com/timescale/promscale/pkg/tests/testdata"
 )
 
 // TestGenerateJaegerAPIResponses is not an actual test, rather a function to spin up jaeger container
@@ -35,8 +36,8 @@ func TestGenerateJaegerAPIResponses(t *testing.T) {
 	jaeger, err := testhelpers.StartJaegerContainer(true)
 	require.NoError(t, err)
 
-	sampleTraces := generateTestTrace()
-	err = insertDataIntoJaeger(fmt.Sprintf("localhost:%s", jaeger.GrpcReceivingPort.Port()), copyTraces(sampleTraces))
+	sampleTraces := testdata.GenerateTestTrace()
+	err = insertDataIntoJaeger(fmt.Sprintf("localhost:%s", jaeger.GrpcReceivingPort.Port()), testdata.CopyTraces(sampleTraces))
 	require.NoError(t, err)
 
 	var store traceResponsesStore

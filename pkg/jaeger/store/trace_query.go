@@ -15,36 +15,39 @@ import (
 )
 
 const (
+	// A lateral join is used for the `link` table instead of using directly
+	// `array_agg` calls in the main SELECT clause to avoid returning duplicated
+	// values when the cartesian product of event x link is greater than 1.
 	completeTraceSQLFormat = `
 	SELECT
 		s.trace_id,
-	   	s.span_id,
+		s.span_id,
 		s.parent_span_id,
 		s.start_time start_times,
 		s.end_time end_times,
 		o.span_kind,
-		s.dropped_tags_count 			dropped_tags_counts,
-		s.dropped_events_count 			dropped_events_counts,
-		s.dropped_link_count 			dropped_link_counts,
-		s.status_code 					status_code_string,
+		s.dropped_tags_count   dropped_tags_counts,
+		s.dropped_events_count dropped_events_counts,
+		s.dropped_link_count dropped_link_counts,
+		s.status_code status_code_string,
 		s.status_message,
-		s.trace_state 			trace_states,
-		s_url.url 				schema_urls,
-		o.span_name     		span_names,
-		_ps_trace.tag_map_denormalize(s.resource_tags) 	resource_tags,
-		_ps_trace.tag_map_denormalize(s.span_tags) 		span_tags,
-	   	array_agg(e.name ORDER BY e.event_nbr) FILTER(WHERE e IS NOT NULL)			event_names,
-		array_agg(e.time ORDER BY e.event_nbr) FILTER(WHERE e IS NOT NULL)			event_times,
-	   	array_agg(e.dropped_tags_count ORDER BY e.event_nbr) FILTER(WHERE e IS NOT NULL)	event_dropped_tags_count,
-		array_agg(_ps_trace.tag_map_denormalize(e.tags) ORDER BY e.event_nbr) FILTER(WHERE e IS NOT NULL)	event_tags,
-	   	inst_lib.name 				library_name,
-	   	inst_lib.version 			library_version,
-		inst_lib_url.url 			library_schema_url,
-		array_agg(lk.linked_trace_id ORDER BY lk.link_nbr) FILTER(WHERE lk IS NOT NULL)	links_linked_trace_ids,
-		array_agg(lk.linked_span_id ORDER BY lk.link_nbr)  FILTER(WHERE lk IS NOT NULL)	links_linked_span_ids,
-		array_agg(lk.trace_state ORDER BY lk.link_nbr)     FILTER(WHERE lk IS NOT NULL)	links_trace_states,
-		array_agg(lk.dropped_tags_count ORDER BY lk.link_nbr) FILTER(WHERE lk IS NOT NULL) 	links_dropped_tags_count,
-		array_agg(_ps_trace.tag_map_denormalize(lk.tags) ORDER BY lk.link_nbr) FILTER(WHERE lk IS NOT NULL)			links_tags
+		s.trace_state trace_states,
+		s_url.url schema_urls,
+		o.span_name span_names,
+		_ps_trace.tag_map_denormalize(s.resource_tags) resource_tags,
+		_ps_trace.tag_map_denormalize(s.span_tags) span_tags,
+		event.event_names,
+		event.event_times,
+		event.event_dropped_tags_count,
+		event.event_tags,
+		inst_lib.name library_name,
+		inst_lib.version library_version,
+		inst_lib_url.url library_schema_url,
+		links_linked_trace_ids,
+		links_linked_span_ids,
+		links_trace_states,
+		links_dropped_tags_count,
+		links_tags
 	FROM
 		_ps_trace.span s
 	INNER JOIN
@@ -52,29 +55,53 @@ const (
 	LEFT JOIN
 		_ps_trace.schema_url s_url ON s.resource_schema_url_id = s_url.id
 	LEFT JOIN
-		_ps_trace.event e ON e.span_id = s.span_id AND e.trace_id = s.trace_id %[3]s
-	LEFT JOIN
 		_ps_trace.instrumentation_lib inst_lib ON s.instrumentation_lib_id = inst_lib.id
 	LEFT JOIN
 		_ps_trace.schema_url inst_lib_url ON inst_lib_url.id = inst_lib.schema_url_id
-	LEFT JOIN
-		_ps_trace.link lk ON lk.trace_id = s.trace_id AND lk.span_id = s.span_id %[4]s
+	LEFT JOIN LATERAL (
+		SELECT
+			array_agg(e.name ORDER BY e.event_nbr) event_names,
+			array_agg(e.time ORDER BY e.event_nbr) event_times,
+			array_agg(e.dropped_tags_count ORDER BY e.event_nbr) event_dropped_tags_count,
+			array_agg(_ps_trace.tag_map_denormalize(e.tags) ORDER BY e.event_nbr) event_tags
+		FROM _ps_trace.event as e
+		WHERE e.trace_id = s.trace_id AND e.span_id = s.span_id %[3]s
+	) as event ON (TRUE)
+	LEFT JOIN LATERAL (
+		SELECT
+			array_agg(lk.linked_trace_id ORDER BY lk.link_nbr) links_linked_trace_ids,
+			array_agg(lk.linked_span_id ORDER BY lk.link_nbr) links_linked_span_ids,
+			array_agg(lk.trace_state ORDER BY lk.link_nbr) links_trace_states,
+			array_agg(lk.dropped_tags_count ORDER BY lk.link_nbr) links_dropped_tags_count,
+			array_agg(_ps_trace.tag_map_denormalize(lk.tags) ORDER BY lk.link_nbr) links_tags
+		FROM _ps_trace.link as lk
+		WHERE lk.trace_id = s.trace_id AND lk.span_id = s.span_id %[4]s
+	) as link ON (TRUE)
 	WHERE
-	  %[1]s %[2]s
+		%[1]s %[2]s
 	GROUP BY
-	  s.trace_id,
-	  s.span_id,
-	  s.parent_span_id,
-	  s.start_time,
-	  s.end_time,
-	  s.resource_tags,
-	  s.span_tags,
-	  o.span_name,
-	  o.span_kind,
-	  s_url.url,
-	  inst_lib.name,
-	  inst_lib.version,
-	  inst_lib_url.url`
+		s.trace_id,
+		s.span_id,
+		s.parent_span_id,
+		s.start_time,
+		s.end_time,
+		s.resource_tags,
+		s.span_tags,
+		o.span_name,
+		o.span_kind,
+		s_url.url,
+		inst_lib.name,
+		inst_lib.version,
+		inst_lib_url.url,
+		event_names,
+		event_times,
+		event_dropped_tags_count,
+		event_tags,
+		links_linked_trace_ids,
+		links_linked_span_ids,
+		links_trace_states,
+		links_dropped_tags_count,
+		links_tags`
 
 	subqueryFormat = `
 	SELECT
