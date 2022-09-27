@@ -7,12 +7,10 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 	"github.com/stretchr/testify/require"
-
 	"github.com/timescale/promscale/pkg/jaeger/store"
 	jaegerstore "github.com/timescale/promscale/pkg/jaeger/store"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
-	"github.com/timescale/promscale/pkg/tests/testdata"
 )
 
 // Similar to TestQueryTraces, but uses Jaeger span ingestion interface.
@@ -24,7 +22,11 @@ func TestJaegerSpanIngestion(t *testing.T) {
 
 		jaegerStore := jaegerstore.New(pgxconn.NewQueryLoggingPgxConn(db), ingestor, &store.DefaultConfig)
 
-		batch, err := jaegertranslator.ProtoFromTraces(testdata.GenerateTestTrace())
+		fixtures, err := getTracesFixtures()
+		if err != nil {
+			require.NoError(t, err)
+		}
+		batch, err := jaegertranslator.ProtoFromTraces(fixtures.traces)
 		require.NoError(t, err)
 		for _, b := range batch {
 			for _, s := range b.Spans {
@@ -35,8 +37,9 @@ func TestJaegerSpanIngestion(t *testing.T) {
 				require.NoError(t, err)
 			}
 		}
+
 		getOperationsTest(t, jaegerStore)
-		findTraceTest(t, jaegerStore)
+		findTraceTest(t, jaegerStore, fixtures)
 		getDependenciesTest(t, jaegerStore)
 	})
 }

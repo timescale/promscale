@@ -43,6 +43,10 @@ We use the following categories for changes:
 - Fix broken cache eviction in clockcache [#1603]
 - Possible goroutine leak due to unbuffered channel in select block [#1604]
 - Wrap extension upgrades in an explicit transaction [#1665]
+- Fix queries returning no references/links when querying traces that were
+  ingested using the native Jaeger API.
+- Fix traces queries returning duplicated events and links (or logs and
+  references in Jaeger) for traces with more than one event and one link.
 
 ## [0.14.0] - 2022-08-30
 
