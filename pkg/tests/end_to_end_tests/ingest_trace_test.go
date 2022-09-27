@@ -10,13 +10,16 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 	"github.com/spyzhov/ajson"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/jaeger/store"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/tests/testdata"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 func TestIngestTraces(t *testing.T) {
@@ -72,14 +75,15 @@ func TestQueryTraces(t *testing.T) {
 		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
 		require.NoError(t, err)
 		defer ingestor.Close()
-		traces := testdata.GenerateTestTrace()
-		err = ingestor.IngestTraces(context.Background(), traces)
+		fixtures, err := getFindTraceTestFixtures()
+		require.NoError(t, err)
+		err = ingestor.IngestTraces(context.Background(), fixtures.traces)
 		require.NoError(t, err)
 
 		q := store.New(pgxconn.NewQueryLoggingPgxConn(db), ingestor, &store.DefaultConfig)
 
 		getOperationsTest(t, q)
-		findTraceTest(t, q)
+		findTraceTest(t, q, fixtures)
 		getDependenciesTest(t, q)
 		findTracePlanTest(t, q, db)
 	})
@@ -185,18 +189,76 @@ func getOperationsTest(t testing.TB, q *store.Store) {
 	}
 }
 
-func findTraceTest(t testing.TB, q *store.Store) {
+// getFindTraceTestFixtures contains an OTEL `traces` object to be used as a
+// fixture. Also, each of the traces is present in the Jaeger model.Traces
+// format so that they can be used to compare results from Jaeger query
+// responses.
+type findTraceTestFixtures struct {
+	traces ptrace.Traces
+	trace1 *model.Trace
+	trace2 *model.Trace
+}
+
+func getFindTraceTestFixtures() (findTraceTestFixtures, error) {
+
+	traces := testdata.GenerateTestTrace()
+
+	fixtureBatch, err := jaegertranslator.ProtoFromTraces(traces.Clone())
+	if err != nil {
+		return findTraceTestFixtures{}, err
+	}
+	for _, b := range fixtureBatch {
+		for _, s := range b.Spans {
+			// ProtoFromTraces doesn't populates span.Process because it is already been exposed by batch.Process.
+			// See https://github.com/jaegertracing/jaeger-idl/blob/05fe64e9c305526901f70ff692030b388787e388/proto/api_v2/model.proto#L152-L160
+			//
+			// Reusing the same reference makes the diff lib think is a cyclic
+			// reference and returns an error.
+			s.Process = &model.Process{
+				ServiceName: b.Process.ServiceName,
+				Tags:        append([]model.KeyValue{}, b.Process.Tags...),
+			}
+		}
+	}
+
+	// After passing the traces from testdata.GenerateTestTrace through the
+	// translator we end up with 2 batches. The first one has 8 spans, the second
+	// 4. The first 4 spans of the first batch belong to the same trace and the
+	// other 4 belong to the same trace as all the spans in the second batch.
+	trace1 := &model.Trace{
+		Spans:      fixtureBatch[0].Spans[:4],
+		ProcessMap: nil,
+		Warnings:   make([]string, 0),
+	}
+
+	trace2Spans := make([]*model.Span, 0)
+	trace2Spans = append(trace2Spans, fixtureBatch[0].Spans[4:]...)
+	trace2Spans = append(trace2Spans, fixtureBatch[1].Spans...)
+
+	trace2 := &model.Trace{
+		Spans:      trace2Spans,
+		ProcessMap: nil,
+		Warnings:   make([]string, 0),
+	}
+
+	return findTraceTestFixtures{traces, trace1, trace2}, nil
+}
+
+func findTraceTest(t testing.TB, q *store.Store, fixtures findTraceTestFixtures) {
+	trace1 := fixtures.trace1
+	trace2 := fixtures.trace2
+
 	for _, tt := range []struct {
-		name                  string
-		request               *spanstore.TraceQueryParameters
-		expectedResponseCount int
+		name           string
+		request        *spanstore.TraceQueryParameters
+		expectedTraces []*model.Trace
 	}{
 		{
 			name: "query by service name",
 			request: &spanstore.TraceQueryParameters{
 				ServiceName: "service-name-0",
 			},
-			expectedResponseCount: 2,
+			expectedTraces: []*model.Trace{trace1, trace2},
 		},
 		{
 			name: "query by service name and operation name",
@@ -204,7 +266,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				ServiceName:   "service-name-0",
 				OperationName: "operationA",
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: "find by service name, operation and tags",
@@ -215,7 +277,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 					"span-attr": "span-attr-val",
 				},
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: "find by event name",
@@ -224,7 +286,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 					"event": "event",
 				},
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: "find by both span and event attr",
@@ -236,7 +298,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 					"span-attr":       "span-attr-val",
 				},
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: "find by event tag, service and operation name",
@@ -247,7 +309,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 					"span-event-attr": "span-event-attr-val",
 				},
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: "find by event name and non existent tag, service and operation",
@@ -259,7 +321,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 					"span-event-attr": "not-exist",
 				},
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: "find by non existent event name",
@@ -270,7 +332,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 					"event": "not-exists",
 				},
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: "find by non existent span tag",
@@ -281,7 +343,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 					"span-attr": "span-attr-val-not-actually",
 				},
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: "find by start time min",
@@ -293,7 +355,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				},
 				StartTimeMin: testdata.TestSpanStartTime,
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: "find by past start time, no result expected",
@@ -305,7 +367,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				},
 				StartTimeMin: testdata.TestSpanStartTime.Add(time.Second),
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: "find by start time min and max",
@@ -318,7 +380,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMin: testdata.TestSpanStartTime,
 				StartTimeMax: testdata.TestSpanStartTime,
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: "find by invalid start time, no result expected",
@@ -331,7 +393,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMin: testdata.TestSpanStartTime,
 				StartTimeMax: testdata.TestSpanStartTime.Add(-time.Second),
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: "find by duration",
@@ -345,7 +407,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: "find by error = true",
@@ -359,7 +421,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: "find by no error tag",
@@ -373,7 +435,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: "find by error=false tag",
@@ -387,7 +449,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace2},
 		},
 		{
 			name: `find by error=""`,
@@ -401,7 +463,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace2},
 		},
 		{
 			name: `find by span kind`,
@@ -415,7 +477,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: `find by missing span kind`,
@@ -429,7 +491,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: `find by w3c.tracestate`,
@@ -443,7 +505,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: `find by missing w3c.tracestate`,
@@ -457,7 +519,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: `find by hostname`,
@@ -471,7 +533,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: `find by missing hostname`,
@@ -485,7 +547,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: `find by jaeger version attribute`,
@@ -499,7 +561,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: `find by missing jaeger version attribute`,
@@ -513,7 +575,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: "find by invalid timing and duration",
@@ -527,7 +589,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				StartTimeMax: testdata.TestSpanStartTime,
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime) + (1 * time.Millisecond),
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: "find by time window and duration_ms",
@@ -542,7 +604,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 				DurationMax:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 		{
 			name: "find by time window and duration_ms, no result",
@@ -557,7 +619,7 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				DurationMin:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 				DurationMax:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime) - time.Millisecond,
 			},
-			expectedResponseCount: 0,
+			expectedTraces: []*model.Trace{},
 		},
 		{
 			name: "find by time and result limit",
@@ -573,13 +635,13 @@ func findTraceTest(t testing.TB, q *store.Store) {
 				DurationMax:  testdata.TestSpanEndTime.Sub(testdata.TestSpanStartTime),
 				NumTraces:    2,
 			},
-			expectedResponseCount: 1,
+			expectedTraces: []*model.Trace{trace1},
 		},
 	} {
 		t.(*testing.T).Run(tt.name, func(t *testing.T) {
 			traces, err := q.FindTraces(context.Background(), tt.request)
 			require.NoError(t, err)
-			require.Equal(t, tt.expectedResponseCount, len(traces))
+			CompareSliceOfTraces(t, tt.expectedTraces, traces)
 		})
 	}
 
