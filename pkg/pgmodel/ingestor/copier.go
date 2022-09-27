@@ -205,14 +205,11 @@ func doInsertOrFallback(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyR
 	defer span.End()
 	err, _ := insertSeries(ctx, conn, false, reqs...)
 	if err != nil {
-		if isPGUniqueViolation(err) {
-			err, _ = insertSeries(ctx, conn, true, reqs...)
-		}
-		if err != nil {
+		if !isPGUniqueViolation(err) {
 			log.Error("msg", err)
-			insertBatchErrorFallback(ctx, conn, reqs...)
-			return
 		}
+		insertBatchErrorFallback(ctx, conn, reqs...)
+		return
 	}
 
 	for i := range reqs {
@@ -350,6 +347,13 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 	insertStart := time.Now()
 	lowestEpoch := pgmodel.SeriesEpoch(math.MaxInt64)
 	lowestMinTime := int64(math.MaxInt64)
+
+	if onConflict && len(reqs) > 1 {
+		//holding on to long locks with ON CONFLICT considered harmful becase of mxid bloat
+		//no code path should use this. We leave this here to protect against this case in the future.
+		panic("should not try to insert to more than one metric per transaction with ON CONFLICT")
+	}
+
 	tx, err := conn.BeginTx(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start transaction for inserting metrics: %v", err), lowestMinTime

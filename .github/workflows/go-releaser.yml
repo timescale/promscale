@@ -86,3 +86,11 @@ jobs:
           for distro in ${RHEL_DISTROS}; do
             package_cloud push "${repo}/${distro}" dist/*.rpm
           done
+
+      - name: Upload assets
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-assets
+          path: |
+            dist/*.deb
+            dist/*.rpm
