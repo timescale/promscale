@@ -3,6 +3,7 @@ package end_to_end_tests
 import (
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
@@ -43,7 +44,9 @@ func TestJaegerStorageIntegration(t *testing.T) {
 				require.NoError(t, err)
 				defer ingestor.Close()
 
-				jaegerStore := jaegerstore.New(pgxconn.NewQueryLoggingPgxConn(db), ingestor, &store.DefaultConfig)
+				jaegerStore := jaegerstore.New(pgxconn.NewQueryLoggingPgxConn(db), ingestor, &store.Config{
+					MaxTraceDuration: 17 * time.Hour, // FindTraces/Trace_spans_over_multiple_indices test has events which has timestamp difference of ~17hrs when comparing to span.
+				})
 				writer := jaegerStore.SpanWriter()
 				if c.streaming {
 					writer = jaegerStore.StreamingSpanWriter()
