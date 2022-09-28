@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/pgmodel/querier/rollup"
 )
 
 const (
@@ -144,7 +145,12 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		samplesSchema = metadata.rollupConfig.SchemaName()
 
 		rollupOptimizer := metadata.rollupConfig.GetOptimizer(metadata.metric)
-		column = rollupOptimizer.RegularColumnName()
+		typeOptimizer := rollup.Optimizer(rollupOptimizer.RangeQuery())
+		if metadata.queryHints.IsInstantQuery {
+			typeOptimizer = rollupOptimizer.InstantQuery()
+		}
+
+		column = typeOptimizer.RegularColumnName()
 
 		// See if we can optimize the query aggregation, like min_over_time(metric[1h])
 		path := metadata.promqlMetadata.path
@@ -154,13 +160,16 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 			if callNode, isPromQLFunc := grandparent.(*parser.Call); isPromQLFunc {
 				fnName := callNode.Func.Name
 
-				columnClause := rollupOptimizer.GetColumnClause(fnName)
+				columnClause := typeOptimizer.GetColumnClause(fnName)
 				if columnClause != "" {
 					column = columnClause
 
 					if metadata.queryHints.IsInstantQuery {
-						instantQueryAgg = rollupOptimizer.GetAggForInstantQuery(fnName)
-						node = grandparent // We have already evaluated the aggregation, hence no need to compute in PromQL engine. Hence, sent as a pushdown response.
+						instantQueryOptimizer := typeOptimizer.(rollup.InstantQuery)
+						if agg := instantQueryOptimizer.GetAggForInstantQuery(fnName); agg != "" {
+							instantQueryAgg = agg
+							node = grandparent // We have already evaluated the aggregation, hence no need to compute in PromQL engine. So, send this as a pushdown response.
+						}
 					}
 				}
 			}

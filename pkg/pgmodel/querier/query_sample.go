@@ -63,7 +63,7 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 
 	filter := &metadata.timeFilter
 
-	rollupConfig := q.r.Decide(mint/1000, maxt/1000, filter.metric)
+	rollupConfig := q.r.Decide(mint/1000, maxt/1000)
 	if rollupConfig != nil {
 		// Use metric rollups.
 		fmt.Println("schema name", rollupConfig.SchemaName())

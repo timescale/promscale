@@ -16,8 +16,8 @@ import (
 
 const (
 	defaultDurationBetweenSamples = 15 * time.Second
-	low                           = 200
-	high                          = 2000
+	low                           = 500
+	high                          = 5000
 )
 
 type Manager struct {
@@ -99,21 +99,24 @@ func (r *Manager) refreshMetricMetadata() {
 	r.metricTypeCache = metadataCache
 }
 
-func (r *Manager) Decide(minSeconds, maxSeconds int64, metricName string) *Config {
+func (r *Manager) Decide(minSeconds, maxSeconds int64) *Config {
 	if len(r.resolutionInASCOrder) == 0 {
 		return nil
 	}
 	estimateSamples := func(resolution time.Duration) int64 {
 		return int64(float64(maxSeconds-minSeconds) / resolution.Seconds())
 	}
-	//estimatedRawSamples := estimateSamples(defaultDurationBetweenSamples)
-	//fmt.Println("resolution=>", "raw", "estimate=>", estimatedRawSamples)
-	//if r.withinRange(estimatedRawSamples) || estimatedRawSamples < low || len(r.resolutionInASCOrder) == 0 {
-	//	return nil
-	//}
-	//
-	//return nil // Always use raw samples.
-	//return r.getConfig(time.Minute * 5) 	// Always use 5 min rollup
+
+	//return nil
+
+	estimatedRawSamples := estimateSamples(defaultDurationBetweenSamples)
+
+	fmt.Println("resolution=>", "raw", "estimate=>", estimatedRawSamples)
+
+	if r.withinRange(estimatedRawSamples) || estimatedRawSamples < low || len(r.resolutionInASCOrder) == 0 {
+		return nil
+	}
+
 	var acceptableResolution []time.Duration
 	for _, resolution := range r.schemaResolutionCache {
 		estimate := estimateSamples(resolution)

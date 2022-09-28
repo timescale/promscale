@@ -670,6 +670,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 			samplesStats:             query.sampleStats,
 			noStepSubqueryIntervalFn: ng.noStepSubqueryIntervalFn,
 			topNodes:                 topNodes,
+			usingRollups:             rollupInterval > 0,
 		}
 		query.sampleStats.InitStepTracking(start, start, 1)
 
@@ -747,6 +748,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.Eval
 		samplesStats:             query.sampleStats,
 		noStepSubqueryIntervalFn: ng.noStepSubqueryIntervalFn,
 		topNodes:                 topNodes,
+		usingRollups:             rollupInterval > 0,
 	}
 	query.sampleStats.InitStepTracking(evaluator.startTimestamp, evaluator.endTimestamp, evaluator.interval)
 	val, warnings, err := evaluator.Eval(s.Expr)
@@ -1007,9 +1009,11 @@ type evaluator struct {
 	currentSamples           int
 	logger                   log.Logger
 	lookbackDelta            time.Duration
-	topNodes                 map[parser.Node]struct{}
 	samplesStats             *stats.QuerySamples
 	noStepSubqueryIntervalFn func(rangeMillis int64) int64
+
+	topNodes     map[parser.Node]struct{}
+	usingRollups bool
 }
 
 // errorf causes a panic with the input formatted into an error.
@@ -1692,13 +1696,12 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 		return String{V: e.Val, T: ev.startTimestamp}, nil
 
 	case *parser.VectorSelector:
-
 		ws, err := checkAndExpandSeriesSet(ev.ctx, e)
 		if err != nil {
 			ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
 		}
 		mat := make(Matrix, 0, len(e.Series))
-		it := storage.NewMemoizedEmptyIterator(durationMilliseconds(ev.lookbackDelta))
+		it := decideSamplesIterator(ev)
 		for i, s := range e.Series {
 			it.Reset(s.Iterator())
 			ss := Series{
@@ -1706,7 +1709,6 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 				Points: getPointSlice(numSteps),
 			}
 
-			fmt.Println("ev.startTimestamp", ev.startTimestamp, "ev.endTimestamp", ev.endTimestamp)
 			for ts, step := ev.startTimestamp, -1; ts <= ev.endTimestamp; ts += ev.interval {
 				step++
 				_, v, ok := ev.vectorSelectorSingle(it, e, ts)
@@ -1837,6 +1839,13 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 	panic(errors.Errorf("unhandled expression of type: %T", expr))
 }
 
+func decideSamplesIterator(ev *evaluator) samplesIterator {
+	if ev.usingRollups {
+		return newRollupIterator()
+	}
+	return storage.NewMemoizedEmptyIterator(durationMilliseconds(ev.lookbackDelta))
+}
+
 // vectorSelector evaluates a *parser.VectorSelector expression.
 func (ev *evaluator) vectorSelector(node *parser.VectorSelector, ts int64) (Vector, storage.Warnings) {
 	ws, err := checkAndExpandSeriesSet(ev.ctx, node)
@@ -1844,7 +1853,7 @@ func (ev *evaluator) vectorSelector(node *parser.VectorSelector, ts int64) (Vect
 		ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
 	}
 	vec := make(Vector, 0, len(node.Series))
-	it := storage.NewMemoizedEmptyIterator(durationMilliseconds(ev.lookbackDelta))
+	it := decideSamplesIterator(ev)
 	for i, s := range node.Series {
 		it.Reset(s.Iterator())
 
@@ -1867,7 +1876,7 @@ func (ev *evaluator) vectorSelector(node *parser.VectorSelector, ts int64) (Vect
 }
 
 // vectorSelectorSingle evaluates a instant vector for the iterator of one time series.
-func (ev *evaluator) vectorSelectorSingle(it *storage.MemoizedSeriesIterator, node *parser.VectorSelector, ts int64) (int64, float64, bool) {
+func (ev *evaluator) vectorSelectorSingle(it samplesIterator, node *parser.VectorSelector, ts int64) (int64, float64, bool) {
 	refTime := ts - durationMilliseconds(node.Offset)
 	var t int64
 	var v float64

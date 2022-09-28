@@ -19,6 +19,7 @@ func TestDecideRollup(t *testing.T) {
 	r := &Manager{
 		conn: mockPgxConn{},
 		schemaResolutionCache: map[string]time.Duration{
+			// Raw -> 15 seconds
 			"hour":      time.Hour,
 			"5_minute":  5 * time.Minute,
 			"15_minute": 15 * time.Minute,
@@ -62,15 +63,15 @@ func TestDecideRollup(t *testing.T) {
 			name:               "7 days",
 			min:                0,
 			max:                7 * 24 * time.Hour,
-			expectedSchemaName: "15_minute",
-			// DRY RUN on 200 - 2000 logic
+			expectedSchemaName: "5_minute",
+			// DRY RUN on 500 - 5000 logic
 			// --------
 			//
 			// Assumed default scrape interval being 15 secs
 			// raw 		-> 40320
 			//
 			// And, when using following rollup resolutions, num samples:
-			// 5 mins 	-> 2016
+			// 5 mins 	-> 2016		<-- Falls in the acceptable range.
 			// 15 mins 	-> 672
 			// 1 hour 	-> 168
 			// 1 week 	-> 1
@@ -93,7 +94,7 @@ func TestDecideRollup(t *testing.T) {
 		},
 	}
 	for _, tc := range tcs {
-		cfg := r.Decide(int64(tc.min.Seconds()), int64(tc.max.Seconds()), "")
+		cfg := r.Decide(int64(tc.min.Seconds()), int64(tc.max.Seconds()))
 		if tc.expectedSchemaName == noRollupSchema {
 			require.Nil(t, cfg)
 			continue
