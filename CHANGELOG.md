@@ -34,6 +34,7 @@ We use the following categories for changes:
 - TimescaleDB is now mandatory [#1660].
 - When querying for Jaeger tags with binary values the binary data will be
   returned instead of the base64 representation of the string [#1649].
+- Reuse ingestion temp tables across batches [#1679]
 
 ### Fixed
 - Do not collect telemetry if `timescaledb.telemetry_level=off` [#1612]

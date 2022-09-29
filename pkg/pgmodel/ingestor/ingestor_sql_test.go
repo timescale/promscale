@@ -688,13 +688,13 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					// on epoch error we go for on conflict insert approach
 					Sql:     "SELECT _prom_catalog.create_ingest_temp_table($1, $2, $3)",
-					Args:    []interface{}{"metric_0", "prom_data", "s0_"},
-					Results: model.RowResults{{"s0_metric_0"}},
+					Args:    []interface{}{"metric_0", "prom_data", "s1_"},
+					Results: model.RowResults{{"s1_metric_0"}},
 					Err:     error(nil),
 				},
 				{
 					Copy: &model.Copy{
-						Table: pgx.Identifier{"s0_metric_0"},
+						Table: pgx.Identifier{"s1_metric_0"},
 						Data: [][]interface{}{
 							{time.Unix(0, 0), float64(0), int64(1)},
 						},
@@ -704,7 +704,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 				// insert from temp table using on conflict
 				{
-					Sql:     "INSERT INTO prom_data.\"metric_0\"(time,value,series_id) SELECT time,value,series_id FROM \"s0_metric_0\" ON CONFLICT DO NOTHING",
+					Sql:     "INSERT INTO prom_data.\"metric_0\"(time,value,series_id) SELECT time,value,series_id FROM \"s1_metric_0\" ON CONFLICT DO NOTHING",
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},
@@ -757,14 +757,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 				{
 					// on epoch error we go for on conflict insert approach
 					Sql:     "SELECT _prom_catalog.create_ingest_temp_table($1, $2, $3)",
-					Args:    []interface{}{"metric_0", "prom_data", "s0_"},
-					Results: model.RowResults{{"s0_metric_0"}},
+					Args:    []interface{}{"metric_0", "prom_data", "s1_"},
+					Results: model.RowResults{{"s1_metric_0"}},
 					Err:     error(nil),
 				},
 				// retry of insert of individual copy request
 				{
 					Copy: &model.Copy{
-						Table: pgx.Identifier{"s0_metric_0"},
+						Table: pgx.Identifier{"s1_metric_0"},
 						Data: [][]interface{}{
 							{time.Unix(0, 0), float64(0), int64(1)},
 							{time.Unix(0, 0), float64(0), int64(1)},
@@ -876,14 +876,14 @@ func TestPGXInserterInsertData(t *testing.T) {
 				// retry by creating temp table
 				{
 					Sql:     "SELECT _prom_catalog.create_ingest_temp_table($1, $2, $3)",
-					Args:    []interface{}{"metric_0", "prom_data", "s0_"},
-					Results: model.RowResults{{"s0_metric_0"}},
+					Args:    []interface{}{"metric_0", "prom_data", "s1_"},
+					Results: model.RowResults{{"s1_metric_0"}},
 					Err:     error(nil),
 				},
 				// copy into created temp table
 				{
 					Copy: &model.Copy{
-						Table: pgx.Identifier{"s0_metric_0"},
+						Table: pgx.Identifier{"s1_metric_0"},
 						Data: [][]interface{}{
 							{time.Unix(0, 0), float64(0), int64(1)},
 							{time.Unix(0, 0), float64(0), int64(1)},
@@ -894,7 +894,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 				// insert from temp table using on conflict
 				{
-					Sql:     "INSERT INTO prom_data.\"metric_0\"(time,value,series_id) SELECT time,value,series_id FROM \"s0_metric_0\" ON CONFLICT DO NOTHING",
+					Sql:     "INSERT INTO prom_data.\"metric_0\"(time,value,series_id) SELECT time,value,series_id FROM \"s1_metric_0\" ON CONFLICT DO NOTHING",
 					Results: model.RowResults{{[]byte{}}},
 					Err:     error(nil),
 				},

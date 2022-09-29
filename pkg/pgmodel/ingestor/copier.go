@@ -424,11 +424,11 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 
 		copyFromFunc := func(tableName, schemaName string, isExemplar bool) error {
 			columns := schema.PromDataColumns
-			tempTablePrefix := fmt.Sprintf("s%d_", r)
+			tempTablePrefix := fmt.Sprintf("s%d_", req.info.MetricID)
 			rows := sampleRows
 			if isExemplar {
 				columns = schema.PromExemplarColumns
-				tempTablePrefix = fmt.Sprintf("e%d_", r)
+				tempTablePrefix = fmt.Sprintf("e%d_", req.info.MetricID)
 				rows = exemplarRows
 			}
 			table := pgx.Identifier{schemaName, tableName}
