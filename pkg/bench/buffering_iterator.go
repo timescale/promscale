@@ -62,18 +62,79 @@ func (pq *BufferingIteratorHeap) Pop() interface{} {
 	return item
 }
 
-var qL = sync.Mutex{}
-var qC = sync.NewCond(&qL)
-var q BufferingIteratorHeap = NewBufferingIteratorHeap()
+type BufferingIteratorWorkQueue struct {
+	l      sync.Mutex
+	cond   *sync.Cond
+	q      BufferingIteratorHeap
+	closed bool
+}
 
-//todo move out of init
-func init() {
-	//be careful about too many workers because of lock contention on heap
+func NewBufferingIteratorWorkQueue() *BufferingIteratorWorkQueue {
+	wq := &BufferingIteratorWorkQueue{
+		l:      sync.Mutex{},
+		q:      NewBufferingIteratorHeap(),
+		closed: false,
+	}
+
+	wq.cond = sync.NewCond(&wq.l)
+
 	chunkFetchWorkers := 1
 	//todo close channel && wg
 	for i := 0; i < chunkFetchWorkers; i++ {
-		go chunkFetchWorker()
+		go chunkFetchWorker(wq)
 	}
+	return wq
+}
+
+func (wq *BufferingIteratorWorkQueue) enqueue(bi *BufferingIterator) {
+	atomic.AddInt32(&enqueued, 1)
+	heap.Push(&wq.q, bi)
+	if len(wq.q) == 1 {
+		wq.cond.Broadcast()
+	}
+}
+
+func (wq *BufferingIteratorWorkQueue) dequeue(bi *BufferingIterator) {
+	atomic.AddInt32(&dequeued, 1)
+	heap.Remove(&wq.q, bi.queueIndex)
+}
+
+func (wq *BufferingIteratorWorkQueue) GetWork() (*BufferingIterator, bool) {
+	wq.l.Lock()
+	defer wq.l.Unlock()
+	for len(wq.q) == 0 && !wq.closed {
+		wq.cond.Wait()
+	}
+	if wq.closed {
+		return nil, false
+	}
+	request := wq.q[0]
+	wq.dequeue(request)
+	return request, true
+}
+
+func (wq *BufferingIteratorWorkQueue) Remove(bi *BufferingIterator) bool {
+	wq.l.Lock()
+	defer wq.l.Unlock()
+	if bi.queueIndex >= 0 {
+		wq.dequeue(bi)
+		return true
+	}
+	return false
+}
+
+func (wq *BufferingIteratorWorkQueue) Add(bi *BufferingIterator) {
+	wq.l.Lock()
+	defer wq.l.Unlock()
+	wq.enqueue(bi)
+}
+
+func (wq *BufferingIteratorWorkQueue) Close() error {
+	wq.l.Lock()
+	defer wq.l.Unlock()
+	wq.closed = true
+	wq.cond.Broadcast()
+	return nil
 }
 
 func fetchChunk(chunkR tsdb.ChunkReader, chunkMeta chunks.Meta) (chunkenc.Chunk, error) {
@@ -92,15 +153,12 @@ func fetchChunk(chunkR tsdb.ChunkReader, chunkMeta chunks.Meta) (chunkenc.Chunk,
 	return pool.Get(encoding, data)
 }
 
-func chunkFetchWorker() {
+func chunkFetchWorker(wq *BufferingIteratorWorkQueue) {
 	for {
-		qC.L.Lock()
-		for len(q) == 0 {
-			qC.Wait()
+		request, ok := wq.GetWork()
+		if !ok {
+			return
 		}
-		request := q[0]
-		request.dequeue()
-		qC.L.Unlock()
 
 		chk, err := fetchChunk(request.chunkR, request.chunksMeta[request.chunkIndex+1])
 		if err != nil {
@@ -124,22 +182,22 @@ type BufferingIterator struct {
 	queueIndex    int
 	chunkIterator chunkenc.Iterator
 	err           error
+	wq            *BufferingIteratorWorkQueue
 }
 
-func NewBufferingIterator(seriesID uint64, chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta) *BufferingIterator {
+func NewBufferingIterator(seriesID uint64, chunkR tsdb.ChunkReader, chunksMeta []chunks.Meta, wq *BufferingIteratorWorkQueue) *BufferingIterator {
 	bi := &BufferingIterator{
 		seriesID:    seriesID,
 		chunkR:      chunkR,
 		chunksMeta:  chunksMeta,
 		chunkIndex:  -1,
 		nextChunkCh: make(chan chunkenc.Chunk, 1),
+		wq:          wq,
 	}
 	if bi.nextChunkExists() {
 		atomic.AddInt32(&needNextChunks, 1)
 
-		qC.L.Lock()
-		bi.enqueue()
-		qC.L.Unlock()
+		wq.Add(bi)
 	}
 	return bi
 }
@@ -158,23 +216,6 @@ func (bi *BufferingIterator) nextChunkExists() bool {
 	return len(bi.chunksMeta)-1 >= bi.chunkIndex+1
 }
 
-func (bi *BufferingIterator) isInQueue() bool {
-	return bi.queueIndex >= 0
-}
-
-func (bi *BufferingIterator) enqueue() {
-	atomic.AddInt32(&enqueued, 1)
-	heap.Push(&q, bi)
-	if len(q) == 1 {
-		qC.Broadcast()
-	}
-}
-
-func (bi *BufferingIterator) dequeue() {
-	atomic.AddInt32(&dequeued, 1)
-	heap.Remove(&q, bi.queueIndex)
-}
-
 func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 	if !bi.nextChunkExists() {
 		return false, nil
@@ -186,11 +227,8 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 		pool.Put(bi.chunk)
 	}
 
-	qC.L.Lock()
-	if bi.isInQueue() {
-		bi.dequeue()
-		qC.L.Unlock()
-
+	inQ := bi.wq.Remove(bi)
+	if inQ {
 		chk, err := fetchChunk(bi.chunkR, bi.chunksMeta[bi.chunkIndex+1])
 		if err != nil {
 			panic(err)
@@ -200,8 +238,6 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 		}
 		bi.nextChunkCh <- chk
 		atomic.AddInt32(&syncFetchChunks, 1)
-	} else {
-		qC.L.Unlock()
 	}
 
 	select {
@@ -221,10 +257,7 @@ func (bi *BufferingIterator) rotateNextChunk() (bool, error) {
 
 	if bi.nextChunkExists() {
 		atomic.AddInt32(&needNextChunks, 1)
-
-		qC.L.Lock()
-		bi.enqueue()
-		qC.L.Unlock()
+		bi.wq.Add(bi)
 	}
 	return true, nil
 }

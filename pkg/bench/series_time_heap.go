@@ -43,6 +43,8 @@ func NewSeriesTimeHeap(dm *DataModifier, block *tsdb.Block, qmi *qmInfo, seriesI
 	closers = append(closers, chunkr)
 
 	chks := []chunks.Meta{}
+	wq := NewBufferingIteratorWorkQueue()
+	closers = append(closers, wq)
 	for p.Next() {
 		lbls := labels.Labels{}
 
@@ -53,7 +55,7 @@ func NewSeriesTimeHeap(dm *DataModifier, block *tsdb.Block, qmi *qmInfo, seriesI
 		chksCopy := make([]chunks.Meta, len(chks))
 		copy(chksCopy, chks)
 
-		it := NewBufferingIterator(seriesId, chunkr, chksCopy)
+		it := NewBufferingIterator(seriesId, chunkr, chksCopy, wq)
 		if !it.Next() { //initialize to first position
 			panic("can't get first item")
 		}
