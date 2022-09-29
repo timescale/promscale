@@ -27,7 +27,7 @@ var rateControlSleeps int32 = 0
 
 func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *walSimulator, runNumber int) (time.Time, int, error) {
 	dm := NewDataModifier(conf)
-	sth, closers, err := NewSeriesTimeHeap(dm, block, qmi, seriesIndex)
+	mh, closers, err := NewMergeHeap(dm, block, qmi, seriesIndex, conf.Concurrency)
 	if err != nil {
 		return time.Time{}, 0, err
 	}
@@ -42,7 +42,7 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *wa
 
 	start := time.Now()
 	count := 0
-	err = sth.Visit(dm, func(recs []record.RefSample, wallTs int64) error {
+	err = mh.Visit(dm, func(recs []record.RefSample, wallTs int64) error {
 		if conf.RateControl {
 			wait := time.Until(model.Time(wallTs).Time())
 			if wait > 0 {
@@ -56,7 +56,7 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *wa
 		if prevHighest != 0 && prevHighest > float64(recs[0].T/1000) {
 			fmt.Printf("Time going backwards! prevHighest=%v this=%v count=%v, wallTs=%v, T=%v, wall=%v, now=%v\n config=%#v\n",
 				prevHighest, float64(recs[0].T/1000), count, wallTs, recs[0].T, model.Time(wallTs).Time(), time.Now(), conf)
-			sth.Debug()
+			mh.Debug()
 			fmt.Printf("\n")
 		}
 		qmi.highestTs.Set(float64(recs[0].T / 1000))

@@ -35,6 +35,7 @@ func main() {
 		RemoteWriteConfig:       config.DefaultRemoteWriteConfig,
 		RepeatedRuns:            1,
 		FakeSendDuration:        -1,
+		Concurrency:             4,
 	}
 
 	//just for imports

@@ -15,6 +15,8 @@ type BenchConfig struct {
 	WriteEndpoint           string
 	UseWallClockForDataTime bool
 
+	Concurrency int
+
 	// Be careful if turning off rate control as turning it off will mess up
 	// The rate used as "input" for dynamic shard number adjustment
 	RateControl      bool
