@@ -15,7 +15,7 @@ type batchVisitor struct {
 	minTime     int64
 }
 
-var MaxDate = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+var MaxDate int64 = math.MaxInt64
 
 func getBatchVisitor(batch *Batch) *batchVisitor {
 	return &batchVisitor{batch, NewSeriesEpoch(MaxDate), math.MaxInt64}

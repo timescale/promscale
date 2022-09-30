@@ -137,7 +137,7 @@ func TestInitializeMetricBatcher(t *testing.T) {
 func TestSendBatches(t *testing.T) {
 	makeSeries := func(seriesID int) *model.Series {
 		l := &model.Series{}
-		l.SetSeriesID(pgmodel.SeriesID(seriesID), model.NewSeriesEpoch(time.Now()))
+		l.SetSeriesID(pgmodel.SeriesID(seriesID), model.NewSeriesEpoch(time.Now().Unix()))
 		return l
 	}
 	var workFinished sync.WaitGroup

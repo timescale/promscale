@@ -475,7 +475,7 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 	//thus we don't need row locking here. Note by doing this check at the end we can
 	//have some wasted work for the inserts before this fails but this is rare.
 	//avoiding an additional loop or memoization to find the lowest epoch ahead of time seems worth it.
-	row := tx.QueryRow(ctx, "SELECT CASE $1::TIMESTAMPTZ <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.global_epoch LIMIT 1", lowestEpoch.Time())
+	row := tx.QueryRow(ctx, "SELECT CASE $1 <= delete_epoch WHEN true THEN _prom_catalog.epoch_abort($1) END FROM _prom_catalog.ids_epoch LIMIT 1", lowestEpoch.Time())
 	var val []byte
 	if err = row.Scan(&val); err != nil {
 		return err, lowestMinTime

@@ -274,7 +274,7 @@ WITH (timescaledb.continuous) AS
 			t.Errorf("unexpected series count: got %v, wanted %v", afterCount, seriesCount)
 		}
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE mark_for_deletion_epoch IS NOT NULL`).Scan(&count)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE delete_epoch IS NOT NULL`).Scan(&count)
 		if err != nil {
 			t.Error("error fetching series marked for deletion count", err)
 		}
@@ -314,7 +314,7 @@ WITH (timescaledb.continuous) AS
 			t.Errorf("unexpected series count: got %v, wanted %v", afterCount, seriesCount)
 		}
 
-		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE mark_for_deletion_epoch IS NOT NULL`).Scan(&count)
+		err = db.QueryRow(context.Background(), `SELECT count(*) FROM _prom_catalog.series WHERE delete_epoch IS NOT NULL`).Scan(&count)
 		if err != nil {
 			t.Error("error fetching series marked for deletion count", err)
 		}

@@ -27,7 +27,7 @@ import (
 
 const (
 	finalizeMetricCreation = "CALL _prom_catalog.finalize_metric_creation()"
-	getEpochSQL            = "SELECT current_epoch FROM _prom_catalog.global_epoch LIMIT 1"
+	getEpochSQL            = "SELECT current_epoch FROM _prom_catalog.ids_epoch LIMIT 1"
 )
 
 var ErrDispatcherClosed = fmt.Errorf("dispatcher is closed")
@@ -170,7 +170,7 @@ func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch *model.SeriesEpoch) (*m
 }
 
 func (p *pgxDispatcher) getServerEpoch() (*model.SeriesEpoch, error) {
-	var newEpoch time.Time
+	var newEpoch int64
 	row := p.conn.QueryRow(context.Background(), getEpochSQL)
 	err := row.Scan(&newEpoch)
 	if err != nil {

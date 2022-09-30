@@ -89,7 +89,7 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 		}
 
 		// Bump the current epoch if it was still set to the initial value.
-		_, err = conn.Exec(context.Background(), "SELECT _prom_catalog.initialize_current_epoch()")
+		_, err = conn.Exec(context.Background(), "SELECT _prom_catalog.initialize_current_epoch(now())")
 		if err != nil {
 			return nil, err
 		}

@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"unsafe"
 
 	"github.com/timescale/promscale/pkg/prompb"
@@ -29,20 +28,20 @@ func (s SeriesID) String() string {
 
 // SeriesEpoch represents the series epoch
 type SeriesEpoch struct {
-	time time.Time
+	time int64
 }
 
-func NewSeriesEpoch(epochTime time.Time) *SeriesEpoch {
+func NewSeriesEpoch(epochTime int64) *SeriesEpoch {
 	return &SeriesEpoch{
 		time: epochTime,
 	}
 }
 
 func (s *SeriesEpoch) After(o *SeriesEpoch) bool {
-	return s.time.After(o.time)
+	return s.time > o.time
 }
 
-func (s *SeriesEpoch) Time() time.Time {
+func (s *SeriesEpoch) Time() int64 {
 	return s.time
 }
 
