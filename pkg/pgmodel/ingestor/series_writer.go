@@ -7,8 +7,6 @@ package ingestor
 import (
 	"context"
 	"fmt"
-	"time"
-
 	"github.com/jackc/pgtype"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -258,7 +256,7 @@ func (h *seriesWriter) fillLabelIDs(ctx context.Context, infos map[string]*perMe
 	if _, err := br.Exec(); err != nil {
 		return dbEpoch, fmt.Errorf("error filling labels on begin: %w", err)
 	}
-	var epochTime time.Time
+	var epochTime int64
 	err = br.QueryRow().Scan(&epochTime)
 	if err != nil {
 		return dbEpoch, fmt.Errorf("error filling labels: %w", err)

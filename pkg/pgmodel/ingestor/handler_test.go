@@ -75,7 +75,7 @@ func TestLabelArrayCreator(t *testing.T) {
 
 	/* test one series already set */
 	setSeries := getSeries(t, scache, labels.Labels{metricNameLabel, valTwo})
-	setSeries.SetSeriesID(5, model.NewSeriesEpoch(time.Now()))
+	setSeries.SetSeriesID(5, model.NewSeriesEpoch(time.Now().Unix()))
 	seriesSet = []*model.Series{
 		getSeries(t, scache, labels.Labels{metricNameLabel, valOne}),
 		setSeries,
