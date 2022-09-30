@@ -194,20 +194,18 @@ func getOperationsTest(t testing.TB, q *store.Store) {
 // format so that they can be used to compare results from Jaeger query
 // responses.
 type findTraceTestFixtures struct {
-	traces ptrace.Traces
-	trace1 *model.Trace
-	trace2 *model.Trace
+	traces  ptrace.Traces
+	batches []*model.Batch
+	trace1  *model.Trace
+	trace2  *model.Trace
 }
 
-func getFindTraceTestFixtures() (findTraceTestFixtures, error) {
-
-	traces := testdata.GenerateTestTrace()
-
-	fixtureBatch, err := jaegertranslator.ProtoFromTraces(traces.Clone())
+func tracesFixturesToBatches(traces ptrace.Traces) ([]*model.Batch, error) {
+	batches, err := jaegertranslator.ProtoFromTraces(traces)
 	if err != nil {
-		return findTraceTestFixtures{}, err
+		return nil, err
 	}
-	for _, b := range fixtureBatch {
+	for _, b := range batches {
 		for _, s := range b.Spans {
 			// ProtoFromTraces doesn't populates span.Process because it is already been exposed by batch.Process.
 			// See https://github.com/jaegertracing/jaeger-idl/blob/05fe64e9c305526901f70ff692030b388787e388/proto/api_v2/model.proto#L152-L160
@@ -221,19 +219,50 @@ func getFindTraceTestFixtures() (findTraceTestFixtures, error) {
 		}
 	}
 
+	for _, span := range batches[0].Spans[4:] {
+		if span.GetOperationName() != "operationB" {
+			panic("invalid span")
+		}
+		span.GetReferences()[0].RefType = model.ChildOf
+	}
+
+	return batches, nil
+}
+
+func getFindTraceTestFixtures() (findTraceTestFixtures, error) {
+
+	traces := testdata.GenerateTestTrace()
+	batches, err := tracesFixturesToBatches(traces.Clone())
+	if err != nil {
+		return findTraceTestFixtures{}, err
+	}
+
 	// After passing the traces from testdata.GenerateTestTrace through the
 	// translator we end up with 2 batches. The first one has 8 spans, the second
 	// 4. The first 4 spans of the first batch belong to the same trace and the
-	// other 4 belong to the same trace as all the spans in the second batch.
+	// other 4 belong to the same trace as all the spans in the second batch,
+	// meaning that there are 2 traces.
+	//
+	// Batches are ordered by Process, the analogous to Resource in OTEL.
+	//
+	// Basically::
+	//   batches = [
+	//     [sT1, sT1, sT1, sT1, s1T2, s1T2, s1T2, s1T2],
+	//     [s2T2, s2T2, s2T2, s2T2],
+	//   ]
+	//
+	// Note: in the example there are just three types of spans sT1, s1T2 and
+	// s2T2, that's because each type shares the same attributes they just have
+	// unique Span IDs.
 	trace1 := &model.Trace{
-		Spans:      fixtureBatch[0].Spans[:4],
+		Spans:      batches[0].Spans[:4],
 		ProcessMap: nil,
 		Warnings:   make([]string, 0),
 	}
 
 	trace2Spans := make([]*model.Span, 0)
-	trace2Spans = append(trace2Spans, fixtureBatch[0].Spans[4:]...)
-	trace2Spans = append(trace2Spans, fixtureBatch[1].Spans...)
+	trace2Spans = append(trace2Spans, batches[0].Spans[4:]...)
+	trace2Spans = append(trace2Spans, batches[1].Spans...)
 
 	trace2 := &model.Trace{
 		Spans:      trace2Spans,
@@ -241,7 +270,19 @@ func getFindTraceTestFixtures() (findTraceTestFixtures, error) {
 		Warnings:   make([]string, 0),
 	}
 
-	return findTraceTestFixtures{traces, trace1, trace2}, nil
+	// We recreate the batches to have a unique copy that can be
+	// modified without altering trace1 and trace2
+	batches, err = tracesFixturesToBatches(traces.Clone())
+	if err != nil {
+		return findTraceTestFixtures{}, err
+	}
+
+	return findTraceTestFixtures{
+		traces,
+		batches,
+		trace1,
+		trace2,
+	}, nil
 }
 
 func findTraceTest(t testing.TB, q *store.Store, fixtures findTraceTestFixtures) {

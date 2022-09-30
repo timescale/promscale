@@ -6,6 +6,7 @@ package store
 
 import (
 	"context"
+	"encoding/binary"
 	"time"
 
 	"github.com/pkg/errors"
@@ -16,6 +17,8 @@ import (
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 
 	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
+	"go.opentelemetry.io/collector/pdata/ptrace"
+	conventions "go.opentelemetry.io/collector/semconv/v1.9.0"
 
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
@@ -60,7 +63,68 @@ func (p *Store) WriteSpan(ctx context.Context, span *model.Span) error {
 	if err != nil {
 		return err
 	}
+
+	// TODO: There's an open PR against the Jaeger translator that adds support
+	// for keeping the RefType. Once the PR is merged we can remove the following
+	// if condition and the addRefTypeAttributeToLinks function.
+	//
+	// https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/14463
+	if len(span.References) > 1 {
+		links := traces.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).Links()
+		addRefTypeAttributeToLinks(span, links)
+	}
+
 	return p.inserter.IngestTraces(ctx, traces)
+}
+
+// TODO: There's an open PR against the Jaeger translator that adds support
+// for keeping the RefType. Once the PR is merged we can delete this function.
+//
+// https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/14463
+//
+// addRefTypeAttributeToLinks adds the RefType of the Jaeger Span references as
+// an attribute to their corresponding OTEL links. The `links` argument must
+// be the OTEL representation of the given `span.References`.
+//
+// The added attributes follow the OpenTracing to OTEL semantic convention
+// https://opentelemetry.io/docs/reference/specification/trace/semantic_conventions/compatibility/#opentracing
+func addRefTypeAttributeToLinks(span *model.Span, links ptrace.SpanLinkSlice) {
+
+	// The reference to the parent span is stored directly as an attribute
+	// of the Span and not as a Link.
+	parentsSpanID := span.ParentSpanID()
+	otherParentsSpanIDs := make(map[model.SpanID]struct{})
+
+	// Since there are only 2 types of refereces, ChildOf and FollowsFrom, we
+	// keep track only of the former.
+	for _, ref := range span.References {
+		if ref.RefType == model.ChildOf && ref.SpanID != parentsSpanID {
+			otherParentsSpanIDs[ref.SpanID] = struct{}{}
+		}
+	}
+
+	for i := 0; i < links.Len(); i++ {
+		link := links.At(i)
+		spanID := spanIDToJaegerProto(link.SpanID().Bytes())
+
+		// Everything that's not ChildOf will be set as FollowsFrom.
+		if _, ok := otherParentsSpanIDs[spanID]; ok {
+			link.Attributes().InsertString(
+				conventions.AttributeOpentracingRefType,
+				conventions.AttributeOpentracingRefTypeChildOf,
+			)
+			continue
+		}
+		link.Attributes().InsertString(
+			conventions.AttributeOpentracingRefType,
+			conventions.AttributeOpentracingRefTypeFollowsFrom,
+		)
+	}
+}
+
+// SpanIDToUInt64 converts the pcommon.SpanID to uint64 representation.
+func spanIDToJaegerProto(rawSpanID [8]byte) model.SpanID {
+	return model.SpanID(binary.BigEndian.Uint64(rawSpanID[:]))
 }
 
 // Close performs graceful shutdown of SpanWriter on Jaeger collector shutdown.

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v4/pgxpool"
-	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/jaeger/store"
 	jaegerstore "github.com/timescale/promscale/pkg/jaeger/store"
@@ -26,13 +25,8 @@ func TestJaegerSpanIngestion(t *testing.T) {
 		if err != nil {
 			require.NoError(t, err)
 		}
-		batch, err := jaegertranslator.ProtoFromTraces(fixtures.traces)
-		require.NoError(t, err)
-		for _, b := range batch {
+		for _, b := range fixtures.batches {
 			for _, s := range b.Spans {
-				// ProtoFromTraces doesn't populates span.Process because it is already been exposed by batch.Process.
-				// See https://github.com/jaegertracing/jaeger-idl/blob/05fe64e9c305526901f70ff692030b388787e388/proto/api_v2/model.proto#L152-L160
-				s.Process = b.Process
 				err = jaegerStore.SpanWriter().WriteSpan(context.Background(), s)
 				require.NoError(t, err)
 			}
