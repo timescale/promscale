@@ -14,9 +14,6 @@ import (
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
-
-	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
-
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
@@ -50,13 +47,7 @@ func (p *Store) StreamingSpanWriter() spanstore.Writer {
 }
 
 func (p *Store) WriteSpan(ctx context.Context, span *model.Span) error {
-	encodeBinaryTags(span)
-	batches := []*model.Batch{
-		{
-			Spans: []*model.Span{span},
-		},
-	}
-	traces, err := jaegertranslator.ProtoToTraces(batches)
+	traces, err := ProtoToTraces(span)
 	if err != nil {
 		return err
 	}

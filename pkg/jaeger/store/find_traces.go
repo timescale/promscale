@@ -10,7 +10,6 @@ import (
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
-	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
@@ -49,7 +48,7 @@ func scanTraces(rows pgxconn.PgxRows) ([]*model.Trace, error) {
 		return nil, fmt.Errorf("trace row iterator: %w", rows.Err())
 	}
 
-	batch, err := jaegertranslator.ProtoFromTraces(traces)
+	batch, err := ProtoFromTraces(traces)
 	if err != nil {
 		return nil, fmt.Errorf("internal-traces-to-jaeger-proto: %w", err)
 	}
@@ -74,7 +73,6 @@ func batchSliceToTraceSlice(bSlice []*model.Batch) []*model.Trace {
 			}
 			//copy over the process from the batch
 			span.Process = batch.Process
-			decodeSpanBinaryTags(span)
 			trace.Spans = append(trace.Spans, span)
 		}
 	}

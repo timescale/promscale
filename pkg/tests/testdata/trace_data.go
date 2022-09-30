@@ -13,6 +13,7 @@ import (
 	"github.com/golang/snappy"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	conventions "go.opentelemetry.io/collector/semconv/v1.9.0"
 )
 
 const TracesEntryCount = 5932 // All entries in the traces-dataset.sz file.
@@ -41,7 +42,11 @@ var (
 		},
 	)
 	spanEventAttributes = pcommon.NewMapFromRaw(map[string]interface{}{"span-event-attr": "span-event-attr-val"})
-	spanLinkAttributes  = pcommon.NewMapFromRaw(map[string]interface{}{"span-link-attr": "span-link-attr-val"})
+	spanLinkAttributes  = pcommon.NewMapFromRaw(map[string]interface{}{
+		"span-link-attr": "span-link-attr-val",
+		// In Jaeger terms this means that the span has 2 parents.
+		conventions.AttributeOpentracingRefType: conventions.AttributeOpentracingRefTypeChildOf,
+	})
 )
 
 func GetTraceId(bSlice [16]byte) string {
@@ -60,6 +65,16 @@ func GenerateBrokenTestTraces() ptrace.Traces {
 	return data
 }
 
+// GenerateTestTrace returns 2 traces with the following characteristics:
+//
+// - There are only 3 span types, in the sense that each span type shares
+//   the same attributes, but each instance has a unique SpanID. They are
+//   referenced below as Span1, Span2 and Span3.
+// - Trace 1 has 4 spans of type Span1.
+// - Trace 2 has 4 spans of type Span2 and 4 of type Span3.
+// - Span1 and Span2 belong to the same Resource and InstrumentationScope.
+// - Span1 has 2 Events and 2 Links to random SpanIDs.
+// - Span2 has 2 Links to random SpanIDs.
 func GenerateTestTrace() ptrace.Traces {
 	rand.Seed(1)
 	spanCount := 4
@@ -179,7 +194,6 @@ func fillSpanOne(span ptrace.Span) {
 	ev1.SetName("event")
 	ev1.SetDroppedAttributesCount(2)
 	link0 := span.Links().AppendEmpty()
-	initSpanLinkAttributes(link0.Attributes())
 	link0.SetTraceID(pcommon.NewTraceID([16]byte{'1'}))
 	link0.SetSpanID(pcommon.NewSpanID(generateRandSpanID()))
 	link0.SetDroppedAttributesCount(4)

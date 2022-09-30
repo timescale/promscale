@@ -14,16 +14,12 @@ import (
 	"fmt"
 	"testing"
 
-	"go.opentelemetry.io/collector/pdata/ptrace"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-
+	"github.com/jaegertracing/jaeger/model"
 	jaegerproto "github.com/jaegertracing/jaeger/proto-gen/api_v2"
-	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
-
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
-	"github.com/timescale/promscale/pkg/tests/testdata"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // TestGenerateJaegerAPIResponses is not an actual test, rather a function to spin up jaeger container
@@ -36,8 +32,10 @@ func TestGenerateJaegerAPIResponses(t *testing.T) {
 	jaeger, err := testhelpers.StartJaegerContainer(true)
 	require.NoError(t, err)
 
-	sampleTraces := testdata.GenerateTestTrace()
-	err = insertDataIntoJaeger(fmt.Sprintf("localhost:%s", jaeger.GrpcReceivingPort.Port()), testdata.CopyTraces(sampleTraces))
+	traceFixtures, err := getTracesFixtures()
+	require.NoError(t, err)
+
+	err = insertDataIntoJaeger(fmt.Sprintf("localhost:%s", jaeger.GrpcReceivingPort.Port()), traceFixtures.batches)
 	require.NoError(t, err)
 
 	var store traceResponsesStore
@@ -62,7 +60,7 @@ func TestGenerateJaegerAPIResponses(t *testing.T) {
 	require.NoError(t, storeJaegerQueryResponses(&store))
 }
 
-func insertDataIntoJaeger(endpoint string, data ptrace.Traces) error {
+func insertDataIntoJaeger(endpoint string, batches []*model.Batch) error {
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock()}
 	conn, err := grpc.Dial(endpoint, opts...)
 	if err != nil {
@@ -70,11 +68,6 @@ func insertDataIntoJaeger(endpoint string, data ptrace.Traces) error {
 	}
 
 	client := jaegerproto.NewCollectorServiceClient(conn)
-
-	batches, err := jaegertranslator.ProtoFromTraces(data)
-	if err != nil {
-		panic(err)
-	}
 
 	for _, batch := range batches {
 		_, err := client.PostSpans(context.Background(), &jaegerproto.PostSpansRequest{Batch: *batch}, grpc.WaitForReady(true))

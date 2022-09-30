@@ -19,7 +19,9 @@ const MEDIA_TYPE_ENCODED_BINARY_LEN = len(MEDIA_TYPE_ENCODED_BINARY)
 // removing the prefix and decoding the base64 string.
 func decodeSpanBinaryTags(span *model.Span) {
 	decodeBinaryTags(span.Tags)
-	decodeBinaryTags(span.Process.Tags)
+	if span.Process != nil {
+		decodeBinaryTags(span.Process.Tags)
+	}
 	for _, log := range span.Logs {
 		decodeBinaryTags(log.Fields)
 	}
