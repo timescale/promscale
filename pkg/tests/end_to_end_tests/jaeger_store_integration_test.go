@@ -1,6 +1,8 @@
 package end_to_end_tests
 
 import (
+	"context"
+	"fmt"
 	"runtime"
 	"testing"
 	"time"
@@ -54,14 +56,28 @@ func TestJaegerStorageIntegration(t *testing.T) {
 				si := jaeger_integration_tests.StorageIntegration{
 					SpanReader: jaegerStore.SpanReader(),
 					SpanWriter: writer,
-					CleanUp:    func() error { return nil },
-					Refresh:    func() error { return nil },
+					CleanUp: func() error {
+						// Jaeger integration test suite runs each test in an isolated environment.
+						// CleanUp ensures that db starts with clean state for every test run by truncating tables which stores span specific information.
+						for _, table := range []string{
+							"span",
+							"event",
+							"link",
+						} {
+							_, err = db.Exec(context.Background(), fmt.Sprintf(`TRUNCATE TABLE _ps_trace.%s`, table))
+							require.NoError(t, err)
+						}
+						return nil
+					},
+					Refresh: func() error { return nil },
 					SkipList: []string{
-						"GetLargeSpans",
 						"FindTraces/Tags_in_one_spot_-_Tags",
 						"FindTraces/Tags_in_one_spot_-_Logs",
 						"FindTraces/Tags_in_one_spot_-_Process",
 						"FindTraces/default",
+						// TODO: Remove this once the following PRs are merged
+						// https://github.com/timescale/promscale/pull/1681
+						// https://github.com/timescale/promscale/pull/1678
 						"FindTraces/Tags_\\+_Operation_name$",
 						"FindTraces/Tags_\\+_Operation_name_\\+_max_Duration$",
 						"FindTraces/Tags_\\+_Operation_name_\\+_Duration_range$",
