@@ -15,9 +15,22 @@ import (
 )
 
 const (
-	// A lateral join is used for the `link` table instead of using directly
-	// `array_agg` calls in the main SELECT clause to avoid returning duplicated
-	// values when the cartesian product of event x link is greater than 1.
+	// A lateral join is used for the `link` and `event` table instead of using
+	// directly `array_agg` calls in the main SELECT clause to avoid returning
+	// duplicated values when the cartesian product of event x link is greater
+	// than 1.
+	//
+	// The GROUP BY clause of the query can be removed because we are not doing
+	// any kind of aggregation that would require it, but the tests we did showed
+	// that with the GROUP BY the resulting query plan is better. In the
+	// no-group-by case the join between the trace_ids with clause and the
+	// main _ps_trace.span table happens as a hash_join where both sides scan
+	// the span table.
+	//
+	// Query plans:
+	//
+	// - With GROUP BY https://explain.dalibo.com/plan/e6c74995bc36begd
+	// - Without GROUP BY https://explain.dalibo.com/plan/f09259cd21g57dh3
 	completeTraceSQLFormat = `
 	SELECT
 		s.trace_id,

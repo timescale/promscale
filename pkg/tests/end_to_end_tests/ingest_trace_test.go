@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
-	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 	"github.com/spyzhov/ajson"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/jaeger/store"
@@ -189,25 +188,23 @@ func getOperationsTest(t testing.TB, q *store.Store) {
 	}
 }
 
-// tracesFixtures contains an OTEL `traces` object to be used as a
-// fixture. Also, each of the traces is present in the Jaeger model.Traces
-// format so that they can be used to compare results from Jaeger query
-// responses.
+// tracesFixtures contains `traces` to be used as a fixture in both OTEL
+// ptrace.Trace and Jager []*model.Batch representation. Also, each of
+// the traces is present in the Jaeger model.Traces format so that they
+// can be used to compare results from Jaeger query responses.
 type tracesFixtures struct {
-	traces ptrace.Traces
-	trace1 *model.Trace
-	trace2 *model.Trace
+	traces  ptrace.Traces
+	batches []*model.Batch
+	trace1  *model.Trace
+	trace2  *model.Trace
 }
 
-func getTracesFixtures() (tracesFixtures, error) {
-
-	traces := testdata.GenerateTestTrace()
-
-	fixtureBatch, err := jaegertranslator.ProtoFromTraces(traces.Clone())
+func tracesFixturesToBatches(traces ptrace.Traces) ([]*model.Batch, error) {
+	batches, err := store.ProtoFromTraces(traces)
 	if err != nil {
-		return tracesFixtures{}, err
+		return nil, err
 	}
-	for _, b := range fixtureBatch {
+	for _, b := range batches {
 		for _, s := range b.Spans {
 			// ProtoFromTraces doesn't populates span.Process because it is already been exposed by batch.Process.
 			// See https://github.com/jaegertracing/jaeger-idl/blob/05fe64e9c305526901f70ff692030b388787e388/proto/api_v2/model.proto#L152-L160
@@ -220,20 +217,44 @@ func getTracesFixtures() (tracesFixtures, error) {
 			}
 		}
 	}
+	return batches, nil
+}
+
+func getTracesFixtures() (tracesFixtures, error) {
+
+	traces := testdata.GenerateTestTrace()
+	batches, err := tracesFixturesToBatches(traces)
+
+	if err != nil {
+		return tracesFixtures{}, err
+	}
 
 	// After passing the traces from testdata.GenerateTestTrace through the
 	// translator we end up with 2 batches. The first one has 8 spans, the second
 	// 4. The first 4 spans of the first batch belong to the same trace and the
-	// other 4 belong to the same trace as all the spans in the second batch.
+	// other 4 belong to the same trace as all the spans in the second batch,
+	// meaning that there are 2 traces.
+	//
+	// Batches are ordered by Process, the analogous to Resource in OTEL.
+	//
+	// Basically::
+	//   batches = [
+	//     [sT1, sT1, sT1, sT1, s1T2, s1T2, s1T2, s1T2],
+	//     [s2T2, s2T2, s2T2, s2T2],
+	//   ]
+	//
+	// Note: in the example there are just three types of spans sT1, s1T2 and
+	// s2T2, that's because each type shares the same attributes they just have
+	// unique Span IDs.
 	trace1 := &model.Trace{
-		Spans:      fixtureBatch[0].Spans[:4],
+		Spans:      batches[0].Spans[:4],
 		ProcessMap: nil,
 		Warnings:   make([]string, 0),
 	}
 
 	trace2Spans := make([]*model.Span, 0)
-	trace2Spans = append(trace2Spans, fixtureBatch[0].Spans[4:]...)
-	trace2Spans = append(trace2Spans, fixtureBatch[1].Spans...)
+	trace2Spans = append(trace2Spans, batches[0].Spans[4:]...)
+	trace2Spans = append(trace2Spans, batches[1].Spans...)
 
 	trace2 := &model.Trace{
 		Spans:      trace2Spans,
@@ -241,7 +262,19 @@ func getTracesFixtures() (tracesFixtures, error) {
 		Warnings:   make([]string, 0),
 	}
 
-	return tracesFixtures{traces, trace1, trace2}, nil
+	// We recreate the batches to have a unique copy that can be
+	// modified without altering trace1 and trace2
+	batches, err = tracesFixturesToBatches(traces.Clone())
+	if err != nil {
+		return tracesFixtures{}, err
+	}
+
+	return tracesFixtures{
+		traces,
+		batches,
+		trace1,
+		trace2,
+	}, nil
 }
 
 func findTraceTest(t testing.TB, q *store.Store, fixtures tracesFixtures) {
