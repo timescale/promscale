@@ -1,6 +1,7 @@
 package end_to_end_tests
 
 import (
+	"context"
 	"runtime"
 	"testing"
 	"time"
@@ -54,10 +55,12 @@ func TestJaegerStorageIntegration(t *testing.T) {
 				si := jaeger_integration_tests.StorageIntegration{
 					SpanReader: jaegerStore.SpanReader(),
 					SpanWriter: writer,
-					CleanUp:    func() error { return nil },
-					Refresh:    func() error { return nil },
+					CleanUp: func() error {
+						_, err := db.Exec(context.Background(), `TRUNCATE TABLE _ps_trace.span`)
+						return err
+					},
+					Refresh: func() error { return nil },
 					SkipList: []string{
-						"GetLargeSpans",
 						"FindTraces/Tags_in_one_spot_-_Tags",
 						"FindTraces/Tags_in_one_spot_-_Logs",
 						"FindTraces/Tags_in_one_spot_-_Process",
