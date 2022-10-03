@@ -154,7 +154,9 @@ func (p *pgxDispatcher) runSeriesEpochSync() {
 
 func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch *model.SeriesEpoch) (*model.SeriesEpoch, error) {
 	dbEpoch, err := p.getServerEpoch()
+	log.Info("msg", "Refreshing series cache epoch")
 	if err != nil {
+		log.Info("msg", "An error occurred refreshing, will reset series and inverted labels caches")
 		// Trash the cache just in case an epoch change occurred, seems safer
 		p.scache.Reset()
 		// Also trash the inverted labels cache, which can also be invalidated when the series cache is
@@ -162,6 +164,7 @@ func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch *model.SeriesEpoch) (*m
 		return nil, err
 	}
 	if existingEpoch == nil || *dbEpoch != *existingEpoch {
+		log.Info("msg", "The local epoch is no longer up-to-date, will reset series and inverted labels caches")
 		p.scache.Reset()
 		// If the series cache needs to be invalidated, so does the inverted labels cache
 		p.invertedLabelsCache.Reset()
