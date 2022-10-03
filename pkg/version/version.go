@@ -51,7 +51,7 @@ var (
 	TimescaleVersionRange       = semver.MustParseRange(TimescaleVersionRangeString)
 
 	// ExtVersionRangeString is a range of required promscale extension versions
-	ExtVersionRangeString = ">=0.6.0 <0.6.99"
+	ExtVersionRangeString = ">=0.6.0 <0.7.99"
 	ExtVersionRange       = semver.MustParseRange(ExtVersionRangeString)
 
 	// Expose build info through Prometheus metric
