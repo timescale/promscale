@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jaegertracing/jaeger/model"
+	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/stretchr/testify/require"
 
 	jaeger_integration_tests "github.com/jaegertracing/jaeger/plugin/storage/integration"
@@ -18,6 +20,25 @@ import (
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
+
+type spanCopyingWriter struct {
+	w spanstore.Writer
+}
+
+// Copies Tags to avoid altering test expectation.
+func (f spanCopyingWriter) WriteSpan(ctx context.Context, span *model.Span) error {
+	spanCopy := *span
+	spanCopy.Tags = append([]model.KeyValue{}, span.Tags...)
+	spanCopy.References = append([]model.SpanRef{}, span.References...)
+	process := *span.Process
+	spanCopy.Process = &process
+	spanCopy.Process.Tags = append([]model.KeyValue{}, span.Process.Tags...)
+	spanCopy.Logs = append([]model.Log{}, span.Logs...)
+	for i := range span.Logs {
+		spanCopy.Logs[i].Fields = append([]model.KeyValue{}, span.Logs[i].Fields...)
+	}
+	return f.w.WriteSpan(ctx, &spanCopy)
+}
 
 // Similar to TestQueryTraces, but uses Jaeger span ingestion interface.
 func TestJaegerStorageIntegration(t *testing.T) {
@@ -55,7 +76,7 @@ func TestJaegerStorageIntegration(t *testing.T) {
 				}
 				si := jaeger_integration_tests.StorageIntegration{
 					SpanReader: jaegerStore.SpanReader(),
-					SpanWriter: writer,
+					SpanWriter: spanCopyingWriter{writer},
 					CleanUp: func() error {
 						// Jaeger integration test suite runs each test in an isolated environment.
 						// CleanUp ensures that db starts with clean state for every test run by truncating tables which stores span specific information.
@@ -71,23 +92,11 @@ func TestJaegerStorageIntegration(t *testing.T) {
 					},
 					Refresh: func() error { return nil },
 					SkipList: []string{
-						"FindTraces/Tags_in_one_spot_-_Tags",
-						"FindTraces/Tags_in_one_spot_-_Logs",
-						"FindTraces/Tags_in_one_spot_-_Process",
-						"FindTraces/default",
-						// TODO: Remove this once the following PRs are merged
+						// TODO: This test is failing even with the following fixes.
 						// https://github.com/timescale/promscale/pull/1681
 						// https://github.com/timescale/promscale/pull/1678
+						// Let's skip now and fix it in a follow-up PR.
 						"FindTraces/Tags_\\+_Operation_name$",
-						"FindTraces/Tags_\\+_Operation_name_\\+_max_Duration$",
-						"FindTraces/Tags_\\+_Operation_name_\\+_Duration_range$",
-						"FindTraces/Tags_\\+_Duration_range$",
-						"FindTraces/Tags_\\+_max_Duration$",
-						"FindTraces/Multi-spot_Tags_\\+_Operation_name_\\+_max_Duration",
-						"FindTraces/Multi-spot_Tags_\\+_Operation_name_\\+_Duration_range",
-						"FindTraces/Multi-spot_Tags_\\+_Duration_range",
-						"FindTraces/Multi-spot_Tags_\\+_max_Duration",
-						"FindTraces/Multiple_Traces",
 					},
 				}
 				si.IntegrationTestAll(t.(*testing.T))
