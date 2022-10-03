@@ -2007,7 +2007,26 @@ func (ev *evaluator) matrixIterSlice(it *storage.BufferedSeriesIterator, mint, m
 			ev.currentSamples++
 			out = append(out, Point{T: t, V: v})
 		}
+		//else if ev.usingRollups {
+		//	fmt.Println("ok in PeekBack", ok)
+		//	out = append(out, Point{T: t, V: v})
+		//	ev.currentSamples++
+		//}
 	}
+
+	//if len(out) == 0 && ev.usingRollups {
+	//	// Not enough samples, so to get a minimum value, we need atleast 2 samples. Lets add the last and the second last.
+	//	fmt.Println("CASE: len(out) == 0 && ev.usingRollups")
+	//	t, v, ok := it.PeekBack(2)
+	//	if ok {
+	//		out = append(out, Point{T: t, V: v})
+	//	}
+	//	t, v, ok = it.PeekBack(1)
+	//	if ok {
+	//		out = append(out, Point{T: t, V: v})
+	//	}
+	//}
+
 	// The seeked sample might also be in the range.
 	if ok {
 		t, v := it.At()
@@ -2020,6 +2039,7 @@ func (ev *evaluator) matrixIterSlice(it *storage.BufferedSeriesIterator, mint, m
 		}
 	}
 	ev.samplesStats.UpdatePeak(ev.currentSamples)
+	//fmt.Println("len of out", len(out))
 	return out
 }
 
