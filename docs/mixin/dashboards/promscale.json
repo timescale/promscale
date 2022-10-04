@@ -2887,7 +2887,7 @@
                 "uid": "${DS_PROMETHEUS}"
               },
               "exemplar": true,
-              "expr": "promscale_cache_query_hits_total{type=\"metric\"} / promscale_cache_queries_total{type=\"metric\"}",
+              "expr": "rate(promscale_cache_query_hits_total{type=\"metric\"}[$__rate_interval]) / rate(promscale_cache_queries_total{type=\"metric\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{ name }}",
               "refId": "A"
@@ -2977,7 +2977,7 @@
                 "uid": "${DS_PROMETHEUS}"
               },
               "exemplar": true,
-              "expr": "promscale_cache_query_hits_total{type=\"trace\"} / promscale_cache_queries_total{type=\"trace\"}",
+              "expr": "rate(promscale_cache_query_hits_total{type=\"trace\"}[$__rate_interval]) / rate(promscale_cache_queries_total{type=\"trace\"}[$__rate_interval])",
               "interval": "",
               "legendFormat": "{{ name }}",
               "refId": "A"
