@@ -76,6 +76,7 @@ func (pq *SeriesTimeHeap) Run(out chan<- *point) {
 	defer close(out)
 
 	heap.Init(pq)
+	fmt.Println("Starting run of series time heap: len=", len(*pq))
 	for pq.Len() > 0 {
 		item := (*pq)[0]
 		//fmt.Printf("%s %g %d\n", item.series.Labels(), item.val, item.ts)
