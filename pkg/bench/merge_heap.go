@@ -8,7 +8,9 @@ import (
 	"sync"
 
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 )
@@ -40,6 +42,10 @@ func (w *Worker) Close() error {
 	return w.wq.Close()
 }
 
+func (w *Worker) AddSeriesFromIt(seriesID uint64, it chunkenc.Iterator) {
+	w.sth.Add(seriesID, it)
+}
+
 func (w *Worker) AddSeries(seriesID uint64, chks []chunks.Meta, chunkr tsdb.ChunkReader) {
 	chksCopy := make([]chunks.Meta, len(chks))
 	copy(chksCopy, chks)
@@ -66,6 +72,65 @@ func (w *Worker) Run() error {
 }
 
 type MergeHeap []*Worker
+
+func checkSeriesSet(ss storage.SeriesSet) error {
+	if ws := ss.Warnings(); len(ws) > 0 {
+		return ws[0]
+	}
+	if ss.Err() != nil {
+		return ss.Err()
+	}
+	return nil
+}
+
+func NewMergeHeapQuerier(dm *DataModifier, block *tsdb.Block, qmi *qmInfo, seriesIndex int, concurrency int) (MergeHeap, []io.Closer, error) {
+	fmt.Println("Starting to load series")
+	closers := []io.Closer{}
+	q, err := tsdb.NewBlockQuerier(block, math.MinInt64, math.MaxInt64)
+	if err != nil {
+		return nil, closers, err
+	}
+	defer q.Close()
+
+	ss := q.Select(false, nil, labels.MustNewMatcher(labels.MatchRegexp, "", ".*"))
+
+	workers := make(MergeHeap, concurrency)
+	for i := range workers {
+		wi := NewWorker()
+		closers = append(closers, wi)
+		workers[i] = wi
+	}
+
+	countSeries := 0
+	seriesId := uint64(0)
+	for ss.Next() {
+		series := ss.At()
+		it := series.Iterator()
+
+		workers[countSeries%len(workers)].AddSeriesFromIt(seriesId, it)
+		countSeries++
+
+		dm.VisitSeries(seriesId, series.Labels(), func(rec record.RefSeries) {
+			seriesId++
+			qmi.qm.StoreSeries([]record.RefSeries{rec}, seriesIndex)
+		})
+	}
+
+	if err := checkSeriesSet(ss); err != nil {
+		return nil, closers, err
+	}
+
+	fmt.Println("Done loading series, # series", seriesId)
+
+	for i := range workers {
+		if err := workers[i].Run(); err != nil {
+			return nil, closers, err
+		}
+	}
+
+	heap.Init(&workers)
+	return workers, closers, nil
+}
 
 func NewMergeHeap(dm *DataModifier, block *tsdb.Block, qmi *qmInfo, seriesIndex int, concurrency int) (MergeHeap, []io.Closer, error) {
 	fmt.Println("Starting to load series")

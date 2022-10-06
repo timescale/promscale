@@ -28,6 +28,7 @@ var rateControlSleeps int32 = 0
 func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *walSimulator, runNumber int) (time.Time, int, error) {
 	dm := NewDataModifier(conf)
 	mh, closers, err := NewMergeHeap(dm, block, qmi, seriesIndex, conf.Concurrency)
+	//mh, closers, err := NewMergeHeapQuerier(dm, block, qmi, seriesIndex, conf.Concurrency)
 	if err != nil {
 		return time.Time{}, 0, err
 	}

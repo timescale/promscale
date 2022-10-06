@@ -19,7 +19,7 @@ func NewSeriesTimeHeap() *SeriesTimeHeap {
 	return &sth
 }
 
-func (pq *SeriesTimeHeap) Add(seriesID uint64, it *BufferingIterator) {
+func (pq *SeriesTimeHeap) Add(seriesID uint64, it chunkenc.Iterator) {
 	if !it.Next() { //initialize to first position
 		panic("can't get first item")
 	}
