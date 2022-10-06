@@ -22,6 +22,7 @@ type qmInfo struct {
 	ticker          *time.Ticker
 	metricsRegistry *prometheus.Registry
 	timeLagRealMax  int64
+	mh              *MergeHeap
 }
 
 func (qmi *qmInfo) run() {
@@ -63,8 +64,14 @@ func (qmi *qmInfo) run() {
 		enqueued := atomic.LoadInt32(&enqueued)
 		dequeued := atomic.LoadInt32(&dequeued)
 
-		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\tTime Lag (s)\t%d [%d, %d]\t %d %d %d %d %d %d %d %d %d %d\n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate(), timeLagSecondsSent, timeLagSecondsAppended, timeLagSecondsRel,
-			needChunks-fetchChunks, enqueued-dequeued, atomic.LoadInt32(&syncFetchChunks), atomic.LoadInt32(&waitInRotate), fetchChunks-asyncFetchChunks, needNextChunks-enqueued, enqueued, dequeued, atomic.LoadInt32(&asyncFetchChunks), atomic.LoadInt32(&rateControlSleeps))
+		minWorkLen := 0
+		minWorkerCap := 0
+		if qmi.mh != nil {
+			minWorkLen, minWorkerCap = qmi.mh.MinChan()
+		}
+
+		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\tTime Lag (s)\t%d [%d, %d]\t %d %d %d %d %d %d %d %d %d %d %d %d\n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate(), timeLagSecondsSent, timeLagSecondsAppended, timeLagSecondsRel,
+			needChunks-fetchChunks, enqueued-dequeued, atomic.LoadInt32(&syncFetchChunks), atomic.LoadInt32(&waitInRotate), fetchChunks-asyncFetchChunks, needNextChunks-enqueued, enqueued, dequeued, atomic.LoadInt32(&asyncFetchChunks), atomic.LoadInt32(&rateControlSleeps), minWorkLen, minWorkerCap)
 
 		w.Flush()
 	}

@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"fmt"
 	"io"
+	"math"
 	"sync"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -130,6 +131,19 @@ func NewMergeHeap(dm *DataModifier, block *tsdb.Block, qmi *qmInfo, seriesIndex 
 }
 
 func (mh MergeHeap) Len() int { return len(mh) }
+
+func (mh MergeHeap) MinChan() (int, int) {
+	minWorkerLen := math.MaxInt
+	minWorkerCap := 0
+	for _, w := range mh {
+		l := len(w.next)
+		if l < minWorkerLen {
+			minWorkerLen = l
+			minWorkerCap = cap(w.next)
+		}
+	}
+	return minWorkerLen, minWorkerCap
+}
 
 func (mh MergeHeap) Less(i, j int) bool {
 	tsi := mh[i].p.ts

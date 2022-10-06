@@ -31,7 +31,9 @@ func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *wa
 	if err != nil {
 		return time.Time{}, 0, err
 	}
+	qmi.mh = &mh
 	defer func() {
+		qmi.mh = nil
 		for _, c := range closers {
 			err := c.Close()
 			if err != nil {
