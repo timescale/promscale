@@ -210,6 +210,16 @@ func (mh MergeHeap) MinChan() (int, int) {
 	return minWorkerLen, minWorkerCap
 }
 
+func (mh MergeHeap) NumWorkersWithNonEmptyQueue() int {
+	count := 0
+	for _, w := range mh {
+		if w.wq.Len() > 0 {
+			count++
+		}
+	}
+	return count
+}
+
 func (mh MergeHeap) Less(i, j int) bool {
 	tsi := mh[i].p.ts
 	tsj := mh[j].p.ts

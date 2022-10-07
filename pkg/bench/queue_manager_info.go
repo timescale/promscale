@@ -66,12 +66,14 @@ func (qmi *qmInfo) run() {
 
 		minWorkLen := 0
 		minWorkerCap := 0
+		workersWithQueue := 0
 		if qmi.mh != nil {
 			minWorkLen, minWorkerCap = qmi.mh.MinChan()
+			workersWithQueue = qmi.mh.NumWorkersWithNonEmptyQueue()
 		}
 
-		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\tTime Lag (s)\t%d [%d, %d]\t %d %d %d %d %d %d %d %d %d %d %d %d %d\n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate(), timeLagSecondsSent, timeLagSecondsAppended, timeLagSecondsRel,
-			needChunks-fetchChunks, enqueued-dequeued, atomic.LoadInt32(&syncFetchChunks), atomic.LoadInt32(&waitInRotate), fetchChunks-asyncFetchChunks, needNextChunks-enqueued, enqueued, dequeued, atomic.LoadInt32(&asyncFetchChunks), atomic.LoadInt32(&rateControlSleeps), minWorkLen, minWorkerCap, atomic.LoadInt32(&workerFetchingChunks))
+		fmt.Fprintf(w, "Samples in rate \t%.0f\tSamples wal rate\t%.0f\tSamples out rate\t%.0f\tTime Lag (s)\t%d [%d, %d]\t %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", qmi.samplesIn.Rate(), qmi.samplesWal.Rate(), qmi.qm.SamplesOut.Rate(), timeLagSecondsSent, timeLagSecondsAppended, timeLagSecondsRel,
+			needChunks-fetchChunks, enqueued-dequeued, atomic.LoadInt32(&syncFetchChunks), atomic.LoadInt32(&waitInRotate), fetchChunks-asyncFetchChunks, needNextChunks-enqueued, enqueued, dequeued, atomic.LoadInt32(&asyncFetchChunks), atomic.LoadInt32(&rateControlSleeps), minWorkLen, minWorkerCap, atomic.LoadInt32(&workerFetchingChunks), workersWithQueue)
 
 		w.Flush()
 	}

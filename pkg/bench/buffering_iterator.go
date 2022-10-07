@@ -138,6 +138,12 @@ func (wq *BufferingIteratorWorkQueue) Close() error {
 	return nil
 }
 
+func (wq *BufferingIteratorWorkQueue) Len() int {
+	wq.l.Lock()
+	defer wq.l.Unlock()
+	return wq.q.Len()
+}
+
 func fetchChunk(chunkR tsdb.ChunkReader, chunkMeta chunks.Meta) (chunkenc.Chunk, error) {
 	chk, err := chunkR.Chunk(chunkMeta.Ref)
 	if err != nil {
