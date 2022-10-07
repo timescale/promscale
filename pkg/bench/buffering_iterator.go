@@ -24,6 +24,7 @@ var fetchChunks int32 = 0
 var waitInRotate int32 = 0
 var asyncFetchChunks int32 = 0
 var syncFetchChunks int32 = 0
+var workerFetchingChunks int32 = 0
 
 type BufferingIteratorHeap []*BufferingIterator
 
@@ -160,7 +161,9 @@ func chunkFetchWorker(wq *BufferingIteratorWorkQueue) {
 			return
 		}
 
+		atomic.AddInt32(&workerFetchingChunks, 1)
 		chk, err := fetchChunk(request.chunkR, request.chunksMeta[request.chunkIndex+1])
+		atomic.AddInt32(&workerFetchingChunks, -1)
 		if err != nil {
 			panic(err)
 		}
