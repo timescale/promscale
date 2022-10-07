@@ -484,8 +484,8 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 	if err = tx.Commit(ctx); err != nil {
 		return err, lowestMinTime
 	}
-	metrics.IngestorRowsPerBatch.With(labelsCopier).Observe(float64(numRowsTotal))
-	metrics.IngestorInsertsPerBatch.With(labelsCopier).Observe(float64(len(reqs)))
+	metrics.IngestorRowsPerTxn.With(labelsCopier).Observe(float64(numRowsTotal))
+	metrics.IngestorInsertsPerTxn.With(labelsCopier).Observe(float64(len(reqs)))
 
 	var affectedMetrics uint64
 	for idx, numRows := range numRowsPerInsert {

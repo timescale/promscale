@@ -89,20 +89,20 @@ var (
 			Buckets:   prometheus.DefBuckets,
 		}, []string{"type", "subsystem"},
 	)
-	IngestorInsertsPerBatch = prometheus.NewHistogramVec(
+	IngestorInsertsPerTxn = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
 			Subsystem: "ingest",
-			Name:      "inserts_per_batch",
+			Name:      "inserts_per_txn",
 			Help:      "Number of inserts in a single transaction.",
 			Buckets:   util.HistogramBucketsSaturating(1, 2, MaxInsertStmtPerTxn),
 		}, []string{"type", "subsystem"},
 	)
-	IngestorRowsPerBatch = prometheus.NewHistogramVec(
+	IngestorRowsPerTxn = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
 			Subsystem: "ingest",
-			Name:      "rows_per_batch",
+			Name:      "rows_per_txn",
 			Help:      "Number of rows inserted in a single transaction.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 15),
 		}, []string{"type", "subsystem"},
@@ -220,8 +220,8 @@ func init() {
 		IngestorChannelCap,
 		IngestorChannelLenBatcher,
 		IngestorFlushSeries,
-		IngestorInsertsPerBatch,
-		IngestorRowsPerBatch,
+		IngestorInsertsPerTxn,
+		IngestorRowsPerTxn,
 		IngestorRowsPerInsert,
 		IngestorInsertDuration,
 		IngestorActiveWriteRequests,
