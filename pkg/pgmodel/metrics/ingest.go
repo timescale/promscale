@@ -75,9 +75,18 @@ var (
 		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
 			Subsystem: "ingest",
-			Name:      "flush_series",
+			Name:      "metric_batch_flush_series",
 			Help:      "Number of series batched by the ingestor.",
 			Buckets:   util.HistogramBucketsSaturating(1, 2, FlushSize),
+		}, []string{"type", "subsystem"},
+	)
+	IngestorBatchDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: util.PromNamespace,
+			Subsystem: "ingest",
+			Name:      "metric_batch_duration_seconds",
+			Help:      "Number of seconds that metrics were batched together",
+			Buckets:   prometheus.DefBuckets,
 		}, []string{"type", "subsystem"},
 	)
 	IngestorInsertsPerBatch = prometheus.NewHistogramVec(

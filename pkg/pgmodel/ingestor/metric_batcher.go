@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -244,6 +245,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 		//try to send first, if not then keep batching
 		case copySender <- copyRequest{pending, info}:
 			metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
+			metrics.IngestorBatchDuration.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(pending.Start).Seconds())
 			span.SetAttributes(attribute.Int("num_series", numSeries))
 			span.End()
 			pending = NewPendingBuffer()
@@ -255,6 +257,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 					span.AddEvent("Sending last non-empty batch")
 					copySender <- copyRequest{pending, info}
 					metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
+					metrics.IngestorBatchDuration.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(pending.Start).Seconds())
 				}
 				span.AddEvent("Exiting metric batcher batch loop")
 				span.SetAttributes(attribute.Int("num_series", numSeries))
