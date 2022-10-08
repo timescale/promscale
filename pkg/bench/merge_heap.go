@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"sync"
 
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -248,6 +249,8 @@ func (mh *MergeHeap) Pop() interface{} {
 }
 
 func (mh *MergeHeap) Visit(dm *DataModifier, visitor func([]record.RefSample, int64) error) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	for mh.Len() > 0 {
 		item := (*mh)[0]
 
