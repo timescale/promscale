@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"sync"
+	"syscall"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -248,8 +250,18 @@ func (mh *MergeHeap) Pop() interface{} {
 }
 
 func (mh *MergeHeap) Visit(dm *DataModifier, visitor func([]record.RefSample, int64) error) error {
-	//runtime.LockOSThread()
-	//defer runtime.UnlockOSThread()
+	_ = runtime.LockOSThread
+	_ = syscall.Setpriority
+	/*runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	oldprio, err := syscall.Getpriority(syscall.PRIO_PROCESS, 0)
+	if err != nil {
+		panic("Error in getprio")
+	}
+	syscall.Setpriority(syscall.PRIO_PROCESS, 0, -20)
+	defer func() {
+		syscall.Setpriority(syscall.PRIO_PROCESS, 0, oldprio)
+	}()*/
 	for mh.Len() > 0 {
 		item := (*mh)[0]
 
