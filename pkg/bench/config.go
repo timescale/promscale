@@ -15,6 +15,7 @@ type BenchConfig struct {
 	RemoteWriteConfig       config.RemoteWriteConfig
 	WriteEndpoint           string
 	UseWallClockForDataTime bool
+	FirstDataTimeTs         time.Time
 	ExternalLabels          labels.Labels
 
 	Concurrency int

@@ -62,7 +62,9 @@ func (dm *DataModifier) VisitSamples(rawSeriesID uint64, rawTs int64, rawVal flo
 		dm.firstWallTs = int64(model.TimeFromUnixNano(now.UnixNano()))
 		dm.firstDataRawTs = rawTs
 		dm.firstDataOutTs = dm.firstDataRawTs
-		if dm.conf.UseWallClockForDataTime {
+		if !dm.conf.FirstDataTimeTs.IsZero() {
+			dm.firstDataOutTs = int64(model.TimeFromUnixNano(dm.conf.FirstDataTimeTs.UnixNano()))
+		} else if dm.conf.UseWallClockForDataTime {
 			dm.firstDataOutTs = dm.firstWallTs
 		}
 		dm.init = true
