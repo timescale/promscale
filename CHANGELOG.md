@@ -22,6 +22,7 @@ We use the following categories for changes:
 - Add `startup.dataset` option in the config file for the dataset
   configuration. Supersedes `startup.dataset.config` which accepts a string
   instead of a mapping [#1737]
+- Add alert to notify about duplicate sample/metric ingestion. [#1688]
 
 ### Changed
 - Reduced the verbosity of the logs emitted by the vacuum engine [#1715]
