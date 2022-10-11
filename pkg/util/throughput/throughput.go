@@ -37,6 +37,8 @@ type throughputCalc struct {
 	// Metrics telemetry.
 	samples          *ewma.Rate
 	metadata         *ewma.Rate
+	duplicateMetrics *ewma.Rate
+	duplicateSamples *ewma.Rate
 	metricsMaxSentTs int64
 
 	// Traces telemetry.
@@ -50,6 +52,8 @@ func newThroughputCal(every time.Duration) *throughputCalc {
 		metricsMaxSentTs: 0,
 		samples:          ewma.NewEWMARate(1, every),
 		metadata:         ewma.NewEWMARate(1, every),
+		duplicateMetrics: ewma.NewEWMARate(1, every),
+		duplicateSamples: ewma.NewEWMARate(1, every),
 		spans:            ewma.NewEWMARate(1, every),
 		spansLastWriteOn: 0,
 	}
@@ -61,6 +65,8 @@ func (tc *throughputCalc) run() {
 		tc.samples.Tick()
 		tc.metadata.Tick()
 		tc.spans.Tick()
+		tc.duplicateSamples.Tick()
+		tc.duplicateMetrics.Tick()
 
 		samplesRate := tc.samples.Rate()
 		metadataRate := tc.metadata.Rate()
@@ -83,6 +89,12 @@ func (tc *throughputCalc) run() {
 
 		if metadataRate != 0 {
 			throughput = append(throughput, []interface{}{"metric-metadata/sec", int(metadataRate)}...)
+		}
+
+		duplicateSamplesRate := tc.duplicateSamples.Rate()
+		if duplicateSamplesRate != 0 {
+			duplicateMetricsRate := tc.duplicateMetrics.Rate()
+			throughput = append(throughput, []interface{}{"duplicate-metrics/sec", int(duplicateMetricsRate), "duplicate-samples/sec", int(duplicateSamplesRate)}...)
 		}
 
 		if len(throughput) > 2 {
@@ -112,4 +124,12 @@ func ReportSpansProcessed(lastWriteTs int64, numSpans int) {
 	if lastWriteTs != 0 && atomic.LoadInt64(&throughputWatcher.spansLastWriteOn) < lastWriteTs {
 		atomic.StoreInt64(&throughputWatcher.spansLastWriteOn, lastWriteTs)
 	}
+}
+
+func ReportDuplicateMetrics(numSamples, numMetrics int64) {
+	if throughputWatcher == nil {
+		return
+	}
+	throughputWatcher.duplicateMetrics.Incr(int64(numMetrics))
+	throughputWatcher.duplicateSamples.Incr(int64(numSamples))
 }
