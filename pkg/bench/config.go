@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/pkg/labels"
 )
 
 type BenchConfig struct {
@@ -14,6 +15,7 @@ type BenchConfig struct {
 	RemoteWriteConfig       config.RemoteWriteConfig
 	WriteEndpoint           string
 	UseWallClockForDataTime bool
+	ExternalLabels          labels.Labels
 
 	Concurrency int
 

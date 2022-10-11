@@ -13,6 +13,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/timescale/promscale/pkg/bench"
 )
 
@@ -36,6 +37,7 @@ func main() {
 		RepeatedRuns:            1,
 		FakeSendDuration:        -1,
 		Concurrency:             4,
+		ExternalLabels:          labels.Labels{labels.Label{Name: "cluster", Value: "one"}, labels.Label{Name: "__replica__", Value: "1"}},
 	}
 
 	//just for imports

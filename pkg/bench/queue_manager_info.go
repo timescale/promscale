@@ -137,7 +137,7 @@ func getQM(conf *BenchConfig) (*qmInfo, error) {
 		qmi.samplesIn,
 		rwConf.QueueConfig,
 		rwConf.MetadataConfig,
-		nil,
+		conf.ExternalLabels,
 		nil,
 		c,
 		defaultFlushDeadline,
