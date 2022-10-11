@@ -249,7 +249,7 @@ var metrics = []metricQueryWrap{
 			prometheus.GaugeOpts{
 				Namespace: util.PromNamespace,
 				Subsystem: "sql_database",
-				Name:      "worker_maintenance_job_locks_total",
+				Name:      "worker_maintenance_job_locks",
 				Help:      "Number of locks held by Promscale maintenance workers.",
 			},
 		),
@@ -326,7 +326,7 @@ var metrics = []metricQueryWrap{
 			prometheus.GaugeOpts{
 				Namespace: util.PromNamespace,
 				Subsystem: "sql_database",
-				Name:      "worker_maintenance_job_long_running_total",
+				Name:      "worker_maintenance_job_long_running",
 				Help:      "Number of Promscale maintenance workers executing long running queries.",
 			},
 		),
