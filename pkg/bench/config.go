@@ -17,6 +17,7 @@ type BenchConfig struct {
 	UseWallClockForDataTime bool
 	FirstDataTimeTs         time.Time
 	ExternalLabels          labels.Labels
+	Duplicates              bool
 
 	Concurrency int
 

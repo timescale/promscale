@@ -2,6 +2,7 @@ package bench
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -83,6 +84,31 @@ func Run(conf *BenchConfig) (err error) {
 		}
 	}()
 
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err3 := run(conf, db)
+		if err == nil {
+			err = err3
+		}
+	}()
+
+	if conf.Duplicates {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err3 := run(conf, db)
+			if err == nil {
+				err = err3
+			}
+		}()
+	}
+	wg.Wait()
+	return err
+}
+
+func run(conf *BenchConfig, db *tsdb.DBReadOnly) (err error) {
 	blocks, err := db.Blocks()
 	if err != nil {
 		return err
