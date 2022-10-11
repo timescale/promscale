@@ -84,11 +84,17 @@ func Run(conf *BenchConfig) (err error) {
 		}
 	}()
 
+	blocks, err := db.Blocks()
+	if err != nil {
+		return err
+	}
+	fmt.Println("Number of Blocks", len(blocks))
+
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err3 := run(conf, db)
+		err3 := run(conf, db, blocks)
 		if err == nil {
 			err = err3
 		}
@@ -98,7 +104,7 @@ func Run(conf *BenchConfig) (err error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err3 := run(conf, db)
+			err3 := run(conf, db, blocks)
 			if err == nil {
 				err = err3
 			}
@@ -108,12 +114,7 @@ func Run(conf *BenchConfig) (err error) {
 	return err
 }
 
-func run(conf *BenchConfig, db *tsdb.DBReadOnly) (err error) {
-	blocks, err := db.Blocks()
-	if err != nil {
-		return err
-	}
-	fmt.Println("Number of Blocks", len(blocks))
+func run(conf *BenchConfig, db *tsdb.DBReadOnly, blocks []tsdb.BlockReader) (err error) {
 
 	qmi, err := getQM(conf)
 	if err != nil {
