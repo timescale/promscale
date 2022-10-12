@@ -56,7 +56,7 @@ Key:
 1. Promscale (read, write, backfill)
 2. Prometheus (read)
 3. Prometheus tsdb (TODO)
-4. Thanos (read, write)
+4. Thanos (read, write). You should use [thanos-remote-read adapter](https://github.com/G-Research/thanos-remote-read) between Thanos and Prom-migrator to migrate data from Thanos
 5. Cortex (only blocks storage, chunks storage in later versions) (read, write)
 6. VictoriaMetrics (write, not sure about backfill)
 7. M3DB (read, write, not sure about backfill)
