@@ -70,14 +70,3 @@ jobs:
 
     - name: Test extended dataset
       run: go test -v -race -timeout=30m ./pkg/tests/end_to_end_tests/ -extended-test
- 
-  test-helm-chart:
-    name: Test helm-chart template generation
-    runs-on: ubuntu-latest
-    steps:
-
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v3
-
-    - name: Test helm chart static generation
-      run: ./scripts/generate-deploy-script.sh
