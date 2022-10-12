@@ -35,6 +35,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/timescale/promscale/pkg/api"
+	"github.com/timescale/promscale/pkg/api/parser"
 	jaegerStore "github.com/timescale/promscale/pkg/jaeger/store"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
@@ -368,8 +369,7 @@ func initTelemetryEngine(client *pgclient.Client) (telemetry.Engine, error) {
 	if err := trace.RegisterTelemetryMetrics(t); err != nil {
 		log.Error("msg", "error registering metrics for Jaeger-ingest telemetry", "err", err.Error())
 	}
-	if err := rules.RegisterForTelemetry(t); err != nil {
-		log.Error("msg", "error registering metrics for rules telemetry", "err", err.Error())
-	}
+	parser.InitTelemetry()
+	rules.InitTelemetry()
 	return t, nil
 }
