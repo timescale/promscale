@@ -13,6 +13,11 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## Unreleased
+
+### Added
+- Telemetry for `promscale_metrics_ingestion_path` and `promscale_metrics_ingestion_json_endpoint_used` [#1695]
+
 ## [0.15.0] - 2022-10-11
 
 ### Added

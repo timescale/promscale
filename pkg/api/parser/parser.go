@@ -9,6 +9,7 @@ import (
 	"github.com/timescale/promscale/pkg/api/parser/protobuf"
 	"github.com/timescale/promscale/pkg/api/parser/text"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/telemetry"
 )
 
 type formatParser func(*http.Request, *prompb.WriteRequest) error
@@ -62,6 +63,8 @@ func (d DefaultParser) ParseRequest(r *http.Request, req *prompb.WriteRequest) e
 		return fmt.Errorf("parser error: %w", err)
 	}
 
+	updateTelemetry(mediaType)
+
 	if len(req.Timeseries) == 0 {
 		return nil
 	}
@@ -80,4 +83,25 @@ func (d DefaultParser) ParseRequest(r *http.Request, req *prompb.WriteRequest) e
 	}
 
 	return nil
+}
+
+func InitTelemetry() {
+	telemetry.Registry.Update("metrics_ingestion_path", "no_ingestion")
+	telemetry.Registry.Update("metrics_ingestion_json_endpoint_used", "0")
+}
+
+func updateTelemetry(parser string) {
+	switch parser {
+	case "application/x-protobuf":
+		telemetry.Registry.Update("metrics_ingestion_path", "protobuf")
+	case "application/json":
+		telemetry.Registry.Update("metrics_ingestion_path", "json")
+		telemetry.Registry.Update("metrics_ingestion_json_endpoint_used", "1")
+	case "text/plain":
+		telemetry.Registry.Update("metrics_ingestion_path", "text_plain")
+	case "application/openmetrics-text":
+		telemetry.Registry.Update("metrics_ingestion_path", "text_open_metrics")
+	default:
+		telemetry.Registry.Update("metrics_ingestion_path", "none")
+	}
 }
