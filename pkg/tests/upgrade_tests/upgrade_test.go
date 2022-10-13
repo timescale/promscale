@@ -86,22 +86,11 @@ func getDBImages(extensionState testhelpers.TestOptions, prevPromscaleVersion *s
 		panic("Only use pg12 for upgrade tests")
 	}
 
-	// From Promscale 0.14.0 onwards the minimum extension version is 0.6.0
-	if prevPromscaleVersion != nil && prevPromscaleVersion.GE(semver.MustParse("0.14.0")) {
-		return "timescale/timescaledb-ha:pg" + pgVersion + ".12-ts2.7.2-latest", dockerImageName, nil
+	// From Promscale 0.15.0 onwards the minimum extension version is 0.7.0
+	if prevPromscaleVersion != nil && prevPromscaleVersion.GE(semver.MustParse("0.15.0")) {
+		return "timescale/timescaledb-ha:pg" + pgVersion + ".12-ts2.8.1-latest", dockerImageName, nil
 	}
 
-	// From Promscale 0.13.0 onwards the minimum extension version is 0.5.4
-	if prevPromscaleVersion != nil && prevPromscaleVersion.GE(semver.MustParse("0.13.0")) {
-		return "timescale/timescaledb-ha:pg" + pgVersion + ".11-ts2.7.1-latest", dockerImageName, nil
-	}
-
-	// From Promscale 0.11.0 onwards the minimum extension version is 0.5.0
-	if prevPromscaleVersion != nil && prevPromscaleVersion.GE(semver.MustParse("0.11.0")) {
-		return "timescale/timescaledb-ha:pg" + pgVersion + "-ts2.6-latest", dockerImageName, nil
-	}
-
-	//return "timescaledev/promscale-extension:0.1.2-ts2-pg" + pgVersion, dockerImageName, nil
 	return "timescale/timescaledb-ha:pg" + pgVersion + "-ts2.1-latest", dockerImageName, nil
 }
 
@@ -127,8 +116,19 @@ func writeToFiles(t *testing.T, upgradedDbInfo, pristineDbInfo dbSnapshot) error
 	return w(pristinePath, pristineDbInfo)
 }
 
+// We test that upgrading from both the earliest and the directly-previous versions works
+// While it may seem that the earliest version is sufficient, idempotent scripts are only
+// run on each completed updated and so testing the upgrade as it relates to the last idempotent
+// state is important. To see why we need both tests, think of the following example:
+//
+// Say you have an earliest version 1 and a new version 3. In version 2 you introduce procedure foo(). that you
+// drop in version 3.
+// DROP FUNCTION IF EXISTS foo() (wrong since foo is procedure not function), would pass the earlier->latest test since
+// version 1 has no function foo, and would only be caught in prev->latest test.
+// DROP PROCEDURE foo() (wrong since missing IF NOT EXISTS), would pass the prev->latest test but would be caught in the
+// earliest->latest test.
 func TestUpgradeFromPrev(t *testing.T) {
-	upgradedDbInfo := getUpgradedDbInfo(t, false, false, baseExtensionState)
+	upgradedDbInfo := getUpgradedDbInfo(t, false, version.PrevReleaseVersion, baseExtensionState)
 	pristineDbInfo := getPristineDbInfo(t, false, baseExtensionState)
 	err := writeToFiles(t, upgradedDbInfo, pristineDbInfo)
 	if err != nil {
@@ -140,7 +140,7 @@ func TestUpgradeFromPrev(t *testing.T) {
 }
 
 func TestUpgradeFromEarliest(t *testing.T) {
-	upgradedDbInfo := getUpgradedDbInfo(t, false, true, baseExtensionState)
+	upgradedDbInfo := getUpgradedDbInfo(t, false, version.EarliestUpgradeTestVersion, baseExtensionState)
 	pristineDbInfo := getPristineDbInfo(t, false, baseExtensionState)
 	err := writeToFiles(t, upgradedDbInfo, pristineDbInfo)
 	if err != nil {
@@ -169,7 +169,7 @@ func TestUpgradeFromEarliest(t *testing.T) {
 // TestUpgradeFromPrevNoData tests migrations with no ingested data.
 // See issue: https://github.com/timescale/promscale/issues/330
 func TestUpgradeFromEarliestNoData(t *testing.T) {
-	upgradedDbInfo := getUpgradedDbInfo(t, true, true, baseExtensionState)
+	upgradedDbInfo := getUpgradedDbInfo(t, true, version.EarliestUpgradeTestVersion, baseExtensionState)
 	pristineDbInfo := getPristineDbInfo(t, true, baseExtensionState)
 	err := writeToFiles(t, upgradedDbInfo, pristineDbInfo)
 	if err != nil {
@@ -192,22 +192,8 @@ func turnOffCompressionOnMetric(t *testing.T) {
 	db.Close()
 }
 
-func getUpgradedDbInfo(t *testing.T, noData bool, useEarliest bool, extensionState testhelpers.TestOptions) (upgradedDbInfo dbSnapshot) {
-	// We test that upgrading from both the earliest and the directly-previous versions works
-	// While it may seem that the earliest version is sufficient, idempotent scripts are only
-	// run on each completed updated and so testing the upgrade as it relates to the last idempotent
-	// state is important. To see why we need both tests, think of the following example:
-	//
-	// Say you have an earliest version 1 and a new version 3. In version 2 you introduce procedure foo(). that you
-	// drop in version 3.
-	// DROP FUNCTION IF EXISTS foo() (wrong since foo is procedure not function), would pass the earlier->latest test since
-	// version 1 has no function foo, and would only be caught in prev->latest test.
-	// DROP PROCEDURE foo() (wrong since missing IF NOT EXISTS), would pass the prev->latest test but would be caught in the
-	// earliest->latest test.
-	prevVersion := semver.MustParse(version.PrevReleaseVersion)
-	if useEarliest {
-		prevVersion = semver.MustParse(version.EarliestUpgradeTestVersion)
-	}
+func getUpgradedDbInfo(t *testing.T, noData bool, prevVersionStr string, extensionState testhelpers.TestOptions) (upgradedDbInfo dbSnapshot) {
+	prevVersion := semver.MustParse(prevVersionStr)
 	// TODO we could probably improve performance of this test by 2x if we
 	//      gathered the db info in parallel. Unfortunately our db runner doesn't
 	//      support this yet
