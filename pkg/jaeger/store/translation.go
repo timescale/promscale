@@ -183,6 +183,9 @@ func ProtoFromTraces(traces ptrace.Traces) ([]*model.Batch, error) {
 	}
 	otherParents := getOtherParents(traces)
 	for _, batch := range batches {
+		if batch != nil {
+			decodeBinaryTags(batch.Process.Tags)
+		}
 		for _, span := range batch.GetSpans() {
 			decodeSpanBinaryTags(span)
 
