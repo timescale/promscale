@@ -66,7 +66,7 @@ groups:
       severity: warning
     annotations:
       summary: Slow Promscale ingestion.
-      description: "Slowest 10% of ingestion batch took more than {{ $value }} seconds to ingest."
+      description: "Slowest 10% of ingestion batch took more than {{ $value | humanizeDuration }} seconds to ingest."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighLatency.md
   - alert: PromscaleIngestHighLatency
     expr: |
@@ -87,7 +87,7 @@ groups:
       severity: critical
     annotations:
       summary: Slow Promscale ingestion.
-      description: "Slowest 10% of ingestion batch took more than {{ $value }} seconds to ingest."
+      description: "Slowest 10% of ingestion batch took more than {{ $value | humanizeDuration }} seconds to ingest."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighLatency.md
 - name: promscale-query
   rules:
@@ -144,7 +144,7 @@ groups:
       severity: warning
     annotations:
       summary: Slow Promscale querying.
-      description: "Slowest 10% of the queries took more than {{ $value }} seconds to evaluate."
+      description: "Slowest 10% of the queries took more than {{ $value | humanizeDuration }} seconds to evaluate."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleQueryHighLatency.md
   - alert: PromscaleQueryHighLatency
     expr: |
@@ -165,7 +165,7 @@ groups:
       severity: critical
     annotations:
       summary: Slow Promscale querying.
-      description: "Slowest 10% of the queries took {{ $value }} seconds to evaluate."
+      description: "Slowest 10% of the queries took {{ $value | humanizeDuration }} seconds to evaluate."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleQueryHighLatency.md
 - name: promscale-cache
   rules:
@@ -219,7 +219,7 @@ groups:
       severity: warning
     annotations:
       summary: Slow database response.
-      description: "Slowest 10% of database requests are taking more than {{ $value }} seconds to respond."
+      description: "Slowest 10% of database requests are taking more than {{ $value | humanizeDuration }} seconds to respond."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleStorageHighLatency.md
 - name: promscale-database
   rules:
@@ -259,7 +259,7 @@ groups:
       severity: warning
     annotations:
       summary: Promscale maintenance jobs taking too long to complete.
-      description: "Promscale Database is taking {{ $value }} seconds to respond to Promscale's requests."
+      description: "Promscale Database is taking {{ $value | humanizeDuration }} seconds to respond to Promscale's requests."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleMaintenanceJobRunningTooLong.md
   - alert: PromscaleMaintenanceJobNotKeepingup
     expr: |
