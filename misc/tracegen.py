@@ -7,12 +7,13 @@ import string
 import os
 import json
 import psycopg2
+from multiprocessing import Process
 
-
-MIN_DEPTH = 2
-MAX_DEPTH = 5
-MIN_BREADTH = 1
-MAX_BREADTH = 3
+NUM_WORKERS = os.environ.get("NUM_WORKERS", 4)
+MIN_DEPTH = os.environ.get("MIN_DEPTH", 2)
+MAX_DEPTH = os.environ.get("MAX_DEPTH", 5)
+MIN_BREADTH = os.environ.get("MIN_BREADTH", 1)
+MAX_BREADTH = os.environ.get("MAX_BREADTH", 3)
 
 SPAN_TAG_TYPE = 1
 RESOURCE_TAG_TYPE = 2
@@ -42,6 +43,7 @@ class Span:
     span_kind: str
     start_time: datetime
     end_time: datetime
+    duration_ms: float
     span_tags: Dict[str, Any]
     dropped_tags_count: int
     dropped_events_count: int
@@ -125,14 +127,17 @@ def generate_span(trace: Trace, parent_span: Optional[Span], depth: int, child: 
     span.span_id = random.getrandbits(63)
     if parent_span is None:
         span.parent_span_id = None
+        duration_ms = random.randint(50, 5000)
         span.start_time = datetime.now()
-        span.end_time = span.start_time + timedelta(milliseconds=random.randint(50, 5000))
+        span.end_time = span.start_time + timedelta(milliseconds=duration_ms)
+        span.duration_ms = duration_ms
     else:
         span.parent_span_id = parent_span.span_id
         p = parent_span.end_time - parent_span.start_time
         d = p / siblings
         span.start_time = parent_span.end_time + (d * child)
         span.end_time = span.start_time + d
+        span.duration_ms = (span.end_time - span.start_time).total_seconds() * 1000.0
     span.trace_state = f"trace_state{random.randint(1, 4)}"
     span.name = 'r' if parent_span is None else f"{parent_span.name}.f{child}"
     span.span_kind = generate_span_kind()
@@ -213,6 +218,7 @@ def save_span(span: Span, cur) -> None:
         operation_id,
         start_time,
         end_time,
+        duration_ms,
         span_tags,
         dropped_tags_count,
         dropped_events_count,
@@ -240,6 +246,7 @@ def save_span(span: Span, cur) -> None:
         ),
         %(start_time)s,
         %(end_time)s,
+        %(duration_ms)s,
         ps_trace.get_tag_map(%(span_tags)s),
         %(dropped_tags_count)s,
         %(dropped_events_count)s,
@@ -261,6 +268,7 @@ def save_span(span: Span, cur) -> None:
         'span_kind': span.span_kind,
         'start_time': span.start_time,
         'end_time': span.end_time,
+        'duration_ms': span.duration_ms,
         'span_tags': json.dumps(span.span_tags),
         'dropped_tags_count': span.dropped_tags_count,
         'dropped_events_count': span.dropped_events_count,
@@ -274,8 +282,7 @@ def save_span(span: Span, cur) -> None:
     })
 
 
-def save_trace(trace: Trace, cur, con) -> None:
-    print(f'{len(trace.spans)}', end='', flush=True)
+def save_trace(trace: Trace, cur, con) -> int:
     for span in trace.spans:
         # save span tag keys and resource tag keys
         keys = [(k, SPAN_TAG_TYPE) for k in span.span_tags.keys()]
@@ -285,14 +292,11 @@ def save_trace(trace: Trace, cur, con) -> None:
         tags = [(k, v, SPAN_TAG_TYPE) for k, v in span.span_tags.items()]
         tags.extend([(k, v, RESOURCE_TAG_TYPE) for k, v in span.resource.tags.items()])
         save_tags(tags, cur)
-
         save_instrumentation_lib(span.instrumentation_lib, cur)
         save_span_name(span.resource.tags['service.name'], span.name, span.span_kind, cur)
         save_span(span, cur)
-
-        print('.', end='', flush=True)
         con.commit()
-    print('', flush=True)
+    return len(trace.spans)
 
 
 def load_standard_tags(cur) -> None:
@@ -302,13 +306,29 @@ def load_standard_tags(cur) -> None:
     std_tag_key_set = {k for k in std_tag_key_list}
 
 
-def main() -> None:
-    assert 'DATABASE_URL' in os.environ
+def run(worker_id: int) -> None:
+    print(f"worker {worker_id} connecting to database...")
     with psycopg2.connect(os.environ['DATABASE_URL']) as con:
         with con.cursor() as cur:
             load_standard_tags(cur)
+            print(f"worker {worker_id} generating traces...")
+            spans_count = 0
             while True:
-                save_trace(generate_trace(MIN_DEPTH, MAX_DEPTH, MIN_BREADTH, MAX_BREADTH), cur, con)
+                before = int(spans_count / 1000)
+                spans_count += save_trace(generate_trace(MIN_DEPTH, MAX_DEPTH, MIN_BREADTH, MAX_BREADTH), cur, con)
+                if int(spans_count / 1000) > before:
+                    print(f"worker {worker_id} spans generated: {spans_count}")
+
+
+def main() -> None:
+    assert 'DATABASE_URL' in os.environ
+    workers = []
+    for worker_id in range(NUM_WORKERS):
+        worker = Process(target=run, args=(worker_id,))
+        worker.start()
+        workers.append(worker)
+    for worker in workers:
+        worker.join()
 
 
 if __name__ == '__main__':

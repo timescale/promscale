@@ -18,6 +18,7 @@ We use the following categories for changes:
 ### Added
 
 ### Changed
+- tracegen.py now runs 4 worker processes generating traces concurrently. [#1702]
 
 ### Fixed
 - Fix queries returning no references/links when querying traces that were
