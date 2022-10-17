@@ -1,3 +1,5 @@
+//go:build jaeger_storage_test
+
 package end_to_end_tests
 
 import (
