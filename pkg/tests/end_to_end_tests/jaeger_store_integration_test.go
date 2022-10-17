@@ -91,13 +91,6 @@ func TestJaegerStorageIntegration(t *testing.T) {
 						return nil
 					},
 					Refresh: func() error { return nil },
-					SkipList: []string{
-						// TODO: This test is failing even with the following fixes.
-						// https://github.com/timescale/promscale/pull/1681
-						// https://github.com/timescale/promscale/pull/1678
-						// Let's skip now and fix it in a follow-up PR.
-						"FindTraces/Tags_\\+_Operation_name$",
-					},
 				}
 				si.IntegrationTestAll(t.(*testing.T))
 			})

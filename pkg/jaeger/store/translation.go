@@ -147,28 +147,34 @@ func addRefTypeAttributeToLinks(span *model.Span, links ptrace.SpanLinkSlice) {
 	// The reference to the parent span is stored directly as an attribute
 	// of the Span and not as a Link.
 	parentsSpanID := span.ParentSpanID()
-	otherParentsSpanIDs := map[model.SpanID]struct{}{}
+
+	// Recreate SpanLinkSlice from Span References.
+	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/c9e646b99610615730a845acc278b30bf49aa35f/pkg/translator/jaeger/jaegerproto_to_traces.go#L411-L427
+	spanLinks := ptrace.NewSpanLinkSlice()
+	spanLinks.EnsureCapacity(len(span.References))
+	for _, ref := range span.References {
+		if ref.RefType == model.ChildOf && ref.SpanID == parentsSpanID {
+			continue
+		}
+		sl := spanLinks.AppendEmpty()
+		jSpanRefToInternal(ref, sl)
+	}
+	spanLinks.CopyTo(links)
+}
+
+func jSpanRefToInternal(ref model.SpanRef, link ptrace.SpanLink) {
+	link.SetTraceID(uInt64ToTraceID(ref.TraceID.High, ref.TraceID.Low))
+	link.SetSpanID(uInt64ToSpanID(uint64(ref.SpanID)))
 
 	// Since there are only 2 types of refereces, ChildOf and FollowsFrom, we
 	// keep track only of the former.
-	for _, ref := range span.References {
-		if ref.RefType == model.ChildOf && ref.SpanID != parentsSpanID {
-			otherParentsSpanIDs[ref.SpanID] = struct{}{}
-		}
-	}
-
-	for i := 0; i < links.Len(); i++ {
-		link := links.At(i)
-		spanID := spanIDToJaegerProto(link.SpanID())
-
-		// Everything that's not ChildOf will be set as FollowsFrom.
-		if _, ok := otherParentsSpanIDs[spanID]; ok {
-			link.Attributes().PutString(
-				conventions.AttributeOpentracingRefType,
-				conventions.AttributeOpentracingRefTypeChildOf,
-			)
-			continue
-		}
+	// Everything that's not ChildOf will be set as FollowsFrom.
+	if ref.RefType == model.ChildOf {
+		link.Attributes().PutString(
+			conventions.AttributeOpentracingRefType,
+			conventions.AttributeOpentracingRefTypeChildOf,
+		)
+	} else {
 		link.Attributes().PutString(
 			conventions.AttributeOpentracingRefType,
 			conventions.AttributeOpentracingRefTypeFollowsFrom,
@@ -257,6 +263,14 @@ func getOtherParents(traces ptrace.Traces) map[model.SpanID][]int {
 		}
 	}
 	return otherParents
+}
+
+// UInt64ToTraceID converts the pair of uint64 representation of a TraceID to pcommon.TraceID.
+func uInt64ToTraceID(high, low uint64) pcommon.TraceID {
+	traceID := [16]byte{}
+	binary.BigEndian.PutUint64(traceID[:8], high)
+	binary.BigEndian.PutUint64(traceID[8:], low)
+	return traceID
 }
 
 func uInt64ToSpanID(id uint64) pcommon.SpanID {
