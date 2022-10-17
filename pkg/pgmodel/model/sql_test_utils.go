@@ -153,6 +153,9 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 	}
 
 	assert.Equal(r.t, len(row.Args), len(args), "Args of different lengths @ %d %s", idx, sql)
+	if len(row.Args) != len(args) {
+		return nil, row.Err
+	}
 	for i := range row.Args {
 		switch row.Args[i].(type) {
 		case pgtype.TextEncoder:

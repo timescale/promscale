@@ -28,6 +28,7 @@ type Cfg struct {
 	TracesAsyncAcks         bool
 	NumCopiers              int
 	DisableEpochSync        bool
+	DisableMetricCreation   bool
 	IgnoreCompressedChunks  bool
 	InvertedLabelsCacheSize uint64
 	TracesBatchTimeout      time.Duration

@@ -5,9 +5,11 @@
 package ingestor
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -15,6 +17,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/psctx"
 )
 
 func TestMetricTableName(t *testing.T) {
@@ -146,11 +149,16 @@ func TestSendBatches(t *testing.T) {
 		model.NewPromSamples(makeSeries(2), make([]prompb.Sample, 1)),
 		model.NewPromSamples(makeSeries(3), make([]prompb.Sample, 1)),
 	}
-	firstReq := &insertDataRequest{metric: "test", data: data, finished: &workFinished, errChan: errChan}
-	copierCh := make(chan readRequest)
-	go sendBatches(firstReq, nil, nil, &pgmodel.MetricInfo{MetricID: 1, TableName: "test"}, copierCh)
-	copierReq := <-copierCh
-	batch := <-copierReq.copySender
+	spanCtx := psctx.WithStartTime(context.Background(), time.Now().Add(-time.Hour))
+	firstReq := &insertDataRequest{metric: "test", requestCtx: spanCtx, data: data, finished: &workFinished, errChan: errChan}
+	reservationQ := NewReservationQueue()
+	go sendBatches(firstReq, nil, nil, &pgmodel.MetricInfo{MetricID: 1, TableName: "test"}, reservationQ)
+	resos := make([]readRequest, 0, 1)
+	reservationQ.Peek()
+	resos, cnt := reservationQ.PopOntoBatch(resos)
+	require.Equal(t, 1, cnt)
+	require.Equal(t, 1, len(resos))
+	batch := <-(resos[0].copySender)
 
 	// we make sure that we receive batch data
 	for i := 0; i < 3; i++ {
