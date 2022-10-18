@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/log"
 	"gopkg.in/yaml.v2"
+
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 const (
@@ -47,6 +49,7 @@ type Metrics struct {
 	HALeaseRefresh  DayDuration `mapstructure:"ha_lease_refresh" yaml:"ha_lease_refresh"`
 	HALeaseTimeout  DayDuration `mapstructure:"ha_lease_timeout" yaml:"ha_lease_timeout"`
 	RetentionPeriod DayDuration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
+	Downsample      `mapstructure:"downsample" yaml:"downsample,omitempty"`
 }
 
 // Traces contains dataset configuration options for traces data.
@@ -63,6 +66,10 @@ func NewConfig(contents string) (cfg Config, err error) {
 // Apply applies the configuration to the database via the supplied DB connection.
 func (c *Config) Apply(conn *pgx.Conn) error {
 	c.applyDefaults()
+
+	if err := c.Downsample.Apply(conn); err != nil {
+		return fmt.Errorf("error applying configuration for downsampling: %w", err)
+	}
 
 	log.Info("msg", fmt.Sprintf("Setting metric dataset default chunk interval to %s", c.Metrics.ChunkInterval))
 	log.Info("msg", fmt.Sprintf("Setting metric dataset default compression to %t", *c.Metrics.Compression))
@@ -91,21 +98,21 @@ func (c *Config) Apply(conn *pgx.Conn) error {
 
 func (c *Config) applyDefaults() {
 	if c.Metrics.ChunkInterval <= 0 {
-		c.Metrics.ChunkInterval = DayDuration(defaultMetricChunkInterval)
+		c.Metrics.ChunkInterval = util.DayDuration(defaultMetricChunkInterval)
 	}
 	if c.Metrics.Compression == nil {
 		c.Metrics.Compression = &defaultMetricCompressionVar
 	}
 	if c.Metrics.HALeaseRefresh <= 0 {
-		c.Metrics.HALeaseRefresh = DayDuration(defaultMetricHALeaseRefresh)
+		c.Metrics.HALeaseRefresh = util.DayDuration(defaultMetricHALeaseRefresh)
 	}
 	if c.Metrics.HALeaseTimeout <= 0 {
-		c.Metrics.HALeaseTimeout = DayDuration(defaultMetricHALeaseTimeout)
+		c.Metrics.HALeaseTimeout = util.DayDuration(defaultMetricHALeaseTimeout)
 	}
 	if c.Metrics.RetentionPeriod <= 0 {
-		c.Metrics.RetentionPeriod = DayDuration(defaultMetricRetentionPeriod)
+		c.Metrics.RetentionPeriod = util.DayDuration(defaultMetricRetentionPeriod)
 	}
 	if c.Traces.RetentionPeriod <= 0 {
-		c.Traces.RetentionPeriod = DayDuration(defaultTraceRetentionPeriod)
+		c.Traces.RetentionPeriod = util.DayDuration(defaultTraceRetentionPeriod)
 	}
 }

@@ -172,6 +172,13 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 		err = cfg.DatasetCfg.Apply(conn)
 	} else if cfg.DatasetConfig != "" {
 		err = applyDatasetConfig(conn, cfg.DatasetConfig)
+	} else {
+		// We apply downsampling settings even when DatasetConfig is not given, which is the most common case.
+		downsampleCfg := &dataset.Downsample{}
+		err = downsampleCfg.Apply(conn)
+		if err != nil {
+			return nil, fmt.Errorf("error applying downsampling configuration: %w", err)
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("error applying dataset configuration: %w", err)
