@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package dataset
 
 import (
@@ -6,8 +10,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/log"
 	"gopkg.in/yaml.v2"
+
+	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 const (
@@ -38,16 +44,17 @@ type Config struct {
 
 // Metrics contains dataset configuration options for metrics data.
 type Metrics struct {
-	ChunkInterval   DayDuration `yaml:"default_chunk_interval"`
-	Compression     *bool       `yaml:"compress_data"` // Using pointer to check if the the value was set.
-	HALeaseRefresh  DayDuration `yaml:"ha_lease_refresh"`
-	HALeaseTimeout  DayDuration `yaml:"ha_lease_timeout"`
-	RetentionPeriod DayDuration `yaml:"default_retention_period"`
+	ChunkInterval   util.DayDuration `yaml:"default_chunk_interval"`
+	Compression     *bool            `yaml:"compress_data"` // Using pointer to check if the value was set.
+	HALeaseRefresh  util.DayDuration `yaml:"ha_lease_refresh"`
+	HALeaseTimeout  util.DayDuration `yaml:"ha_lease_timeout"`
+	RetentionPeriod util.DayDuration `yaml:"default_retention_period"`
+	Downsample      `yaml:"downsample,omitempty"`
 }
 
 // Traces contains dataset configuration options for traces data.
 type Traces struct {
-	RetentionPeriod DayDuration `yaml:"default_retention_period"`
+	RetentionPeriod util.DayDuration `yaml:"default_retention_period"`
 }
 
 // NewConfig creates a new dataset config based on the configuration YAML contents.
@@ -59,6 +66,10 @@ func NewConfig(contents string) (cfg Config, err error) {
 // Apply applies the configuration to the database via the supplied DB connection.
 func (c *Config) Apply(conn *pgx.Conn) error {
 	c.applyDefaults()
+
+	if err := c.Downsample.Apply(conn); err != nil {
+		return fmt.Errorf("error applying configuration for downsampling: %w", err)
+	}
 
 	log.Info("msg", fmt.Sprintf("Setting metric dataset default chunk interval to %s", c.Metrics.ChunkInterval))
 	log.Info("msg", fmt.Sprintf("Setting metric dataset default compression to %t", *c.Metrics.Compression))
@@ -87,21 +98,21 @@ func (c *Config) Apply(conn *pgx.Conn) error {
 
 func (c *Config) applyDefaults() {
 	if c.Metrics.ChunkInterval <= 0 {
-		c.Metrics.ChunkInterval = DayDuration(defaultMetricChunkInterval)
+		c.Metrics.ChunkInterval = util.DayDuration(defaultMetricChunkInterval)
 	}
 	if c.Metrics.Compression == nil {
 		c.Metrics.Compression = &defaultMetricCompressionVar
 	}
 	if c.Metrics.HALeaseRefresh <= 0 {
-		c.Metrics.HALeaseRefresh = DayDuration(defaultMetricHALeaseRefresh)
+		c.Metrics.HALeaseRefresh = util.DayDuration(defaultMetricHALeaseRefresh)
 	}
 	if c.Metrics.HALeaseTimeout <= 0 {
-		c.Metrics.HALeaseTimeout = DayDuration(defaultMetricHALeaseTimeout)
+		c.Metrics.HALeaseTimeout = util.DayDuration(defaultMetricHALeaseTimeout)
 	}
 	if c.Metrics.RetentionPeriod <= 0 {
-		c.Metrics.RetentionPeriod = DayDuration(defaultMetricRetentionPeriod)
+		c.Metrics.RetentionPeriod = util.DayDuration(defaultMetricRetentionPeriod)
 	}
 	if c.Traces.RetentionPeriod <= 0 {
-		c.Traces.RetentionPeriod = DayDuration(defaultTraceRetentionPeriod)
+		c.Traces.RetentionPeriod = util.DayDuration(defaultTraceRetentionPeriod)
 	}
 }

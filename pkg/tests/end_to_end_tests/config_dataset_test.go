@@ -2,6 +2,7 @@ package end_to_end_tests
 
 import (
 	"context"
+	"github.com/timescale/promscale/pkg/util"
 	"testing"
 	"time"
 
@@ -28,14 +29,14 @@ func TestDatasetConfigApply(t *testing.T) {
 
 		cfg := dataset.Config{
 			Metrics: dataset.Metrics{
-				ChunkInterval:   dataset.DayDuration(4 * time.Hour),
+				ChunkInterval:   util.DayDuration(4 * time.Hour),
 				Compression:     &disableCompression,
-				HALeaseRefresh:  dataset.DayDuration(15 * time.Second),
-				HALeaseTimeout:  dataset.DayDuration(2 * time.Minute),
-				RetentionPeriod: dataset.DayDuration(15 * 24 * time.Hour),
+				HALeaseRefresh:  util.DayDuration(15 * time.Second),
+				HALeaseTimeout:  util.DayDuration(2 * time.Minute),
+				RetentionPeriod: util.DayDuration(15 * 24 * time.Hour),
 			},
 			Traces: dataset.Traces{
-				RetentionPeriod: dataset.DayDuration(10 * 24 * time.Hour),
+				RetentionPeriod: util.DayDuration(10 * 24 * time.Hour),
 			},
 		}
 
