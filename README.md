@@ -44,7 +44,9 @@ Check our short [demo guide](https://docs.timescale.com/promscale/latest/quick-s
 * **Prometheus metric storage:** support for remote write, remote read, PromQL, metric metadata and
 exemplars.
 * **OpenTelemetry trace storage:** support for ingestion of traces through the OpenTelemetry Protocol
-(OTLP). Jaeger and Zipkin traces are supported via the OpenTelemetry Collector.
+(OTLP). 
+* **Jaeger and Zipkin trace storage:** support for ingestion of traces through both Jaeger and OpenTelemetry
+Collector.
 * **Grafana integration:** query and visualize your metrics and traces using the PromQL, SQL and Jaeger
 datasources.
 * **Jaeger integration:** visualize traces in Jaeger by configuring Promscale as a Jaeger's GRPC
