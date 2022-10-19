@@ -27,6 +27,8 @@ type Cache struct {
 	dataSize uint64
 	// number of evictions
 	evictions uint64
+	// max eviction timestamp in unix seconds
+	maxEvictionTs int32
 
 	// guards next, and len(storage) and ensures that at most one eviction
 	// occurs at a time, always grabbed _before_ elementsLock
@@ -40,9 +42,13 @@ type element struct {
 	key   interface{}
 	value interface{}
 
-	// CLOCK marker if this is recently used
-	used uint32
-	size uint64
+	// CLOCK marker if this element is recently used together with timestamp
+	// To avoid memory waste we pack together `used` flag with timestamp into 32 bits
+	// Left most bit represents if element was used (1 or 0). The rest (31 bits) represent timestamp
+	// Timestamp is helping us figure out if we should attempt to grow cache or not
+	// Timestamp is stored in Unix seconds (31 bits should be enough for the next 15 years)
+	usedWithTs uint32
+	size       uint64
 
 	// pad Elements out to be cache-aligned, see BenchmarkCacheFalseSharing
 	_ [16]byte
@@ -100,17 +106,18 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (exis
 	elem, present := self.elements[key]
 	if present {
 		// we'll count a double-insert as a hit. See the comment in get
-		if atomic.LoadUint32(&elem.used) != 0 {
-			atomic.StoreUint32(&elem.used, 1)
+		if !extractUsed(atomic.LoadUint32(&elem.usedWithTs)) {
+			atomic.StoreUint32(&elem.usedWithTs, packUsedAndTimestamp(true, int32(time.Now().Unix())))
 		}
 		return elem, false, true
 	}
 
 	var insertLocation *element
+	newElement := element{key: key, value: value, size: size, usedWithTs: packUsedAndTimestamp(false, int32(time.Now().Unix()))}
 	if len(self.storage) >= cap(self.storage) {
 		insertLocation = self.evict()
 		if insertLocation == nil {
-			return &element{key: key, value: value, size: size}, false, false
+			return &newElement, false, false
 		}
 		self.elementsLock.Lock()
 		defer self.elementsLock.Unlock()
@@ -118,11 +125,15 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (exis
 		self.dataSize -= insertLocation.size
 		self.dataSize += size
 		self.evictions++
-		*insertLocation = element{key: key, value: value, size: size}
+		evictionTs := extractTimestamp(insertLocation.usedWithTs)
+		if self.maxEvictionTs < evictionTs {
+			self.maxEvictionTs = evictionTs
+		}
+		*insertLocation = newElement
 	} else {
 		self.elementsLock.Lock()
 		defer self.elementsLock.Unlock()
-		self.storage = append(self.storage, element{key: key, value: value, size: size})
+		self.storage = append(self.storage, newElement)
 		self.dataSize += size
 		insertLocation = &self.storage[len(self.storage)-1]
 	}
@@ -168,8 +179,8 @@ func (self *Cache) evict() (insertPtr *element) {
 	for i := 0; i < 2; i++ {
 		for next := range postStart {
 			elem := &postStart[next]
-			old := atomic.SwapUint32(&elem.used, 0)
-			if old == 0 {
+			old := atomic.SwapUint32(&elem.usedWithTs, setUsed(false, elem.usedWithTs))
+			if !extractUsed(old) {
 				insertPtr = elem
 			}
 
@@ -180,8 +191,8 @@ func (self *Cache) evict() (insertPtr *element) {
 		}
 		for next := range preStart {
 			elem := &preStart[next]
-			old := atomic.SwapUint32(&elem.used, 0)
-			if old == 0 {
+			old := atomic.SwapUint32(&elem.usedWithTs, setUsed(false, elem.usedWithTs))
+			if !extractUsed(old) {
 				insertPtr = elem
 			}
 
@@ -252,8 +263,8 @@ func (self *Cache) get(key interface{}) (interface{}, bool) {
 	// this is a read-only operation, and doesn't trash the cache line that used
 	// is stored on. The lack of atomicity of the update doesn't matter for our
 	// use case.
-	if atomic.LoadUint32(&elem.used) == 0 {
-		atomic.StoreUint32(&elem.used, 1)
+	if !extractUsed(atomic.LoadUint32(&elem.usedWithTs)) {
+		atomic.StoreUint32(&elem.usedWithTs, packUsedAndTimestamp(true, int32(time.Now().Unix())))
 	}
 	self.metrics.Inc(self.metrics.hitsTotal)
 
@@ -274,8 +285,8 @@ func (self *Cache) unmark(key string) bool {
 	// this is a read-only operation, and doesn't trash the cache line that used
 	// is stored on. The lack of atomicity of the update doesn't matter for our
 	// use case.
-	if atomic.LoadUint32(&elem.used) != 0 {
-		atomic.StoreUint32(&elem.used, 0)
+	if extractUsed(atomic.LoadUint32(&elem.usedWithTs)) {
+		atomic.StoreUint32(&elem.usedWithTs, setUsed(false, elem.usedWithTs))
 	}
 
 	return true
@@ -296,9 +307,9 @@ func (self *Cache) ExpandTo(newMax int) {
 	for i := range self.storage {
 		elem := &self.storage[i]
 		newStorage = append(newStorage, element{
-			key:   elem.key,
-			value: elem.value,
-			used:  atomic.LoadUint32(&elem.used),
+			key:        elem.key,
+			value:      elem.value,
+			usedWithTs: atomic.LoadUint32(&elem.usedWithTs),
 		})
 	}
 
@@ -313,6 +324,8 @@ func (self *Cache) ExpandTo(newMax int) {
 
 	self.elements = newElements
 	self.storage = newStorage
+	self.maxEvictionTs = 0
+	self.evictions = 0
 }
 
 func (self *Cache) Reset() {
@@ -328,6 +341,8 @@ func (self *Cache) Reset() {
 	self.elements = newElements
 	self.storage = newStorage
 	self.next = 0
+	self.maxEvictionTs = 0
+	self.evictions = 0
 }
 
 func (self *Cache) Len() int {
@@ -340,6 +355,12 @@ func (self *Cache) Evictions() uint64 {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()
 	return self.evictions
+}
+
+func (self *Cache) MaxEvictionTs() int32 {
+	self.elementsLock.RLock()
+	defer self.elementsLock.RUnlock()
+	return self.maxEvictionTs
 }
 
 func (self *Cache) SizeBytes() uint64 {
@@ -365,4 +386,32 @@ func (self *Cache) debugString() string {
 		str = fmt.Sprintf("%s%v: %v, ", str, elem.key, elem.value)
 	}
 	return fmt.Sprintf("%s]", str)
+}
+
+// extractTimestamp skips leftmost bit and converts the rest into timestamp (unix seconds)
+func extractTimestamp(in uint32) int32 {
+	return int32(in & ((1 << 31) - 1))
+}
+
+// extractUsed gets the first bit from the left
+// checking if element has been used
+func extractUsed(in uint32) bool {
+	return 1 == (in >> 31)
+}
+
+// setUsed sets first bit from the left. This bit marks if element has been used
+func setUsed(used bool, in uint32) uint32 {
+	if used {
+		return in | uint32(1<<31)
+	}
+	return in &^ uint32(1<<31)
+}
+
+// packUsedAndTimestamp packs bool flag and timestamp into 32 bits
+func packUsedAndTimestamp(used bool, ts int32) uint32 {
+	var usedBit int
+	if used {
+		usedBit = 1
+	}
+	return uint32(usedBit<<31) | uint32(ts)
 }
