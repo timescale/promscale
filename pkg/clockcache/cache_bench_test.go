@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"sync"
 	"testing"
+	"time"
 )
 
 // microbenchmark. measure the length of the Insert critical section
@@ -73,8 +74,9 @@ func BenchmarkEviction(b *testing.B) {
 }
 
 func (c *Cache) markAll() {
+	now := int32(time.Now().Unix())
 	for i := range c.storage {
-		c.storage[i].used = 2
+		c.storage[i].usedWithTs = packUsedAndTimestamp(true, now)
 	}
 }
 

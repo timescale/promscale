@@ -6,12 +6,14 @@ package clockcache
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"math/rand"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 	"unsafe"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestWriteAndGetOnCache(t *testing.T) {
@@ -215,7 +217,12 @@ func TestExpand(t *testing.T) {
 		t.Errorf("Unexpected size %v", cache.SizeBytes())
 	}
 
+	require.Equal(t, int32(0), cache.MaxEvictionTs(), "unexpected eviction")
+
 	cache.Insert(4, 4, 20)
+	if cache.maxEvictionTs == 0 {
+		t.Errorf("Eviction timestamp missing")
+	}
 	expected = "[1: 1, 4: 4, 3: 3, ]"
 	if cache.debugString() != expected {
 		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
@@ -226,6 +233,7 @@ func TestExpand(t *testing.T) {
 	}
 
 	cache.ExpandTo(5)
+	require.Equal(t, int32(0), cache.MaxEvictionTs(), "max eviction timestamp not reset")
 	expected = "[1: 1, 4: 4, 3: 3, ]"
 	if cache.debugString() != expected {
 		t.Errorf("unexpected cache\nexpected\n\t%s\nfound\n\t%s\n", expected, cache.debugString())
@@ -352,4 +360,17 @@ func TestCacheEvictionOnWraparound(t *testing.T) {
 		// Assert that our expectations are met
 		assertCacheContains(cache, cachedItems)
 	}
+}
+
+func TestBitPacking(t *testing.T) {
+	timestamp := int32(time.Date(2020, time.January, 1, 1, 0, 0, 0, time.Local).UTC().Unix())
+	used := true
+	packed := packUsedAndTimestamp(used, int32(timestamp))
+	usedExt := extractUsed(packed)
+	require.Equal(t, used, usedExt, "used flag not properly extracted")
+	timestampExt := extractTimestamp(packed)
+	require.Equal(t, timestamp, timestampExt, "timestamp not properly extracted")
+	packed = setUsed(false, packed)
+	usedExt = extractUsed(packed)
+	require.Equal(t, false, usedExt, "used flag not properly set")
 }

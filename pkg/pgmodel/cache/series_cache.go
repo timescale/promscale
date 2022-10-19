@@ -24,9 +24,9 @@ import (
 //this seems like a good initial size for /active/ series. Takes about 32MB
 const DefaultSeriesCacheSize = 250000
 
-const GrowCheckDuration = time.Minute // check whether to grow the series cache this often
-const GrowEvictionThreshold = 0.2     // grow when evictions more than 20% of cache size
-const GrowFactor = float64(2.0)       // multiply cache size by this factor when growing the cache
+const growCheckDuration = time.Second * 5 // check whether to grow the series cache this often
+const growFactor = float64(2.0)           // multiply cache size by this factor when growing the cache
+var evictionMaxAge = time.Minute * 2      // grow cache if we are evicting elements younger than `now - evictionMaxAge`
 
 // SeriesCache is a cache of model.Series entries.
 type SeriesCache interface {
@@ -55,17 +55,12 @@ func NewSeriesCache(config Config, sigClose <-chan struct{}) *SeriesCacheImpl {
 }
 
 func (t *SeriesCacheImpl) runSizeCheck(sigClose <-chan struct{}) {
-	prev := uint64(0)
-	ticker := time.NewTicker(GrowCheckDuration)
+	ticker := time.NewTicker(growCheckDuration)
 	for {
 		select {
 		case <-ticker.C:
-			current := t.cache.Evictions()
-			newEvictions := current - prev
-			evictionsThresh := uint64(float64(t.Len()) * GrowEvictionThreshold)
-			prev = current
-			if newEvictions > evictionsThresh {
-				t.grow(newEvictions)
+			if t.shouldGrow() {
+				t.grow()
 			}
 		case <-sigClose:
 			return
@@ -73,18 +68,24 @@ func (t *SeriesCacheImpl) runSizeCheck(sigClose <-chan struct{}) {
 	}
 }
 
-func (t *SeriesCacheImpl) grow(newEvictions uint64) {
+// shouldGrow allows cache growth if we are evicting elements that were recently used or inserted
+// evictionMaxAge defines the interval
+func (t *SeriesCacheImpl) shouldGrow() bool {
+	return t.cache.MaxEvictionTs()+int32(evictionMaxAge.Seconds()) > int32(time.Now().Unix())
+}
+
+func (t *SeriesCacheImpl) grow() {
 	sizeBytes := t.cache.SizeBytes()
 	oldSize := t.cache.Cap()
 	if float64(sizeBytes)*1.2 >= float64(t.maxSizeBytes) {
 		log.Warn("msg", "Series cache is too small and cannot be grown",
 			"current_size_bytes", float64(sizeBytes), "max_size_bytes", float64(t.maxSizeBytes),
-			"current_size_elements", oldSize, "check_interval", GrowCheckDuration,
-			"new_evictions", newEvictions, "new_evictions_percent", 100*(float64(newEvictions)/float64(oldSize)))
+			"current_size_elements", oldSize, "check_interval", growCheckDuration,
+			"eviction_max_age", evictionMaxAge)
 		return
 	}
 
-	multiplier := GrowFactor
+	multiplier := growFactor
 	if float64(sizeBytes)*multiplier >= float64(t.maxSizeBytes) {
 		multiplier = float64(t.maxSizeBytes) / float64(sizeBytes)
 	}
@@ -97,7 +98,7 @@ func (t *SeriesCacheImpl) grow(newEvictions uint64) {
 		"new_size_elements", newNumElements, "current_size_elements", oldSize,
 		"new_size_bytes", float64(sizeBytes)*multiplier, "max_size_bytes", float64(t.maxSizeBytes),
 		"multiplier", multiplier,
-		"new_evictions", newEvictions, "new_evictions_percent", 100*(float64(newEvictions)/float64(oldSize)))
+		"eviction_max_age", evictionMaxAge)
 	t.cache.ExpandTo(newNumElements)
 }
 
