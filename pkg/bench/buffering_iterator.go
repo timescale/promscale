@@ -79,7 +79,7 @@ func NewBufferingIteratorWorkQueue() *BufferingIteratorWorkQueue {
 
 	wq.cond = sync.NewCond(&wq.l)
 
-	chunkFetchWorkers := 1
+	chunkFetchWorkers := 8
 	//todo close channel && wg
 	for i := 0; i < chunkFetchWorkers; i++ {
 		go chunkFetchWorker(wq)

@@ -34,7 +34,7 @@ type Worker struct {
 
 func NewWorker() *Worker {
 	wq := NewBufferingIteratorWorkQueue()
-	ch := make(chan *point, 1000)
+	ch := make(chan *point, 7000000)
 	sth := NewSeriesTimeHeap()
 	return &Worker{nil, ch, sth, wq, sync.WaitGroup{}}
 }

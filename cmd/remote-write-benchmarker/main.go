@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"runtime"
 	"time"
 
 	_ "net/http/pprof"
@@ -36,7 +37,7 @@ func main() {
 		RemoteWriteConfig:       config.DefaultRemoteWriteConfig,
 		RepeatedRuns:            1,
 		FakeSendDuration:        -1,
-		Concurrency:             4,
+		Concurrency:             runtime.NumCPU(),
 		ExternalLabels:          labels.Labels{labels.Label{Name: "cluster", Value: "one"}, labels.Label{Name: "__replica__", Value: "1"}},
 	}
 
