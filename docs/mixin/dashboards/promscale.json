@@ -471,7 +471,7 @@
               "refId": "A"
             }
           ],
-          "title": "Requests (HTTP)",
+          "title": "Requests to Ingestor",
           "type": "timeseries"
         },
         {
@@ -761,9 +761,9 @@
                 "uid": "${DS_PROMETHEUS}"
               },
               "exemplar": true,
-              "expr": "rate(grpc_server_handled_total{grpc_service=~\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\"}[$__rate_interval]) > 0",
+              "expr": "rate(grpc_server_msg_received_total{grpc_method=~\"(WriteSpan|WriteSpanStream|Export)\"}[$__rate_interval])",
               "interval": "",
-              "legendFormat": "{{ grpc_type }}",
+              "legendFormat": "{{ grpc_service }}",
               "refId": "A"
             }
           ],
@@ -1774,7 +1774,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "exemplar": true,
-          "expr": "1 - promscale_sql_database_health_check_errors_total / promscale_sql_database_health_check_total",
+          "expr": "1 - rate(promscale_sql_database_health_check_errors_total[$__rate_interval]) / rate(promscale_sql_database_health_check_total[$__rate_interval])",
           "interval": "",
           "legendFormat": "{{ instance }}",
           "refId": "A"
