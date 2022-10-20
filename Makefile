@@ -4,7 +4,7 @@ LOCAL_DOCKER_BASE := local/dev_promscale_extension
 GHCR_DOCKER_BASE := ghcr.io/timescale/dev_promscale_extension
 MDOX_BIN=mdox
 MDOX_VALIDATE_CONFIG=
-CURRENT_BRANCH?=$(shell git branch --show-current | sed 's#/#-#')
+CURRENT_BRANCH?=$(shell git rev-parse --abbrev-ref HEAD)
 EXTENSION_VERSION=$(shell cat EXTENSION_VERSION | tr -d '[:space:]')
 
 
@@ -31,7 +31,6 @@ pkg/tests/testdata/traces-dataset.sz:
 e2e: DOCKER_IMAGE?=$(shell ./scripts/fallback-docker.sh $(LOCAL_DOCKER_BASE):head-ts2-pg14 $(GHCR_DOCKER_BASE):$(CURRENT_BRANCH)-ts2-pg14 $(GHCR_DOCKER_BASE):$(EXTENSION_VERSION)-ts2-pg14)
 e2e: pkg/tests/testdata/traces-dataset.sz generate
 	go test -v ./pkg/tests/end_to_end_tests/ -timescale-docker-image=$(DOCKER_IMAGE)
-	go test -v ./pkg/tests/end_to_end_tests/ -use-timescaledb=false -timescale-docker-image=$(DOCKER_IMAGE)
 	# TODO: Skipping multinode because tests are broken for now
 	# go test -v ./pkg/tests/end_to_end_tests/ -use-multinode -timescale-docker-image=$(DOCKER_IMAGE)
 

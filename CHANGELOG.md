@@ -15,7 +15,10 @@ We use the following categories for changes:
 
 ## Unreleased
 
+## [0.16.0] - 2022-10-20
+
 ### Added
+- Integration tests to qualify as certified Jaeger remote storage [#1686]
 
 ### Changed
 
@@ -26,8 +29,8 @@ We use the following categories for changes:
   references in Jaeger) for traces with more than one event and one link.
 - Fix incorrect reference types when retrieving Jaeger traces with multiple
   parent references [#1681].
-- Fix incorrect population of span kind field in jaeger getOperations response [#162
-]
+- Fix incorrect population of span kind field in jaeger getOperations response [#1686]
+- Improved query performance when getting trace by id [#1626]
 
 ## [0.15.0] - 2022-10-11
 
