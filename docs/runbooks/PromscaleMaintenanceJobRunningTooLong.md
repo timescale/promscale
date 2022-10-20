@@ -23,7 +23,7 @@ SELECT
 FROM  prom_info.metric;
 ```
 
-If `avg_not_yet_compressed_interval > 2` then See [Lots of uncompressed chunks](#lots-of-uncompressed-chunks) for mitigation
+If `avg_not_yet_compressed_chunks > 2` then See [Lots of uncompressed chunks](#lots-of-uncompressed-chunks) for mitigation
 
 If `avg_not_yet_compressed_interval is high AND avg_not_yet_compressed_chunks is small (<2)` then it indicates very big chunks.
 This can lead to maintenance jobs stuck on compressing this large chunk or waiting for the current chunk to stop getting new data.
