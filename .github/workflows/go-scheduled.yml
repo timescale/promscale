@@ -65,8 +65,5 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Test
-      run: make test
-
     - name: Test extended dataset
       run: go test -v -race -timeout=30m ./pkg/tests/end_to_end_tests/ -extended-test
