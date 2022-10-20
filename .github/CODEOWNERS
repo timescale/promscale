@@ -8,7 +8,8 @@ go.mod @timescale/o11y-applications
 go.sum @timescale/o11y-applications
 
 # CI system and repository configuration
-.github/ @timescale/o11y-applications @timescale/o11y-services
+.github/ @timescale/o11y-applications
+.github/workflows/mixin.yml @timescale/o11y-services
 
 # Go packages
 /pkg/api @antekresic @Harkishen-Singh
@@ -20,6 +21,3 @@ go.sum @timescale/o11y-applications
 /pkg/tests/upgrade_tests/ @timescale/o11y-data-platform
 
 /docs/mixin @timescale/o11y-services
-
-# helm and kubernetes related parts
-/deploy @timescale/o11y-services @cevian
