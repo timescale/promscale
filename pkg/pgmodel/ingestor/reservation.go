@@ -116,6 +116,13 @@ func (rq *ReservationQueue) Add(cs <-chan copyRequest, startTime time.Time) Rese
 	return si
 }
 
+func (rq *ReservationQueue) Len() int {
+	rq.lock.Lock()
+	defer rq.lock.Unlock()
+
+	return rq.q.Len()
+}
+
 func (rq *ReservationQueue) Close() {
 	rq.lock.Lock()
 	defer rq.lock.Unlock()

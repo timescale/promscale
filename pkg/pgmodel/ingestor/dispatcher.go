@@ -60,10 +60,6 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 		numCopiers = 1
 	}
 
-	//TODO remove
-	//metrics.IngestorChannelCap.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Set(float64(cap(copierReadRequestCh)))
-	//metrics.RegisterCopierChannelLenMetric(func() float64 { return float64(len(copierReadRequestCh)) })
-
 	if cfg.IgnoreCompressedChunks {
 		// Handle decompression to not decompress anything.
 		handleDecompression = skipDecompression

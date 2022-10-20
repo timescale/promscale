@@ -209,6 +209,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 			log.Error("msg", err)
 			t = time.Time{}
 		}
+		metrics.IngestorPipelineTime.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(t).Seconds())
 		reservation.Update(reservationQ, t)
 		addSpan.End()
 	}
@@ -223,6 +224,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 			log.Error("msg", err)
 			t = time.Time{}
 		}
+		metrics.IngestorPipelineTime.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(t).Seconds())
 		reservation = reservationQ.Add(copySender, t)
 	}
 
@@ -257,6 +259,14 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 		//try to send first, if not then keep batching
 		case copySender <- copyRequest{pending, info}:
 			metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
+			metrics.IngestorBatchDuration.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(pending.Start).Seconds())
+			if pending.IsFull() {
+				metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher", "reason": "size"}).Inc()
+			} else {
+				metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher", "reason": "requested"}).Inc()
+			}
+			//note that this is the number of <requests> waiting in the queue, not samples or series.
+			metrics.IngestorBatchRemainingAfterFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(len(recvCh)))
 			span.SetAttributes(attribute.Int("num_series", numSeries))
 			span.End()
 			pending = NewPendingBuffer()
@@ -268,6 +278,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 					span.AddEvent("Sending last non-empty batch")
 					copySender <- copyRequest{pending, info}
 					metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
+					metrics.IngestorBatchDuration.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(pending.Start).Seconds())
 				}
 				span.AddEvent("Exiting metric batcher batch loop")
 				span.SetAttributes(attribute.Int("num_series", numSeries))

@@ -40,6 +40,7 @@ type copyRequest struct {
 
 var (
 	getBatchMutex       = &sync.Mutex{}
+	lastGetBatch        = time.Time{}
 	handleDecompression = retryAfterDecompression
 )
 
@@ -177,6 +178,15 @@ func copierGetBatch(ctx context.Context, batch []readRequest, reservationQ *Rese
 		span.AddEvent("Unlocking")
 	}(span)
 
+	//note this metric logic does depend on the lock
+	now := time.Now()
+	if !lastGetBatch.IsZero() {
+		timeBetweenGetBatch := now.Sub(lastGetBatch)
+		metrics.IngestorWaitForCopierSeconds.With(labelsCopier).Observe(timeBetweenGetBatch.Seconds())
+
+	}
+	lastGetBatch = now
+
 	startTime, ok := reservationQ.Peek()
 	if !ok {
 		return batch, false
@@ -191,16 +201,24 @@ func copierGetBatch(ctx context.Context, batch []readRequest, reservationQ *Rese
 	// Values that have previously been tested with good results: 50ms-250ms.
 	if since < minDuration {
 		span.AddEvent("Sleep waiting to batch")
-		time.Sleep(minDuration - since)
+		sleepDuration := minDuration - since
+		metrics.IngestorWaitForBatchSleepSeconds.With(labelsCopier).Add(sleepDuration.Seconds())
+		metrics.IngestorWaitForBatchSleepTotal.With(labelsCopier).Inc()
+		time.Sleep(sleepDuration)
 	}
 
+	metrics.IngestorPipelineTime.With(labelsCopier).Observe(time.Since(startTime).Seconds())
 	span.AddEvent("After sleep")
 
 	batch, _ = reservationQ.PopOntoBatch(batch)
 
 	if len(batch) == cap(batch) {
 		span.AddEvent("Batch is full")
+		metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "reason": "size"}).Inc()
+	} else {
+		metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "reason": "timeout"}).Inc()
 	}
+	metrics.IngestorBatchRemainingAfterFlushTotal.With(labelsCopier).Observe(float64(reservationQ.Len()))
 	span.SetAttributes(attribute.Int("num_batches", len(batch)))
 	return batch, true
 }
@@ -505,7 +523,9 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 	metrics.IngestorItems.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "exemplar"}).Add(float64(totalExemplars))
 
 	tput.ReportDuplicateMetrics(duplicateSamples, duplicateMetrics)
-	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Observe(time.Since(insertStart).Seconds())
+	duration := time.Since(insertStart).Seconds()
+	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Observe(duration)
+	metrics.IngestorInsertDurationPerRow.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Observe(duration / (float64(totalExemplars + totalSamples)))
 	return nil, lowestMinTime
 }
 
