@@ -47,10 +47,10 @@ exemplars.
 (OTLP). Jaeger and Zipkin traces are supported via the OpenTelemetry Collector.
 * **Grafana integration:** query and visualize your metrics and traces using the PromQL, SQL and Jaeger
 datasources.
-* **Jaeger integration:** visualize traces in Jaeger by configuring Promscale as a Jaeger's GRPC
-backend storage. Use Promscale as the storage backend for the metrics required by the
-[Service Performance Management UI](https://www.jaegertracing.io/docs/1.36/spm/). No need for a
-separate system.
+* **Jaeger integration:** integrate Jaeger with Promscale to store and visualize your traces by
+configuring Promscale in Jaeger as GRPC backend storage. Use Promscale as the storage backend for
+the metrics required by the [Service Performance Management UI](https://www.jaegertracing.io/docs/1.36/spm/).
+No need for a separate Prometheus / PromQL compatible storage.
 * **Durable and reliable storage:** built on top of the maturity of Postgres and TimescaleDB with 
 millions of instances worldwide. A trusted system that offers high availability, replication, 
 data integrity, data compression, backups, authentication, roles and permissions.
