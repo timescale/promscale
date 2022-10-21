@@ -18,8 +18,8 @@
 **Promscale is a unified metric and trace observability backend for Prometheus,
 Jaeger and OpenTelemetry built on PostgreSQL and TimescaleDB.**
 
-Promscale serves as a robust and 100% PromQL-compliant Prometheus remote storage and as a durable and scalable
-Jaeger storage backend.
+Promscale serves as a robust and 100% PromQL-compliant Prometheus remote storage and as a durable and scalable 
+Jaeger storage backend. Promscale is a certified Jaeger storage backend.
 
 Unlike other observability backends, it has a simple and easy-to-manage architecture 
 with just two components: the Promscale Connector and the Promscale Database (PostgreSQL with the
@@ -41,16 +41,17 @@ Check our short [demo guide](https://docs.timescale.com/promscale/latest/quick-s
 
 ## Key Features
 
-* **Prometheus metric storage:** support for remote write, remote read, PromQL, metric metadata and
-exemplars.
+* **Prometheus metric storage:** support for remote write, remote read, 100% PromQL, metric metadata,
+exemplars and Prometheus HA.
 * **OpenTelemetry trace storage:** support for ingestion of traces through the OpenTelemetry Protocol
 (OTLP). Jaeger and Zipkin traces are supported via the OpenTelemetry Collector.
 * **Grafana integration:** query and visualize your metrics and traces using the PromQL, SQL and Jaeger
 datasources.
-* **Jaeger integration:** integrate Jaeger with Promscale to store and visualize your traces by
-configuring Promscale in Jaeger as GRPC backend storage. Use Promscale as the storage backend for
-the metrics required by the [Service Performance Management UI](https://www.jaegertracing.io/docs/1.36/spm/).
-No need for a separate Prometheus / PromQL compatible storage.
+* **Jaeger certified:** Promscale is a [certified Jaeger storage backend](https://github.com/jaegertracing/jaeger#multiple-storage-backends).
+Integrate Jaeger with Promscale to store and visualize your traces with a simple configuration change in Jaeger.
+Use Promscale as the storage backend for the metrics required by the
+[Service Performance Management UI](https://www.jaegertracing.io/docs/1.36/spm/). No need for a separate 
+Prometheus / PromQL compatible storage.
 * **Durable and reliable storage:** built on top of the maturity of Postgres and TimescaleDB with 
 millions of instances worldwide. A trusted system that offers high availability, replication, 
 data integrity, data compression, backups, authentication, roles and permissions.
