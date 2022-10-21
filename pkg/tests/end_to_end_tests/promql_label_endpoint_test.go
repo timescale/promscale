@@ -7,6 +7,7 @@ package end_to_end_tests
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/prometheus/prometheus/model/labels"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -108,7 +109,7 @@ func TestPromQLLabelEndpoint(t *testing.T) {
 		testMethod := testRequest(tsReq, promReq, client, labelsResultComparator, "label endpoint")
 		tester.Run("get label names", testMethod)
 
-		lCache := clockcache.WithMax(100)
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
 		labelNames, err := labelsReader.LabelNames()

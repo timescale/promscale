@@ -7,6 +7,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/prometheus/model/labels"
 	"net/http"
 	"sort"
 	"testing"
@@ -52,8 +53,8 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 		}
 
 		// Querying.
-		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		lCache := clockcache.WithMax(100)
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, model.MetricInfo](cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, mt.ReadAuthorizer())
 		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
@@ -252,8 +253,8 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		require.Equal(t, err.Error(), "write-authorizer process: authorization error for tenant tenant-c: unauthorized or invalid tenant")
 
 		// Querying.
-		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		lCache := clockcache.WithMax(100)
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, model.MetricInfo](cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, mt.ReadAuthorizer())
 		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
@@ -457,8 +458,8 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		require.NoError(t, err)
 
 		// Querying.
-		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		lCache := clockcache.WithMax(100)
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, model.MetricInfo](cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, mt.ReadAuthorizer())
 		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
@@ -655,8 +656,8 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 		require.Equal(t, err.Error(), "write-authorizer process: authorization error for tenant tenant-c: unauthorized or invalid tenant")
 
 		// Querying.
-		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		lCache := clockcache.WithMax(100)
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, model.MetricInfo](cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, mt.ReadAuthorizer())
 		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())

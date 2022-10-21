@@ -11,13 +11,12 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	"unsafe"
 )
 
 func TestWriteAndGetOnCache(t *testing.T) {
 	t.Parallel()
 
-	cache := WithMax(100)
+	cache := WithMax[string, int](100)
 
 	cache.Insert("1", 1, 8+1+8)
 	val, found := cache.Get("1")
@@ -34,7 +33,7 @@ func TestWriteAndGetOnCache(t *testing.T) {
 func TestEntryNotFound(t *testing.T) {
 	t.Parallel()
 
-	cache := WithMax(100)
+	cache := WithMax[string, int](100)
 
 	val, found := cache.Get("nonExistingKey")
 	if found {
@@ -52,7 +51,7 @@ func TestEntryNotFound(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	t.Parallel()
 
-	cache := WithMax(100)
+	cache := WithMax[string, int](100)
 
 	val, found := cache.Get("nonExistingKey")
 	if found {
@@ -64,7 +63,7 @@ func TestUpdate(t *testing.T) {
 	if !found {
 		t.Errorf("not found for 'key'")
 	}
-	if val.(int) != 1 {
+	if val != 1 {
 		t.Fatal("wrong value received")
 	}
 
@@ -84,7 +83,7 @@ func TestUpdate(t *testing.T) {
 func TestEviction(t *testing.T) {
 	t.Parallel()
 
-	cache := WithMax(10)
+	cache := WithMax[string, int64](10)
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("%d", i)
 		cache.Insert(key, int64(i), uint64(8+len(key)+8))
@@ -145,7 +144,7 @@ func TestEviction(t *testing.T) {
 func TestCacheGetRandomly(t *testing.T) {
 	t.Parallel()
 
-	cache := WithMax(10000)
+	cache := WithMax[string, int64](10000)
 	var wg sync.WaitGroup
 	var ntest = 800000
 	wg.Add(2)
@@ -173,31 +172,31 @@ func TestCacheGetRandomly(t *testing.T) {
 func TestBatch(t *testing.T) {
 	t.Parallel()
 
-	cache := WithMax(10)
+	cache := WithMax[int64, int64](10)
 
-	cache.InsertBatch([]interface{}{3, 6, 9, 12}, []interface{}{4, 7, 10, 13}, []uint64{16, 16, 16, 16})
+	cache.InsertBatch([]int64{3, 6, 9, 12}, []int64{4, 7, 10, 13}, []uint64{16, 16, 16, 16})
 
-	keys := []interface{}{1, 2, 3, 6, 9, 12, 13}
-	vals := make([]interface{}, len(keys))
+	keys := []int64{1, 2, 3, 6, 9, 12, 13}
+	vals := make([]int64, len(keys))
 	numFound := cache.GetValues(keys, vals)
 
 	if numFound != 4 {
 		t.Errorf("found incorrect number of values: expected 4, found %d\n\tkeys: %v\n\t%v", numFound, keys, vals)
 	}
 
-	expectedKeys := []interface{}{12, 9, 3, 6, 2, 13, 1}
+	expectedKeys := []int64{12, 9, 3, 6, 2, 13, 1}
 	if !reflect.DeepEqual(keys, expectedKeys) {
 		t.Errorf("unexpected keys:\nexpected\n\t%v\nfound\n\t%v", keys, expectedKeys)
 	}
 
-	expectedVals := []interface{}{13, 10, 4, 7, nil, nil, nil}
+	expectedVals := []int64{13, 10, 4, 7, 0, 0, 0}
 	if !reflect.DeepEqual(vals, expectedVals) {
 		t.Errorf("unexpected values:\nexpected\n\t%v\nfound\n\t%v", expectedVals, vals)
 	}
 }
 
 func TestExpand(t *testing.T) {
-	cache := WithMax(3)
+	cache := WithMax[int, int](3)
 	cache.Insert(1, 1, 16)
 	cache.Get(1)
 
@@ -258,7 +257,7 @@ func TestExpand(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
-	cache := WithMax(3)
+	cache := WithMax[int, int](3)
 	cache.Insert(1, 1, 16)
 	cache.Get(1)
 
@@ -313,19 +312,9 @@ func TestReset(t *testing.T) {
 	}
 }
 
-func TestElementCacheAligned(t *testing.T) {
-	elementSize := unsafe.Sizeof(element{})
-	if elementSize%64 != 0 {
-		t.Errorf("unaligned element size: %d", elementSize)
-	}
-	if elementSize != 64 {
-		t.Errorf("unexpected element size: %d", elementSize)
-	}
-}
-
 func TestCacheEvictionOnWraparound(t *testing.T) {
 	elems := 3
-	cache := WithMax(uint64(elems))
+	cache := WithMax[int, int](uint64(elems))
 	cachedItems := make([]int, elems)
 
 	// Prepopulate cache
@@ -334,11 +323,11 @@ func TestCacheEvictionOnWraparound(t *testing.T) {
 		cachedItems[i%3] = i
 	}
 
-	assertCacheContains := func(cache *Cache, pseudoCache []int) {
+	assertCacheContains := func(cache *Cache[int, int], pseudoCache []int) {
 		cacheKeys := make([]int, elems)
 		i := 0
 		for k := range cache.elements {
-			cacheKeys[i] = k.(int)
+			cacheKeys[i] = k
 			i += 1
 		}
 		require.ElementsMatch(t, cacheKeys, pseudoCache)

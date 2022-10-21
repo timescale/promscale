@@ -38,7 +38,7 @@ func (li LabelInfo) len() int {
 // Each label position is unique for a specific metric, meaning that
 // one label can have different position for different metrics
 type InvertedLabelsCache struct {
-	cache *clockcache.Cache
+	cache *clockcache.Cache[LabelKey, LabelInfo]
 }
 
 // Cache is thread-safe
@@ -46,14 +46,14 @@ func NewInvertedLabelsCache(size uint64) (*InvertedLabelsCache, error) {
 	if size <= 0 {
 		return nil, fmt.Errorf("labels cache size must be > 0")
 	}
-	cache := clockcache.WithMetrics("inverted_labels", "metric", size)
+	cache := clockcache.WithMetrics[LabelKey, LabelInfo]("inverted_labels", "metric", size)
 	return &InvertedLabelsCache{cache}, nil
 }
 
 func (c *InvertedLabelsCache) GetLabelsId(key LabelKey) (LabelInfo, bool) {
 	id, found := c.cache.Get(key)
 	if found {
-		return id.(LabelInfo), found
+		return id, found
 	}
 	return LabelInfo{}, false
 }

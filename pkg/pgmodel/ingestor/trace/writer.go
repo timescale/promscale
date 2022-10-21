@@ -56,10 +56,10 @@ type Writer interface {
 type traceWriterImpl struct {
 	conn pgxconn.PgxConn
 
-	schemaCache  *clockcache.Cache
-	instLibCache *clockcache.Cache
-	opCache      *clockcache.Cache
-	tagCache     *clockcache.Cache
+	schemaCache  *clockcache.Cache[schemaURL, pgtype.Int8]
+	instLibCache *clockcache.Cache[instrumentationLibrary, pgtype.Int8]
+	opCache      *clockcache.Cache[operation, pgtype.Int8]
+	tagCache     *clockcache.Cache[tag, tagIDs]
 }
 
 func NewWriter(conn pgxconn.PgxConn) *traceWriterImpl {

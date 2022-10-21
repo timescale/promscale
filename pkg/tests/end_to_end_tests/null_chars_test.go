@@ -7,6 +7,7 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/prometheus/model/labels"
 	"reflect"
 	"testing"
 
@@ -63,8 +64,8 @@ func TestOperationWithNullChars(t *testing.T) {
 		}
 
 		// Verify if revert of sanitized null char happens while querying.
-		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		lCache := clockcache.WithMax(100)
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, model.MetricInfo](cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)

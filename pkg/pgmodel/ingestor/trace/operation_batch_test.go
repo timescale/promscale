@@ -7,7 +7,6 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -19,9 +18,7 @@ const (
 func TestOperationBatch(t *testing.T) {
 	cache := newOperationCache()
 	incache := operation{"", "incache", ""}
-	invalid := operation{"", "invalid", ""}
 	cache.Insert(incache, pgtype.Int8{Int: 1337, Status: pgtype.Present}, incache.SizeInCache())
-	cache.Insert(invalid, "foo", 0)
 
 	testCases := []struct {
 		name               string
@@ -82,7 +79,7 @@ func TestOperationBatch(t *testing.T) {
 				require.Equal(t, pgtype.Int8{Int: 5, Status: pgtype.Present}, id)
 
 				id, err = batch.GetID("", "nonexistant", "")
-				require.EqualError(t, err, "error getting ID for operation { nonexistant }: error getting ID from batch")
+				require.EqualError(t, err, "error getting ID for operation { nonexistant }: error getting item from batch")
 				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
 
 				id, err = batch.GetID("", "zero", "")
@@ -123,15 +120,6 @@ func TestOperationBatch(t *testing.T) {
 				},
 			},
 			expectedError: `strconv.ParseInt: parsing "wrong type": invalid syntax`,
-		},
-		{
-			name:               "cache error",
-			operations:         []operation{{"", "invalid", ""}},
-			expectedBatchQueue: 1,
-			getIDCheck: func(t *testing.T, batch operationBatch) {
-				_, err := batch.GetID("", "invalid", "")
-				require.ErrorIs(t, err, errors.ErrInvalidCacheEntryType)
-			},
 		},
 	}
 

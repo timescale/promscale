@@ -7,6 +7,7 @@ package trace
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/clockcache"
 
 	"github.com/jackc/pgtype"
 	pgx "github.com/jackc/pgx/v4"
@@ -46,7 +47,7 @@ func (il instrumentationLibrary) AddToDBBatch(batch pgxconn.PgxBatch) {
 	batch.Queue(insertInstrumentationLibSQL, il.name, il.version, il.schemaURLID)
 }
 
-func (il instrumentationLibrary) ScanIDs(r pgx.BatchResults) (interface{}, error) {
+func (il instrumentationLibrary) ScanIDs(r pgx.BatchResults) (pgtype.Int8, error) {
 	var id pgtype.Int8
 	err := r.QueryRow().Scan(&id)
 	return id, err
@@ -55,10 +56,10 @@ func (il instrumentationLibrary) ScanIDs(r pgx.BatchResults) (interface{}, error
 // instrumentationLibraryBatch queues up items to send to the db but it sorts before sending
 //this avoids deadlocks in the db
 type instrumentationLibraryBatch struct {
-	b batcher
+	b batcher[instrumentationLibrary, pgtype.Int8]
 }
 
-func newInstrumentationLibraryBatch(cache cache) instrumentationLibraryBatch {
+func newInstrumentationLibraryBatch(cache *clockcache.Cache[instrumentationLibrary, pgtype.Int8]) instrumentationLibraryBatch {
 	return instrumentationLibraryBatch{
 		b: newBatcher(cache),
 	}
@@ -79,9 +80,16 @@ func (lib instrumentationLibraryBatch) GetID(name, version string, schemaURLID p
 		return pgtype.Int8{Status: pgtype.Null}, nil
 	}
 	il := instrumentationLibrary{name, version, schemaURLID}
-	id, err := lib.b.GetID(il)
+	id, err := lib.b.Get(il)
 	if err != nil {
-		return id, fmt.Errorf("error getting ID for instrumentation library %v: %w", il, err)
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("error getting ID for instrumentation library %v: %w", il, err)
+	}
+
+	if id.Status != pgtype.Present {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("error getting ID for instrumentation library %v: %s", il, "ID is null")
+	}
+	if id.Int == 0 {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("error getting ID for instrumentation library %v: %s", il, "ID is 0")
 	}
 
 	return id, nil

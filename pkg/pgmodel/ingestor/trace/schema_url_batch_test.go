@@ -7,7 +7,6 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/stretchr/testify/require"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
@@ -15,7 +14,6 @@ func TestSchemaURLBatch(t *testing.T) {
 	cache := newSchemaCache()
 	incache := schemaURL("incache")
 	cache.Insert(incache, pgtype.Int8{Int: 1337, Status: pgtype.Present}, incache.SizeInCache())
-	cache.Insert(batchItem(schemaURL("invalid")), "foo", 0)
 
 	testCases := []struct {
 		name               string
@@ -62,7 +60,7 @@ func TestSchemaURLBatch(t *testing.T) {
 				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
 
 				id, err = batch.GetID("nonexistant")
-				require.EqualError(t, err, "error getting ID for schema url nonexistant: error getting ID from batch")
+				require.EqualError(t, err, "error getting ID for schema url nonexistant: error getting item from batch")
 				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
 
 				id, err = batch.GetID("zero")
@@ -103,15 +101,6 @@ func TestSchemaURLBatch(t *testing.T) {
 				},
 			},
 			expectedError: `strconv.ParseInt: parsing "wrong type": invalid syntax`,
-		},
-		{
-			name:               "cache error",
-			urls:               []string{"invalid"},
-			expectedBatchQueue: 1,
-			getIDCheck: func(t *testing.T, batch schemaURLBatch) {
-				_, err := batch.GetID("invalid")
-				require.ErrorIs(t, err, errors.ErrInvalidCacheEntryType)
-			},
 		},
 	}
 

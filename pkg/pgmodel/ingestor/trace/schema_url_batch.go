@@ -7,6 +7,7 @@ package trace
 import (
 	"context"
 	"fmt"
+	"github.com/timescale/promscale/pkg/clockcache"
 
 	"github.com/jackc/pgtype"
 	pgx "github.com/jackc/pgx/v4"
@@ -32,17 +33,17 @@ func (s schemaURL) AddToDBBatch(batch pgxconn.PgxBatch) {
 	batch.Queue(insertSchemaURLSQL, s)
 }
 
-func (s schemaURL) ScanIDs(r pgx.BatchResults) (interface{}, error) {
+func (s schemaURL) ScanIDs(r pgx.BatchResults) (pgtype.Int8, error) {
 	var id pgtype.Int8
 	err := r.QueryRow().Scan(&id)
 	return id, err
 }
 
 type schemaURLBatch struct {
-	b batcher
+	b batcher[schemaURL, pgtype.Int8]
 }
 
-func newSchemaUrlBatch(cache cache) schemaURLBatch {
+func newSchemaUrlBatch(cache *clockcache.Cache[schemaURL, pgtype.Int8]) schemaURLBatch {
 	return schemaURLBatch{
 		b: newBatcher(cache),
 	}
@@ -63,9 +64,16 @@ func (s schemaURLBatch) GetID(url string) (pgtype.Int8, error) {
 	if url == "" {
 		return pgtype.Int8{Status: pgtype.Null}, nil
 	}
-	id, err := s.b.GetID(schemaURL(url))
+	id, err := s.b.Get(schemaURL(url))
 	if err != nil {
-		return id, fmt.Errorf("error getting ID for schema url %s: %w", url, err)
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("error getting ID for schema url %s: %w", url, err)
+	}
+
+	if id.Status != pgtype.Present {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("error getting ID for schema url %v: %s", url, "ID is null")
+	}
+	if id.Int == 0 {
+		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("error getting ID for schema url %v: %s", url, "ID is 0")
 	}
 
 	return id, nil

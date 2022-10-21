@@ -14,14 +14,14 @@ import (
 
 // CLOCK based approximate LRU storing designed for concurrent usage.
 // Gets only require a read lock, while Inserts take at least one write lock.
-type Cache struct {
+type Cache[K comparable, V any] struct {
 	metrics *perfMetrics
 	// guards elements and all fields except for `used` in Element, must have at
 	// least a read-lock to access, and a write-lock to insert/update/delete.
 	elementsLock sync.RWMutex
 	// stores indexes into storage
-	elements map[interface{}]*element
-	storage  []element
+	elements map[K]*element[K, V]
+	storage  []element[K, V]
 	// Information elements:
 	// size of everything stored by storage, does not include size of the cache structure itself
 	dataSize uint64
@@ -35,10 +35,10 @@ type Cache struct {
 	next int
 }
 
-type element struct {
+type element[K comparable, V any] struct {
 	// The value stored with this element.
-	key   interface{}
-	value interface{}
+	key   K
+	value V
 
 	// CLOCK marker if this is recently used
 	used uint32
@@ -48,15 +48,15 @@ type element struct {
 	_ [16]byte
 }
 
-func WithMax(max uint64) *Cache {
-	return &Cache{
+func WithMax[K comparable, V any](max uint64) *Cache[K, V] {
+	return &Cache[K, V]{
 		metrics:  &perfMetrics{}, // Unregistered metrics.
-		elements: make(map[interface{}]*element, max),
-		storage:  make([]element, 0, max),
+		elements: make(map[K]*element[K, V], max),
+		storage:  make([]element[K, V], 0, max),
 	}
 }
 
-func (self *Cache) applyPerfMetric(m *perfMetrics) {
+func (self *Cache[K, V]) applyPerfMetric(m *perfMetrics) {
 	self.metrics = m
 }
 
@@ -64,7 +64,7 @@ func (self *Cache) applyPerfMetric(m *perfMetrics) {
 // The sizeBytes represents the in-memory size of the key and value (used to estimate cache size).
 // returns the canonical version of the value
 // and if the value is in the map
-func (self *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) (canonicalValue interface{}, in_cache bool) {
+func (self *Cache[K, V]) Insert(key K, value V, sizeBytes uint64) (canonicalValue V, in_cache bool) {
 	self.insertLock.Lock()
 	defer self.insertLock.Unlock()
 
@@ -78,7 +78,7 @@ func (self *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) 
 // sizesBytes is the in-memory size of the key+value of each element.
 // returns the number of elements inserted, is lower than len(keys) if insertion
 // starved
-func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBytes []uint64) int {
+func (self *Cache[K, V]) InsertBatch(keys []K, values []V, sizesBytes []uint64) int {
 	if len(keys) != len(values) {
 		panic(fmt.Sprintf("keys and values are not the same len. %d keys, %d values", len(keys), len(values)))
 	}
@@ -96,7 +96,7 @@ func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBy
 	return len(keys)
 }
 
-func (self *Cache) insert(key interface{}, value interface{}, size uint64) (existingElement *element, inserted bool, inCache bool) {
+func (self *Cache[K, V]) insert(key K, value V, size uint64) (existingElement *element[K, V], inserted bool, inCache bool) {
 	elem, present := self.elements[key]
 	if present {
 		// we'll count a double-insert as a hit. See the comment in get
@@ -106,11 +106,11 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (exis
 		return elem, false, true
 	}
 
-	var insertLocation *element
+	var insertLocation *element[K, V]
 	if len(self.storage) >= cap(self.storage) {
 		insertLocation = self.evict()
 		if insertLocation == nil {
-			return &element{key: key, value: value, size: size}, false, false
+			return &element[K, V]{key: key, value: value, size: size}, false, false
 		}
 		self.elementsLock.Lock()
 		defer self.elementsLock.Unlock()
@@ -118,11 +118,11 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (exis
 		self.dataSize -= insertLocation.size
 		self.dataSize += size
 		self.evictions++
-		*insertLocation = element{key: key, value: value, size: size}
+		*insertLocation = element[K, V]{key: key, value: value, size: size}
 	} else {
 		self.elementsLock.Lock()
 		defer self.elementsLock.Unlock()
-		self.storage = append(self.storage, element{key: key, value: value, size: size})
+		self.storage = append(self.storage, element[K, V]{key: key, value: value, size: size})
 		self.dataSize += size
 		insertLocation = &self.storage[len(self.storage)-1]
 	}
@@ -133,7 +133,7 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (exis
 
 // Update updates the cache entry at key position with the new value and size. It inserts the key if not found and
 // returns the 'inserted' as true.
-func (self *Cache) Update(key, value interface{}, size uint64) (canonicalValue interface{}) {
+func (self *Cache[K, V]) Update(key K, value V, size uint64) (canonicalValue V) {
 	self.insertLock.Lock()
 	defer self.insertLock.Unlock()
 	existingElement, inserted, inCache := self.insert(key, value, size)
@@ -148,7 +148,7 @@ func (self *Cache) Update(key, value interface{}, size uint64) (canonicalValue i
 	return existingElement.value
 }
 
-func (self *Cache) evict() (insertPtr *element) {
+func (self *Cache[K, V]) evict() (insertPtr *element[K, V]) {
 	// this code goes around storage in a ring searching for the first element
 	// not marked as used, which it will evict. The code has two unusual
 	// features:
@@ -200,7 +200,7 @@ func (self *Cache) evict() (insertPtr *element) {
 // NOTE: this function does _not_ preserve the order of keys; the first numFound
 //       keys will be the keys whose values are present, while the remainder
 //       will be the keys not present in the cache
-func (self *Cache) GetValues(keys []interface{}, valuesOut []interface{}) (numFound int) {
+func (self *Cache[K, V]) GetValues(keys []K, valuesOut []V) (numFound int) {
 	start := time.Now()
 	defer func() { self.metrics.Observe("Get_Values", time.Since(start)) }()
 
@@ -231,7 +231,7 @@ func (self *Cache) GetValues(keys []interface{}, valuesOut []interface{}) (numFo
 	return n
 }
 
-func (self *Cache) Get(key interface{}) (interface{}, bool) {
+func (self *Cache[K, V]) Get(key K) (V, bool) {
 	start := time.Now()
 	defer func() { self.metrics.Observe("Get", time.Since(start)) }()
 
@@ -240,11 +240,12 @@ func (self *Cache) Get(key interface{}) (interface{}, bool) {
 	return self.get(key)
 }
 
-func (self *Cache) get(key interface{}) (interface{}, bool) {
+func (self *Cache[K, V]) get(key K) (V, bool) {
 	self.metrics.Inc(self.metrics.queriesTotal)
 	elem, present := self.elements[key]
 	if !present {
-		return 0, false
+		var zero V
+		return zero, false
 	}
 
 	// While logically this is a CompareAndSwap, this code has an important
@@ -260,7 +261,7 @@ func (self *Cache) get(key interface{}) (interface{}, bool) {
 	return elem.value, true
 }
 
-func (self *Cache) unmark(key string) bool {
+func (self *Cache[K, V]) unmark(key K) bool {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()
 
@@ -281,7 +282,7 @@ func (self *Cache) unmark(key string) bool {
 	return true
 }
 
-func (self *Cache) ExpandTo(newMax int) {
+func (self *Cache[K, V]) ExpandTo(newMax int) {
 	self.insertLock.Lock()
 	defer self.insertLock.Unlock()
 
@@ -290,19 +291,19 @@ func (self *Cache) ExpandTo(newMax int) {
 		return
 	}
 
-	newStorage := make([]element, 0, newMax)
+	newStorage := make([]element[K, V], 0, newMax)
 
 	// cannot use copy here despite the data race on element.used
 	for i := range self.storage {
 		elem := &self.storage[i]
-		newStorage = append(newStorage, element{
+		newStorage = append(newStorage, element[K, V]{
 			key:   elem.key,
 			value: elem.value,
 			used:  atomic.LoadUint32(&elem.used),
 		})
 	}
 
-	newElements := make(map[interface{}]*element, newMax)
+	newElements := make(map[K]*element[K, V], newMax)
 	for i := range newStorage {
 		elem := &newStorage[i]
 		newElements[elem.key] = elem
@@ -315,13 +316,13 @@ func (self *Cache) ExpandTo(newMax int) {
 	self.storage = newStorage
 }
 
-func (self *Cache) Reset() {
+func (self *Cache[K, V]) Reset() {
 	self.insertLock.Lock()
 	defer self.insertLock.Unlock()
 	oldSize := cap(self.storage)
 
-	newElements := make(map[interface{}]*element, oldSize)
-	newStorage := make([]element, 0, oldSize)
+	newElements := make(map[K]*element[K, V], oldSize)
+	newStorage := make([]element[K, V], 0, oldSize)
 
 	self.elementsLock.Lock()
 	defer self.elementsLock.Unlock()
@@ -330,19 +331,19 @@ func (self *Cache) Reset() {
 	self.next = 0
 }
 
-func (self *Cache) Len() int {
+func (self *Cache[K, V]) Len() int {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()
 	return len(self.storage)
 }
 
-func (self *Cache) Evictions() uint64 {
+func (self *Cache[K, V]) Evictions() uint64 {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()
 	return self.evictions
 }
 
-func (self *Cache) SizeBytes() uint64 {
+func (self *Cache[K, V]) SizeBytes() uint64 {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()
 	//derived from BenchmarkMemoryEmptyCache 120 bytes per element
@@ -350,13 +351,13 @@ func (self *Cache) SizeBytes() uint64 {
 	return uint64(cacheSize) + self.dataSize
 }
 
-func (self *Cache) Cap() int {
+func (self *Cache[K, V]) Cap() int {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()
 	return cap(self.storage)
 }
 
-func (self *Cache) debugString() string {
+func (self *Cache[K, V]) debugString() string {
 	self.elementsLock.RLock()
 	defer self.elementsLock.RUnlock()
 	str := "["

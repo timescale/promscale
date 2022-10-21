@@ -205,8 +205,8 @@ WITH (timescaledb.continuous) AS
 			return
 		}
 
-		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax(cache.DefaultMetricCacheSize)}
-		lCache := clockcache.WithMax(100)
+		mCache := &cache.MetricNameCache{Metrics: clockcache.WithMax[cache.Key, pgmodel.MetricInfo](cache.DefaultMetricCacheSize)}
+		lCache := clockcache.WithMax[int64, labels.Label](100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
 		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)

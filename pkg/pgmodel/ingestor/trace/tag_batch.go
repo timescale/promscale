@@ -8,10 +8,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/timescale/promscale/pkg/clockcache"
 
 	"github.com/jackc/pgtype"
 	pgx "github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -49,15 +49,15 @@ func (t tag) AddToDBBatch(batch pgxconn.PgxBatch) {
 	batch.Queue(insertTagSQL, t.key, t.value, t.typ)
 }
 
-func (t tag) ScanIDs(r pgx.BatchResults) (interface{}, error) {
+func (t tag) ScanIDs(r pgx.BatchResults) (tagIDs, error) {
 	var id tagIDs
 	err := r.QueryRow().Scan(&id.keyID)
 	if err != nil {
-		return nil, fmt.Errorf("error scanning key ID: %w", err)
+		return id, fmt.Errorf("error scanning key ID: %w", err)
 	}
 	err = r.QueryRow().Scan(&id.valueID)
 	if err != nil {
-		return nil, fmt.Errorf("error scanning value ID: %w", err)
+		return id, fmt.Errorf("error scanning value ID: %w", err)
 	}
 	return id, nil
 }
@@ -70,10 +70,10 @@ type tagIDs struct {
 //tagBatch queues up items to send to the db but it sorts before sending
 //this avoids deadlocks in the db. It also avoids sending the same tags repeatedly.
 type tagBatch struct {
-	b batcher
+	b batcher[tag, tagIDs]
 }
 
-func newTagBatch(cache cache) tagBatch {
+func newTagBatch(cache *clockcache.Cache[tag, tagIDs]) tagBatch {
 	return tagBatch{
 		b: newBatcher(cache),
 	}
@@ -102,13 +102,9 @@ func (tb tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) (pgty
 			return pgtype.JSONB{}, err
 		}
 		t := tag{k, string(byteVal), typ}
-		ids, err := tb.b.Get(t)
+		tagIDs, err := tb.b.Get(t)
 		if err != nil {
 			return pgtype.JSONB{}, fmt.Errorf("error getting tag from batch %v: %w", t, err)
-		}
-		tagIDs, ok := ids.(tagIDs)
-		if !ok {
-			return pgtype.JSONB{}, fmt.Errorf("error getting tag %v from batch: %w", t, errors.ErrInvalidCacheEntryType)
 		}
 		if tagIDs.keyID.Status != pgtype.Present || tagIDs.valueID.Status != pgtype.Present {
 			return pgtype.JSONB{}, fmt.Errorf("tag IDs have NULL values: %#v", tagIDs)

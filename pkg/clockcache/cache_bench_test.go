@@ -9,11 +9,11 @@ import (
 
 // microbenchmark. measure the length of the Insert critical section
 func BenchmarkIntCache(b *testing.B) {
-	keys := make([]interface{}, b.N)
+	keys := make([]int, b.N)
 	for i := range keys {
 		keys[i] = i
 	}
-	cache := WithMax(uint64(b.N))
+	cache := WithMax[int, int](uint64(b.N))
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -24,11 +24,11 @@ func BenchmarkIntCache(b *testing.B) {
 
 // microbenchmark. measure the length of the Insert critical section
 func BenchmarkStringCache(b *testing.B) {
-	keys := make([]interface{}, b.N)
+	keys := make([]string, b.N)
 	for i := range keys {
 		keys[i] = fmt.Sprintf("key-%d", i)
 	}
-	cache := WithMax(uint64(b.N))
+	cache := WithMax[string, string](uint64(b.N))
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -37,14 +37,176 @@ func BenchmarkStringCache(b *testing.B) {
 	}
 }
 
+type Key struct {
+	index int64
+	value string
+}
+
+type Value struct {
+	name, value string
+}
+
+// tests cache speed and memory usage for struct key and value
+func BenchmarkStructKeyValueCacheEviction(b *testing.B) {
+	cacheSize := b.N / 1000
+	if cacheSize == 0 {
+		cacheSize = 1
+	}
+
+	keys := make([]Key, b.N)
+	values := make([]Value, b.N)
+	for i := range keys {
+		keys[i] = Key{
+			index: int64(i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+		values[i] = Value{
+			name:  fmt.Sprintf("name-%d", i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+	}
+
+	cache := WithMax[Key, Value](uint64(cacheSize))
+
+	// populate the cache
+	for i := 0; i < cacheSize; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+
+	// randomize key access order
+	rand.Shuffle(len(keys), func(i, j int) {
+		keys[i], keys[j] = keys[j], keys[i]
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+}
+
+var value interface{}
+
+func BenchmarkStructKeyValueCacheGetNoEviction(b *testing.B) {
+	cacheSize := b.N / 1000
+	if cacheSize == 0 {
+		cacheSize = 1
+	}
+
+	keys := make([]Key, cacheSize)
+	values := make([]Value, cacheSize)
+	for i := range keys {
+		keys[i] = Key{
+			index: int64(i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+		values[i] = Value{
+			name:  fmt.Sprintf("name-%d", i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+	}
+
+	// make the cache 1000x smaller than the number of values we will get, so
+	// there will be some eviction
+	cache := WithMax[Key, Value](uint64(cacheSize))
+
+	// populate the cache
+	for i := 0; i < cacheSize; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+
+	// randomize key access order
+	rand.Shuffle(len(keys), func(i, j int) {
+		keys[i], keys[j] = keys[j], keys[i]
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		value, _ = cache.Get(keys[i%cacheSize])
+	}
+}
+
+// tests cache speed and memory usage for int64 key and struct value
+func BenchmarkStructValueCacheEviction(b *testing.B) {
+	// we want the cache to be quite a bit smaller than the number of tests
+	cacheSize := b.N / 1000
+	if cacheSize == 0 {
+		cacheSize = 1
+	}
+
+	keys := make([]int64, b.N)
+	values := make([]Value, b.N)
+	for i := range keys {
+		keys[i] = int64(i)
+		values[i] = Value{
+			name:  fmt.Sprintf("name-%d", i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+	}
+
+	cache := WithMax[int64, Value](uint64(cacheSize))
+
+	for i := 0; i < cacheSize; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+
+	// randomize key access order
+	rand.Shuffle(len(keys), func(i, j int) {
+		keys[i], keys[j] = keys[j], keys[i]
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+}
+
+// tests cache speed and memory usage for int64 key and struct value
+func BenchmarkStructValueCacheGetNoEviction(b *testing.B) {
+	// we want the cache to be quite a bit smaller than the number of tests
+	cacheSize := b.N / 1000
+	if cacheSize == 0 {
+		cacheSize = 1
+	}
+
+	keys := make([]int64, b.N)
+	values := make([]Value, b.N)
+	for i := range keys {
+		keys[i] = int64(i)
+		values[i] = Value{
+			name:  fmt.Sprintf("name-%d", i),
+			value: fmt.Sprintf("value-%d", i),
+		}
+	}
+
+	cache := WithMax[int64, Value](uint64(cacheSize))
+
+	for i := 0; i < cacheSize; i++ {
+		cache.Insert(keys[i], values[i], 32)
+	}
+
+	// randomize key access order
+	rand.Shuffle(len(keys), func(i, j int) {
+		keys[i], keys[j] = keys[j], keys[i]
+	})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		value, _ = cache.Get(keys[i])
+	}
+}
+
 // microbenchmark. measure the time it takes to evict on a fully-used cache.
 // attempts to measure worst-cache eviction time, but under-measures contention.
 func BenchmarkEviction(b *testing.B) {
 	for _, n := range []int{500, 5000, 50000} {
 		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
-			keys := make([]interface{}, n)
-			vals := make([]interface{}, n)
-			insertKeys := make([]interface{}, b.N)
+			keys := make([]int, n)
+			vals := make([]int, n)
+			insertKeys := make([]int, b.N)
 
 			for i := 0; i < n; i++ {
 				keys[i], vals[i] = n, n
@@ -60,7 +222,7 @@ func BenchmarkEviction(b *testing.B) {
 				insertKeys[i], insertKeys[j] = insertKeys[j], insertKeys[i]
 			})
 
-			cache := WithMax(uint64(n / 4))
+			cache := WithMax[int, int](uint64(n / 4))
 			b.ReportAllocs()
 			b.ResetTimer()
 
@@ -72,7 +234,7 @@ func BenchmarkEviction(b *testing.B) {
 	}
 }
 
-func (c *Cache) markAll() {
+func (c *Cache[K, V]) markAll() {
 	for i := range c.storage {
 		c.storage[i].used = 2
 	}
@@ -84,8 +246,8 @@ func BenchmarkMembership(b *testing.B) {
 		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
 			rng := rand.New(rand.NewSource(299792458))
 
-			keys := make([]interface{}, n)
-			vals := make([]interface{}, n)
+			keys := make([]int, n)
+			vals := make([]int, n)
 			sizes := make([]uint64, n)
 
 			for i := 0; i < n; i++ {
@@ -96,7 +258,7 @@ func BenchmarkMembership(b *testing.B) {
 				keys[i], keys[j] = keys[j], keys[i]
 			})
 
-			cache := WithMax(uint64(n))
+			cache := WithMax[int, int](uint64(n))
 			cache.InsertBatch(keys, vals, sizes)
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -114,10 +276,10 @@ func BenchmarkNotFound(b *testing.B) {
 		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
 			rng := rand.New(rand.NewSource(299792458))
 
-			keys := make([]interface{}, n)
-			vals := make([]interface{}, n)
+			keys := make([]int, n)
+			vals := make([]int, n)
 			sizes := make([]uint64, n)
-			gets := make([]interface{}, n)
+			gets := make([]int, n)
 
 			for i := 0; i < n; i++ {
 				keys[i], vals[i], sizes[i] = i, i, 16
@@ -128,7 +290,7 @@ func BenchmarkNotFound(b *testing.B) {
 				keys[i], keys[j] = keys[j], keys[i]
 			})
 
-			cache := WithMax(uint64(n))
+			cache := WithMax[int, int](uint64(n))
 			cache.InsertBatch(keys, vals, sizes)
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -150,14 +312,14 @@ func BenchmarkInsertUnderCapacity(b *testing.B) {
 			rng := rand.New(rand.NewSource(299792458))
 			zipf := rand.NewZipf(rng, 1.07, 1, 1e9)
 
-			keys := make([]interface{}, n)
-			vals := make([]interface{}, n)
+			keys := make([]uint64, n)
+			vals := make([]int, n)
 
 			for i := 0; i < n; i++ {
 				keys[i], vals[i] = zipf.Uint64(), rng.Intn(1e9)
 			}
 
-			cache := WithMax(uint64(n))
+			cache := WithMax[uint64, int](uint64(n))
 			b.ReportAllocs()
 			b.ResetTimer()
 
@@ -181,14 +343,14 @@ func BenchmarkInsertOverCapacity(b *testing.B) {
 			rng := rand.New(rand.NewSource(299792458))
 			zipf := rand.NewZipf(rng, 1.07, 1, 1e9)
 
-			keys := make([]interface{}, n)
-			vals := make([]interface{}, n)
+			keys := make([]uint64, n)
+			vals := make([]int, n)
 
 			for i := 0; i < n; i++ {
 				keys[i], vals[i] = zipf.Uint64(), rng.Intn(1e9)
 			}
 
-			cache := WithMax(uint64(n / 4))
+			cache := WithMax[uint64, int](uint64(n / 4))
 			b.ReportAllocs()
 			b.ResetTimer()
 
@@ -213,14 +375,14 @@ func BenchmarkInsertConcurrent(b *testing.B) {
 			rng := rand.New(rand.NewSource(299792458))
 			zipf := rand.NewZipf(rng, 1.07, 1, 1e9)
 
-			keys := make([]interface{}, n)
-			vals := make([]interface{}, n)
+			keys := make([]uint64, n)
+			vals := make([]int, n)
 
 			for i := 0; i < n; i++ {
 				keys[i], vals[i] = zipf.Uint64(), rng.Intn(1e9)
 			}
 
-			cache := WithMax(uint64(n / 4))
+			cache := WithMax[uint64, int](uint64(n / 4))
 			b.ReportAllocs()
 			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
@@ -260,7 +422,7 @@ func BenchmarkInsertConcurrent(b *testing.B) {
 // that each goroutine ends up on a different CPU, possibly causing contention
 // for the same cache line.
 func BenchmarkCacheFalseSharing(b *testing.B) {
-	cache := WithMax(2)
+	cache := WithMax[int, int](2)
 	b.ReportAllocs()
 
 	// define waitgroup so that we can coordinate the start of the stressors
@@ -302,7 +464,8 @@ func BenchmarkCacheFalseSharing(b *testing.B) {
 	// wait for tasks to complete
 	endWg.Wait()
 }
+
 func BenchmarkMemoryEmptyCache(b *testing.B) {
 	b.ReportAllocs()
-	WithMax(uint64(b.N))
+	WithMax[int, int](uint64(b.N))
 }

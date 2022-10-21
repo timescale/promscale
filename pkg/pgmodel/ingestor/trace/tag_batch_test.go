@@ -17,9 +17,7 @@ import (
 func TestTagBatch(t *testing.T) {
 	cache := newTagCache()
 	incache := tag{"incache", `""`, SpanTagType}
-	invalid := tag{"invalid", `""`, SpanTagType}
 	cache.Insert(incache, tagIDs{pgtype.Int8{Int: 1, Status: pgtype.Present}, pgtype.Int8{Int: 2, Status: pgtype.Present}}, incache.SizeInCache())
-	cache.Insert(invalid, "foo", 0)
 
 	testCases := []struct {
 		name               string
@@ -196,15 +194,6 @@ func TestTagBatch(t *testing.T) {
 				},
 			},
 			expectedError: `error scanning value ID: strconv.ParseInt: parsing "wrong type": invalid syntax`,
-		},
-		{
-			name:               "cache error",
-			tags:               map[TagType]map[string]interface{}{SpanTagType: {"invalid": ""}},
-			expectedBatchQueue: 1,
-			getTagMapJSONCheck: func(t *testing.T, batch tagBatch) {
-				_, err := batch.GetTagMapJSON(map[string]interface{}{"invalid": ""}, SpanTagType)
-				require.EqualError(t, err, "error getting tag {invalid \"\" 1} from batch: invalid cache entry type stored")
-			},
 		},
 		{
 			name:               "queue error",
