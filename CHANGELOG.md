@@ -16,6 +16,7 @@ We use the following categories for changes:
 ## Unreleased
 
 ### Added
+- Alerts from promscale monitoring mixin are groupped also by namespace label [#1714]
 
 ### Changed
 - Reduced the verbosity of the logs emitted by the vacuum engine [#1715]
