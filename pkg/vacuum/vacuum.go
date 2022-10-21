@@ -135,7 +135,7 @@ func (e *Engine) Run(ctx context.Context) {
 		return
 	}
 	if !acquired {
-		log.Info("msg", "vacuum engine did not acquire advisory lock")
+		log.Debug("msg", "vacuum engine did not acquire advisory lock")
 		return
 	}
 	// release the advisory lock when we're done
@@ -213,7 +213,7 @@ func runWorkers(ctx context.Context, parallelism int, chunks []string, worker fu
 // worker pulls chunks from a channel and vacuums them
 func (e *Engine) worker(ctx context.Context, id int, todo <-chan string) {
 	for chunk := range todo {
-		log.Info("msg", "vacuuming a chunk", "worker", id, "chunk", chunk)
+		log.Debug("msg", "vacuuming a chunk", "worker", id, "chunk", chunk)
 		sql := fmt.Sprintf(sqlVacuumFmt, chunk)
 		_, err := e.pool.Exec(ctx, sql)
 		if err != nil {
