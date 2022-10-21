@@ -43,15 +43,15 @@ Check our short [demo guide](https://docs.timescale.com/promscale/latest/quick-s
 
 * **Prometheus metric storage:** support for remote write, remote read, 100% PromQL, metric metadata,
 exemplars and Prometheus HA.
-* **OpenTelemetry trace storage:** support for ingestion of traces through the OpenTelemetry Protocol
-(OTLP). Jaeger and Zipkin traces are supported via the OpenTelemetry Collector.
-* **Grafana integration:** query and visualize your metrics and traces using the PromQL, SQL and Jaeger
-datasources.
-* **Jaeger certified:** Promscale is a [certified Jaeger storage backend](https://github.com/jaegertracing/jaeger#multiple-storage-backends).
+* **Certified Jaeger trace storage:** Promscale is a [certified Jaeger storage backend](https://github.com/jaegertracing/jaeger#multiple-storage-backends).
 Integrate Jaeger with Promscale to store and visualize your traces with a simple configuration change in Jaeger.
 Use Promscale as the storage backend for the metrics required by the
-[Service Performance Management UI](https://www.jaegertracing.io/docs/1.36/spm/). No need for a separate 
+[Service Performance Management UI](https://www.jaegertracing.io/docs/1.38/spm/). No need for a separate 
 Prometheus / PromQL compatible storage.
+* **OpenTelemetry trace storage:** support for ingestion of traces through the OpenTelemetry Protocol
+(OTLP).
+* **Grafana integration:** query and visualize your metrics and traces using the PromQL, SQL and Jaeger
+datasources.
 * **Durable and reliable storage:** built on top of the maturity of Postgres and TimescaleDB with 
 millions of instances worldwide. A trusted system that offers high availability, replication, 
 data integrity, data compression, backups, authentication, roles and permissions.
@@ -118,16 +118,17 @@ using a PromQL and/or a PostgreSQL datasource.
 
 ## Promscale for Jaeger and OpenTelemetry
 
-Promscale supports ingesting OpenTelemetry traces natively, and Jaeger and Zipkin traces via
-the OpenTelemetry Collector.
+Promscale supports ingesting Jaeger and OpenTelemetry traces via the Jaeger Collector and the OpenTelemetry Collector.
+OpenTelemetry traces can also be sent directly from OpenTelemetry client libraries via the OpenTelemetry Protocol (OTLP).
+Promscale is a certified Jaeger storage that passess 100% of the compliance tests.
 
 Promscale provides Jaeger and OpenTelemetry users with:
 
 * **An easy-to-use durable and scalable storage backend for traces**<br/>
-Most users run Jaeger with the in memory or badger storage because the two options for a more durable storage
+Most users run Jaeger with the in memory or badger storage because the two options recommended for production
 (Elasticsearch and Cassandra) are difficult to set up and operate. Promscale uses a much simpler architecture
 based on PostgreSQL which many developers are comfortable with and scales to 100s of thousands of spans per
-second on a single database node.
+second on a single database node. 
 
 * **Service performance analysis**<br/>
 Because Promscale can store both metrics and traces, you can use the new 
@@ -152,7 +153,7 @@ for more details.
 
 To get started:
 1. [Install Promscale](https://docs.timescale.com/promscale/latest/installation/#install-promscale-with-instrumentation).
-2. [Send traces to Promscale](https://docs.timescale.com/promscale/latest/send-data/) in OpenTelemetry, Jaeger or Zipkin format
+2. [Send traces to Promscale](https://docs.timescale.com/promscale/latest/send-data/) in Jaeger, OpenTelemetry, or Zipkin format
 3. [Configure Jaeger](https://docs.timescale.com/promscale/latest/visualize-data/jaeger/) to query and visualize traces from Promscale.
 
 Also consider:
