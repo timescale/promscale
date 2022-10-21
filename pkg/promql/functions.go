@@ -14,6 +14,7 @@
 package promql
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -21,7 +22,6 @@ import (
 	"time"
 
 	"github.com/grafana/regexp"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -31,6 +31,7 @@ import (
 // FunctionCall is the type of a PromQL function implementation
 //
 // vals is a list of the evaluated arguments for the function call.
+//
 // For range vectors it will be a Matrix with one series, instant vectors a
 // Vector, scalars a Vector with one series whose value is the scalar
 // value,and nil for strings.
@@ -228,10 +229,10 @@ func funcHoltWinters(vals []parser.Value, args parser.Expressions, enh *EvalNode
 
 	// Sanity check the input.
 	if sf <= 0 || sf >= 1 {
-		panic(errors.Errorf("invalid smoothing factor. Expected: 0 < sf < 1, got: %f", sf))
+		panic(fmt.Errorf("invalid smoothing factor. Expected: 0 < sf < 1, got: %f", sf))
 	}
 	if tf <= 0 || tf >= 1 {
-		panic(errors.Errorf("invalid trend factor. Expected: 0 < tf < 1, got: %f", tf))
+		panic(fmt.Errorf("invalid trend factor. Expected: 0 < tf < 1, got: %f", tf))
 	}
 
 	l := len(samples.Points)
@@ -795,7 +796,6 @@ func funcPredictLinear(vals []parser.Value, args parser.Expressions, enh *EvalNo
 func funcHistogramQuantile(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
 	q := vals[0].(Vector)[0].V
 	inVec := vals[1].(Vector)
-	sigf := signatureFunc(false, enh.lblBuf, labels.BucketLabel)
 
 	if enh.signatureToMetricWithBuckets == nil {
 		enh.signatureToMetricWithBuckets = map[string]*metricWithBuckets{}
@@ -813,19 +813,15 @@ func funcHistogramQuantile(vals []parser.Value, args parser.Expressions, enh *Ev
 			// TODO(beorn7): Issue a warning somehow.
 			continue
 		}
-		l := sigf(el.Metric)
-		// Add the metric name (which is always removed) to the signature to prevent combining multiple histograms
-		// with the same label set. See https://github.com/prometheus/prometheus/issues/9910
-		l = l + el.Metric.Get(model.MetricNameLabel)
-
-		mb, ok := enh.signatureToMetricWithBuckets[l]
+		enh.lblBuf = el.Metric.BytesWithoutLabels(enh.lblBuf, labels.BucketLabel)
+		mb, ok := enh.signatureToMetricWithBuckets[string(enh.lblBuf)]
 		if !ok {
 			el.Metric = labels.NewBuilder(el.Metric).
 				Del(labels.BucketLabel, labels.MetricName).
-				Labels()
+				Labels(nil)
 
 			mb = &metricWithBuckets{el.Metric, nil}
-			enh.signatureToMetricWithBuckets[l] = mb
+			enh.signatureToMetricWithBuckets[string(enh.lblBuf)] = mb
 		}
 		mb.buckets = append(mb.buckets, bucket{upperBound, el.V})
 	}
@@ -894,10 +890,10 @@ func funcLabelReplace(vals []parser.Value, args parser.Expressions, enh *EvalNod
 		var err error
 		enh.regex, err = regexp.Compile("^(?:" + regexStr + ")$")
 		if err != nil {
-			panic(errors.Errorf("invalid regular expression in label_replace(): %s", regexStr))
+			panic(fmt.Errorf("invalid regular expression in label_replace(): %s", regexStr))
 		}
 		if !model.LabelNameRE.MatchString(dst) {
-			panic(errors.Errorf("invalid destination label name in label_replace(): %s", dst))
+			panic(fmt.Errorf("invalid destination label name in label_replace(): %s", dst))
 		}
 		enh.Dmn = make(map[uint64]labels.Labels, len(enh.Out))
 	}
@@ -921,7 +917,7 @@ func funcLabelReplace(vals []parser.Value, args parser.Expressions, enh *EvalNod
 				if len(res) > 0 {
 					lb.Set(dst, string(res))
 				}
-				outMetric = lb.Labels()
+				outMetric = lb.Labels(nil)
 				enh.Dmn[h] = outMetric
 			}
 		}
@@ -959,13 +955,13 @@ func funcLabelJoin(vals []parser.Value, args parser.Expressions, enh *EvalNodeHe
 	for i := 3; i < len(args); i++ {
 		src := stringFromArg(args[i])
 		if !model.LabelName(src).IsValid() {
-			panic(errors.Errorf("invalid source label name in label_join(): %s", src))
+			panic(fmt.Errorf("invalid source label name in label_join(): %s", src))
 		}
 		srcLabels[i-3] = src
 	}
 
 	if !model.LabelName(dst).IsValid() {
-		panic(errors.Errorf("invalid destination label name in label_join(): %s", dst))
+		panic(fmt.Errorf("invalid destination label name in label_join(): %s", dst))
 	}
 
 	srcVals := make([]string, len(srcLabels))
@@ -989,7 +985,7 @@ func funcLabelJoin(vals []parser.Value, args parser.Expressions, enh *EvalNodeHe
 				lb.Set(dst, strval)
 			}
 
-			outMetric = lb.Labels()
+			outMetric = lb.Labels(nil)
 			enh.Dmn[h] = outMetric
 		}
 
@@ -1242,14 +1238,14 @@ func createLabelsForAbsentFunction(expr parser.Expr) labels.Labels {
 			continue
 		}
 		if ma.Type == labels.MatchEqual && !m.Has(ma.Name) {
-			m = labels.NewBuilder(m).Set(ma.Name, ma.Value).Labels()
+			m = labels.NewBuilder(m).Set(ma.Name, ma.Value).Labels(nil)
 		} else {
 			empty = append(empty, ma.Name)
 		}
 	}
 
 	for _, v := range empty {
-		m = labels.NewBuilder(m).Del(v).Labels()
+		m = labels.NewBuilder(m).Del(v).Labels(nil)
 	}
 	return m
 }

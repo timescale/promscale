@@ -90,7 +90,7 @@ func generatePrometheusWAL(withExemplars bool) ([]prompb.TimeSeries, string, err
 		}
 
 		var (
-			lbls    = builder.Labels()
+			lbls    = builder.Labels(nil)
 			tempRef storage.SeriesRef
 			err     error
 		)
@@ -147,7 +147,7 @@ func prompbExemplarToExemplar(pe prompb.Exemplar) exemplar.Exemplar {
 		exemplarLabelsBuilder.Set(el.Name, el.Value)
 	}
 	return exemplar.Exemplar{
-		Labels: exemplarLabelsBuilder.Labels(),
+		Labels: exemplarLabelsBuilder.Labels(nil),
 		Value:  pe.Value,
 		Ts:     pe.Timestamp,
 		HasTs:  true,

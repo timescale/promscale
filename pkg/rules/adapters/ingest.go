@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/prometheus/model/metadata"
 	"time"
 
 	"github.com/pkg/errors"
@@ -33,6 +34,11 @@ type appenderAdapter struct {
 	data     map[string][]model.Insertable
 	inserter ingestor.DBInserter
 	closed   bool
+}
+
+func (app *appenderAdapter) UpdateMetadata(ref storage.SeriesRef, l labels.Labels, m metadata.Metadata) (storage.SeriesRef, error) {
+	// This function is not implemented, since we do not need to UpdateMetadata while evaluating rules.
+	return 0, nil
 }
 
 // Appender creates a new appender for Prometheus rules manager.
