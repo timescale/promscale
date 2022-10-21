@@ -15,6 +15,9 @@ We use the following categories for changes:
 
 ## Unreleased
 
+### Added
+- Alerts from promscale monitoring mixin are groupped also by namespace label [#1714]
+
 ## [0.16.0] - 2022-10-20
 
 ### Added
