@@ -71,7 +71,7 @@ func fuzzParseMetricWithContentType(in []byte, contentType string) int {
 			break
 		}
 	}
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		err = nil
 	}
 
