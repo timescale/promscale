@@ -11,7 +11,7 @@ on:
     branches: [master, main, force_test, release-*]
 
 env:
-  golang-version: 1.18.4
+  golang-version: 1.19.2
 
 jobs:
   run:
@@ -28,7 +28,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.2.1
+      uses: actions/setup-go@v3.3.1
       with:
         go-version: ${{ env.golang-version }}
       id: go

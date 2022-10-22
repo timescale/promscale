@@ -24,7 +24,7 @@ on:
         default: ${{ github.ref }}
 
 env:
-  golang-version: 1.18.4
+  golang-version: 1.19.2
 
 jobs:
   pick_docker_image:
@@ -92,7 +92,7 @@ jobs:
       run: wget https://github.com/timescale/promscale-test-data/raw/main/traces-dataset.sz -O pkg/tests/testdata/traces-dataset.sz
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.2.1
+      uses: actions/setup-go@v3.3.1
       with:
         go-version: ${{ env.golang-version }}
       id: go
@@ -139,7 +139,7 @@ jobs:
         ref: ${{ inputs.ref }}
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.2.1
+      uses: actions/setup-go@v3.3.1
       with:
         go-version: ${{ env.golang-version }}
       id: go
@@ -178,7 +178,7 @@ jobs:
         ref: ${{ inputs.ref }}
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.2.1
+      uses: actions/setup-go@v3.3.1
       with:
         go-version: ${{ env.golang-version }}
       id: go
