@@ -7,60 +7,28 @@ package rollup
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v4"
+
 	"github.com/timescale/promscale/pkg/util"
 )
 
 type DownsampleResolution struct {
-	label      string
-	resolution util.DayDuration
-	retention  util.DayDuration
-}
-
-// Parse parses the rollup resolution string and returns true if it respects the format of downsampling resolution,
-// which is a string of comma separated label:resolution:retention.
-// Example: short:5m:90d,long:1h:395d
-func Parse(resolutionStr string) ([]DownsampleResolution, error) {
-	resolutions := strings.Split(resolutionStr, ",")
-	if len(resolutions) < 1 {
-		return nil, fmt.Errorf("resolutions cannot be less than 1")
-	}
-	var r []DownsampleResolution
-	for _, resolution := range resolutions {
-		resolution = strings.TrimSpace(resolution)
-		if resolution == "" {
-			continue
-		}
-
-		items := strings.Split(resolution, ":")
-		if len(items) != 3 {
-			return nil, fmt.Errorf("expected items not found: needed in format of label:resolution:retention but found %v for %s resolution", strings.Join(items, ":"), resolution)
-		}
-		lName := items[0]
-
-		var res util.DayDuration
-		err := res.UnmarshalText([]byte(items[1]))
-		if err != nil {
-			return nil, fmt.Errorf("error parsing resolution %s: %w", items[1], err)
-		}
-
-		var retention util.DayDuration
-		err = retention.UnmarshalText([]byte(items[2]))
-		if err != nil {
-			return nil, fmt.Errorf("error parsing retention %s: %w", items[2], err)
-		}
-		r = append(r, DownsampleResolution{lName, res, retention})
-	}
-	return r, nil
+	Label      string           `yaml:"label"`
+	Resolution util.DayDuration `yaml:"resolution"`
+	Retention  util.DayDuration `yaml:"retention"`
 }
 
 // EnsureRollupWith ensures "strictly" that the given new resolutions are applied in the database.
+//
 // Note: It follows a "strict" behaviour, meaning any existing resolutions of downsampling in
 // the database will be removed, so that the all downsampling data in the database strictly
 // matches the provided newResolutions.
+//
+// Example: If the DB already contains metric rollups for `short` and `long`, and in dataset-config,
+// connector sees `very_short` and `long`, then EnsureRollupWith will remove the `short` downsampled data
+// and create `very_short`, while not touching `long`.
 func EnsureRollupWith(conn *pgx.Conn, newResolutions []DownsampleResolution) error {
 	rows, err := conn.Query(context.Background(), "SELECT name, resolution, retention FROM _prom_catalog.rollup")
 	if err != nil {
@@ -75,7 +43,7 @@ func EnsureRollupWith(conn *pgx.Conn, newResolutions []DownsampleResolution) err
 		if err := rows.Scan(&lName, &resolution, &retention); err != nil {
 			return fmt.Errorf("error scanning output rows for existing resolutions: %w", err)
 		}
-		existingResolutions = append(existingResolutions, DownsampleResolution{label: lName, resolution: util.DayDuration(resolution), retention: util.DayDuration(retention)})
+		existingResolutions = append(existingResolutions, DownsampleResolution{Label: lName, Resolution: util.DayDuration(resolution), Retention: util.DayDuration(retention)})
 	}
 
 	// Determine which resolutions need to be created and deleted from the DB.
@@ -96,9 +64,9 @@ func EnsureRollupWith(conn *pgx.Conn, newResolutions []DownsampleResolution) err
 
 func createRollups(conn *pgx.Conn, res []DownsampleResolution) error {
 	for _, r := range res {
-		_, err := conn.Exec(context.Background(), "CALL _prom_catalog.create_metric_rollup($1, $2, $3)", r.label, time.Duration(r.resolution), time.Duration(r.retention))
+		_, err := conn.Exec(context.Background(), "CALL _prom_catalog.create_rollup($1, $2, $3)", r.Label, time.Duration(r.Resolution), time.Duration(r.Retention))
 		if err != nil {
-			return fmt.Errorf("error creating rollup for %s: %w", r.label, err)
+			return fmt.Errorf("error creating rollup for %s: %w", r.Label, err)
 		}
 	}
 	return nil
@@ -106,21 +74,26 @@ func createRollups(conn *pgx.Conn, res []DownsampleResolution) error {
 
 func deleteRollups(conn *pgx.Conn, res []DownsampleResolution) error {
 	for _, r := range res {
-		_, err := conn.Exec(context.Background(), "CALL _prom_catalog.delete_metric_rollup($1)", r.label)
+		_, err := conn.Exec(context.Background(), "CALL _prom_catalog.delete_rollup($1)", r.Label)
 		if err != nil {
-			return fmt.Errorf("error deleting rollup for %s: %w", r.label, err)
+			return fmt.Errorf("error deleting rollup for %s: %w", r.Label, err)
 		}
 	}
 	return nil
 }
 
 // diff returns the elements of a that are not in b.
+//
+// We need this since we want to support a "strict" behaviour in downsampling. This basically means, to have the exact
+// downsampling data in the DB based on what's mentioned in the dataset-config.
+//
+// See the comment for EnsureRollupWith for example.
 func diff(a, b []DownsampleResolution) []DownsampleResolution {
 	var difference []DownsampleResolution
 	for i := range a {
 		found := false
 		for j := range b {
-			if a[i].label == b[j].label {
+			if a[i].Label == b[j].Label {
 				found = true
 				break
 			}
