@@ -14,7 +14,7 @@ const (
 	MetricBatcherChannelCap = 1000
 	// FlushSize defines the batch size. It is the maximum number of samples/exemplars per insert batch.
 	// This translates to the max array size that we pass into `insert_metric_row`
-	FlushSize           = 2000
+	FlushSize           = 10000
 	MaxInsertStmtPerTxn = 100
 )
 
@@ -279,6 +279,7 @@ func init() {
 		IngestorChannelCap,
 		IngestorChannelLenBatcher,
 		IngestorFlushSeries,
+		IngestorFlushInsertables,
 		IngestorInsertsPerBatch,
 		IngestorRowsPerBatch,
 		IngestorRowsPerInsert,

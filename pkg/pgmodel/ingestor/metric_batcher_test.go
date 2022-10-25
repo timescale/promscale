@@ -155,7 +155,7 @@ func TestSendBatches(t *testing.T) {
 	go sendBatches(firstReq, nil, nil, &pgmodel.MetricInfo{MetricID: 1, TableName: "test"}, reservationQ)
 	resos := make([]readRequest, 0, 1)
 	reservationQ.Peek()
-	resos, cnt := reservationQ.PopOntoBatch(resos)
+	resos, cnt, _ := reservationQ.PopOntoBatch(resos)
 	require.Equal(t, 1, cnt)
 	require.Equal(t, 1, len(resos))
 	batch := <-(resos[0].copySender)

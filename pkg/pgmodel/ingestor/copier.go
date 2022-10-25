@@ -210,14 +210,12 @@ func copierGetBatch(ctx context.Context, batch []readRequest, reservationQ *Rese
 	metrics.IngestorPipelineTime.With(labelsCopier).Observe(time.Since(startTime).Seconds())
 	span.AddEvent("After sleep")
 
-	batch, _ = reservationQ.PopOntoBatch(batch)
+	var reason string
+	batch, _, reason = reservationQ.PopOntoBatch(batch)
+	metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "reason": reason}).Inc()
 
-	if len(batch) == cap(batch) {
-		span.AddEvent("Batch is full")
-		metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "reason": "size"}).Inc()
-	} else {
-		metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "reason": "timeout"}).Inc()
-	}
+	span.AddEvent("Flushed due to" + reason)
+
 	metrics.IngestorBatchRemainingAfterFlushTotal.With(labelsCopier).Observe(float64(reservationQ.Len()))
 	span.SetAttributes(attribute.Int("num_batches", len(batch)))
 	return batch, true

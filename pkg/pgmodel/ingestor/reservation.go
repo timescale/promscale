@@ -3,6 +3,7 @@ package ingestor
 import (
 	"container/heap"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -12,14 +13,17 @@ type reservation struct {
 
 	lock      sync.Mutex
 	startTime time.Time
+
+	items int64
 }
 
 func newReservation(cs <-chan copyRequest, startTime time.Time) *reservation {
-	return &reservation{cs, -1, sync.Mutex{}, startTime}
+	return &reservation{cs, -1, sync.Mutex{}, startTime, 1}
 }
 
-func (res *reservation) Update(rq *ReservationQueue, t time.Time) {
+func (res *reservation) Update(rq *ReservationQueue, t time.Time, num_insertables int) {
 	rest := res.GetStartTime()
+	atomic.AddInt64(&res.items, int64(num_insertables))
 
 	if t.Before(rest) {
 		//this should happen rarely
@@ -55,6 +59,14 @@ func newReservationQueueInternal() *reservationQueueInternal {
 func (res reservationQueueInternal) Len() int { return len(res) }
 
 func (res reservationQueueInternal) Less(i, j int) bool {
+	startTimeI := res[i].GetStartTime()
+	startTimeJ := res[j].GetStartTime()
+	if startTimeI.Equal(startTimeJ) {
+		itemsI := atomic.LoadInt64(&res[i].items)
+		itemsJ := atomic.LoadInt64(&res[j].items)
+		//prerer metrics with more items because they probably hold up more stuff
+		return itemsI > itemsJ
+	}
 	return res[i].GetStartTime().Before(res[j].GetStartTime())
 }
 
@@ -82,7 +94,7 @@ func (res *reservationQueueInternal) Pop() interface{} {
 }
 
 type Reservation interface {
-	Update(*ReservationQueue, time.Time)
+	Update(*ReservationQueue, time.Time, int)
 }
 
 type ReservationQueue struct {
@@ -151,17 +163,33 @@ func (rq *ReservationQueue) Peek() (time.Time, bool) {
 
 // PopBatch pops from the queue to populate the batch until either batch is full or the queue is empty.
 // never blocks. Returns number of requests pop'ed.
-func (rq *ReservationQueue) PopOntoBatch(batch []readRequest) ([]readRequest, int) {
+func (rq *ReservationQueue) PopOntoBatch(batch []readRequest) ([]readRequest, int, string) {
 	rq.lock.Lock()
 	defer rq.lock.Unlock()
 
 	count := 0
-	for len(batch) < cap(batch) && rq.q.Len() > 0 {
+	items := int64(0)
+	if rq.q.Len() > 0 {
+		items = atomic.LoadInt64(&(*rq.q)[0].items)
+	}
+	total_items := int64(0)
+	for len(batch) < cap(batch) && rq.q.Len() > 0 && (len(batch) == 0 || items+total_items < 20000) {
 		res := heap.Pop(rq.q).(*reservation)
 		batch = append(batch, readRequest{res.copySender})
 		count++
+		total_items += items
+		items = 0
+		if rq.q.Len() > 0 {
+			items = atomic.LoadInt64(&(*rq.q)[0].items)
+		}
 	}
-	return batch, count
+	reason := "timeout"
+	if !(len(batch) < cap(batch)) {
+		reason = "size_metrics"
+	} else if !(len(batch) == 0 || items+total_items < 20000) {
+		reason = "size_samples"
+	}
+	return batch, count, reason
 }
 
 func (rq *ReservationQueue) update(res *reservation) {
