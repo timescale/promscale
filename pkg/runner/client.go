@@ -170,13 +170,6 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 		if err != nil {
 			return nil, fmt.Errorf("error applying dataset configuration: %w", err)
 		}
-	} else {
-		// We apply downsampling settings even when DatasetConfig is not given, which is the most common case.
-		downsampleCfg := &dataset.Downsample{}
-		err = downsampleCfg.Apply(conn)
-		if err != nil {
-			return nil, fmt.Errorf("error applying downsampling configuration: %w", err)
-		}
 	}
 
 	// client has to be initiated after migrate since migrate
