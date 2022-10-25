@@ -44,12 +44,12 @@ type Config struct {
 
 // Metrics contains dataset configuration options for metrics data.
 type Metrics struct {
-	ChunkInterval   DayDuration `mapstructure:"default_chunk_interval" yaml:"default_chunk_interval"`
+	ChunkInterval   util.DayDuration `mapstructure:"default_chunk_interval" yaml:"default_chunk_interval"`
 	Compression     *bool       `mapstructure:"compress_data" yaml:"compress_data"` // Using pointer to check if the the value was set.
-	HALeaseRefresh  DayDuration `mapstructure:"ha_lease_refresh" yaml:"ha_lease_refresh"`
-	HALeaseTimeout  DayDuration `mapstructure:"ha_lease_timeout" yaml:"ha_lease_timeout"`
-	RetentionPeriod DayDuration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
-	Downsample      `mapstructure:"downsample" yaml:"downsample,omitempty"`
+	HALeaseRefresh  util.DayDuration `mapstructure:"ha_lease_refresh" yaml:"ha_lease_refresh"`
+	HALeaseTimeout  util.DayDuration `mapstructure:"ha_lease_timeout" yaml:"ha_lease_timeout"`
+	RetentionPeriod util.DayDuration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
+	Downsample   	*Downsample `mapstructure:"downsample" yaml:"downsample,omitempty"`
 }
 
 // Traces contains dataset configuration options for traces data.
@@ -67,8 +67,10 @@ func NewConfig(contents string) (cfg Config, err error) {
 func (c *Config) Apply(conn *pgx.Conn) error {
 	c.applyDefaults()
 
-	if err := c.Downsample.Apply(conn); err != nil {
-		return fmt.Errorf("error applying configuration for downsampling: %w", err)
+	if c.Metrics.Downsample != nil {
+		if err := c.Metrics.Downsample.Apply(conn); err != nil {
+			return fmt.Errorf("error applying configuration for downsampling: %w", err)
+		}
 	}
 
 	log.Info("msg", fmt.Sprintf("Setting metric dataset default chunk interval to %s", c.Metrics.ChunkInterval))
