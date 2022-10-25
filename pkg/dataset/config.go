@@ -49,7 +49,7 @@ type Metrics struct {
 	HALeaseRefresh  util.DayDuration `yaml:"ha_lease_refresh"`
 	HALeaseTimeout  util.DayDuration `yaml:"ha_lease_timeout"`
 	RetentionPeriod util.DayDuration `yaml:"default_retention_period"`
-	Downsample      `yaml:"downsample,omitempty"`
+	Downsample      *Downsample      `yaml:"downsample,omitempty"`
 }
 
 // Traces contains dataset configuration options for traces data.
@@ -67,8 +67,10 @@ func NewConfig(contents string) (cfg Config, err error) {
 func (c *Config) Apply(conn *pgx.Conn) error {
 	c.applyDefaults()
 
-	if err := c.Downsample.Apply(conn); err != nil {
-		return fmt.Errorf("error applying configuration for downsampling: %w", err)
+	if c.Metrics.Downsample != nil {
+		if err := c.Metrics.Downsample.Apply(conn); err != nil {
+			return fmt.Errorf("error applying configuration for downsampling: %w", err)
+		}
 	}
 
 	log.Info("msg", fmt.Sprintf("Setting metric dataset default chunk interval to %s", c.Metrics.ChunkInterval))
