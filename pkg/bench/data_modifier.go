@@ -10,18 +10,20 @@ import (
 )
 
 type DataModifier struct {
-	conf           *BenchConfig
-	build          *labels.Builder
-	init           bool
-	firstDataRawTs int64
-	firstDataOutTs int64
-	firstWallTs    int64
+	conf            *BenchConfig
+	build           *labels.Builder
+	simulationStart time.Time
+	init            bool
+	firstDataRawTs  int64
+	firstDataOutTs  int64
+	firstWallTs     int64
 }
 
-func NewDataModifier(conf *BenchConfig) *DataModifier {
+func NewDataModifier(conf *BenchConfig, simStart time.Time) *DataModifier {
 	return &DataModifier{
-		conf:  conf,
-		build: labels.NewBuilder(nil),
+		conf:            conf,
+		build:           labels.NewBuilder(nil),
+		simulationStart: simStart,
 	}
 }
 
@@ -58,8 +60,7 @@ func (d *DataModifier) VisitSeries(rawSeriesID uint64, lbls labels.Labels,
 func (dm *DataModifier) VisitSamples(rawSeriesID uint64, rawTs int64, rawVal float64,
 	visitor func([]record.RefSample, int64) error) error {
 	if !dm.init {
-		now := time.Now()
-		dm.firstWallTs = int64(model.TimeFromUnixNano(now.UnixNano()))
+		dm.firstWallTs = int64(model.TimeFromUnixNano(dm.simulationStart.UnixNano()))
 		dm.firstDataRawTs = rawTs
 		dm.firstDataOutTs = dm.firstDataRawTs
 		if !dm.conf.FirstDataTimeTs.IsZero() {

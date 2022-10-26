@@ -26,8 +26,11 @@ const (
 
 var rateControlSleeps int32 = 0
 
-func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *walSimulator, runNumber int) (time.Time, int, error) {
-	dm := NewDataModifier(conf)
+var simulatationStart = sync.Map{}
+
+func RunFullSimulation(conf *BenchConfig, qmi *qmInfo, block *tsdb.Block, ws *walSimulator, runNumber int, simulationNumber int) (time.Time, int, error) {
+	startSim, _ := simulatationStart.LoadOrStore(simulationNumber, time.Now())
+	dm := NewDataModifier(conf, startSim.(time.Time))
 	mh, closers, err := NewMergeHeap(dm, block, qmi, seriesIndex, conf.Concurrency)
 	//mh, closers, err := NewMergeHeapQuerier(dm, block, qmi, seriesIndex, conf.Concurrency)
 	if err != nil {
@@ -125,6 +128,7 @@ func run(conf *BenchConfig, db *tsdb.DBReadOnly, blocks []tsdb.BlockReader) (err
 	ws := NewWalSimulator(qmi, conf)
 	totalCount := 0
 	start := time.Time{}
+	simulationNumber := 0
 	for i := 0; i < conf.RepeatedRuns; i++ {
 		var runDuration time.Duration
 		runCount := 0
@@ -133,10 +137,11 @@ func run(conf *BenchConfig, db *tsdb.DBReadOnly, blocks []tsdb.BlockReader) (err
 				block := blocks[blockIdx].(*tsdb.Block)
 				fmt.Println("Starting processing block", block.Meta().MinTime, block.Meta().MaxTime)
 
-				blockStart, blockCount, err := RunFullSimulation(conf, qmi, block, ws, i)
+				blockStart, blockCount, err := RunFullSimulation(conf, qmi, block, ws, i, simulationNumber)
 				if err != nil {
 					return err
 				}
+				simulationNumber++
 				if start.IsZero() {
 					start = blockStart
 				}
