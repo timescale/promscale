@@ -167,7 +167,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 
 	if err := ff.Parse(fs, args,
 		ff.WithConfigFileFlag("config"),
-		ff.WithConfigFileParser(ffyaml.Parser),
+		ff.WithConfigFileParser(Parser),
 		ff.WithAllowMissingConfigFile(true),
 	); err != nil {
 		// We might be dealing with old flags whose usage needs to be logged.

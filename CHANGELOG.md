@@ -17,6 +17,7 @@ We use the following categories for changes:
 
 ### Added
 - Alerts from promscale monitoring mixin are groupped also by namespace label [#1714]
+- Dataset config can now be set as a yaml map as well as a string [#1725]
 
 ### Changed
 - Reduced the verbosity of the logs emitted by the vacuum engine [#1715]
