@@ -12,7 +12,6 @@ go.sum @timescale/o11y-applications
 .github/workflows/mixin.yml @timescale/o11y-services
 
 # Go packages
-/pkg/api @antekresic @Harkishen-Singh
 /pkg/migrations/ @timescale/o11y-data-platform
 /pkg/migration-tool @timescale/o11y-applications
 /pkg/pgmodel/querier @timescale/o11y-data-platform
