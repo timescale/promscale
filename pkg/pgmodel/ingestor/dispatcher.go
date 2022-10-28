@@ -247,8 +247,8 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 		reportBatchProcessingTime(dataTS.ReceivedTime)
 	}
 
-	var err error
-	if !p.asyncAcks {
+	waitForIngestionToComplete := func() error {
+		var err error
 		workFinished.Wait()
 		reportOutgoing()
 		select {
@@ -257,19 +257,17 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 		}
 		reportMetricsTelemetry(maxt, numRows, 0)
 		close(errChan)
+		return err
+	}
+	var err error
+	if !p.asyncAcks {
+		err = waitForIngestionToComplete()
 	} else {
 		go func() {
-			workFinished.Wait()
-			reportOutgoing()
-			select {
-			case err = <-errChan:
-			default:
-			}
-			close(errChan)
+			err := waitForIngestionToComplete()
 			if err != nil {
-				log.Error("msg", fmt.Sprintf("error on async send, dropping %d datapoints", numRows), "err", err)
+				log.Error("msg", "error on async send", "dropped", numRows, "err", err)
 			}
-			reportMetricsTelemetry(maxt, numRows, 0)
 		}()
 	}
 
