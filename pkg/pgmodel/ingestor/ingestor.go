@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/atomic"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
@@ -79,18 +80,6 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error)
 	return NewPgxIngestor(conn, c, s, e, l, cfg)
 }
 
-const (
-	meta = iota
-	series
-)
-
-// result contains insert stats and is used when we ingest samples and metadata concurrently.
-type result struct {
-	id      int8
-	numRows uint64
-	err     error
-}
-
 func (ingestor *DBIngestor) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 	if ingestor.closed.Load() {
 		return fmt.Errorf("ingestor is closed and can't ingest traces")
@@ -118,7 +107,13 @@ func (ingestor *DBIngestor) IngestMetrics(ctx context.Context, r *prompb.WriteRe
 		metadata   = r.Metadata
 		size       = r.Size()
 	)
-	release := func() { FinishWriteRequest(r) }
+	// WriteRequests can contain pointers into the original buffer we deserialized
+	// them out of, and can be quite large in and of themselves. In order to prevent
+	// memory blowup, and to allow faster deserializing, we recycle the WriteRequest
+	// here, allowing it to be either garbage collected or reused for a new request.
+	// In order for this to work correctly, any data we wish to keep using (e.g.
+	// samples) must no longer be reachable from req.
+	defer FinishWriteRequest(r)
 
 	defer func(size int) {
 		if err == nil {
@@ -129,64 +124,34 @@ func (ingestor *DBIngestor) IngestMetrics(ctx context.Context, r *prompb.WriteRe
 	switch numTs, numMeta := len(timeseries), len(metadata); {
 	case numTs > 0 && numMeta == 0:
 		// Write request contains only time-series.
-		numInsertablesIngested, err = ingestor.ingestTimeseries(ctx, timeseries, release)
+		numInsertablesIngested, err = ingestor.ingestTimeseries(ctx, timeseries)
 		return numInsertablesIngested, 0, err
 	case numTs == 0 && numMeta == 0:
-		release()
 		return 0, 0, nil
 	case numMeta > 0 && numTs == 0:
 		// Write request contains only metadata.
-		numMetadataIngested, err = ingestor.ingestMetadata(ctx, metadata, release)
+		numMetadataIngested, err = ingestor.ingestMetadata(ctx, metadata)
 		return 0, numMetadataIngested, err
 	default:
 	}
-	release = func() {
-		// We do not want to re-initialize the write-request when ingesting concurrently.
-		// A concurrent ingestion may not have read the write-request and we initialized it
-		// leading to data loss.
-		FinishWriteRequest(nil)
-	}
-	res := make(chan result, 2)
-	defer close(res)
 
-	go func() {
-		n, err := ingestor.ingestTimeseries(ctx, timeseries, release)
-		res <- result{series, n, err}
-	}()
-	go func() {
-		n, err := ingestor.ingestMetadata(ctx, metadata, release)
-		res <- result{meta, n, err}
-	}()
-
-	mergeErr := func(prevErr, err error, message string) error {
-		if prevErr != nil {
-			err = fmt.Errorf("%s: %s: %w", prevErr.Error(), message, err)
-		}
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		n, err := ingestor.ingestTimeseries(ctx, timeseries)
+		numInsertablesIngested = n
 		return err
-	}
+	})
+	g.Go(func() error {
+		n, err := ingestor.ingestMetadata(ctx, metadata)
+		numMetadataIngested = n
+		return err
+	})
 
-	for i := 0; i < 2; i++ {
-		response := <-res
-		switch response.id {
-		case series:
-			numInsertablesIngested = response.numRows
-			err = mergeErr(err, response.err, "ingesting timeseries")
-		case meta:
-			numMetadataIngested = response.numRows
-			err = mergeErr(err, response.err, "ingesting metadata")
-		}
-	}
-	// WriteRequests can contain pointers into the original buffer we deserialized
-	// them out of, and can be quite large in and of themselves. In order to prevent
-	// memory blowup, and to allow faster deserializing, we recycle the WriteRequest
-	// here, allowing it to be either garbage collected or reused for a new request.
-	// In order for this to work correctly, any data we wish to keep using (e.g.
-	// samples) must no longer be reachable from req.
-	FinishWriteRequest(r)
+	err = g.Wait()
 	return numInsertablesIngested, numMetadataIngested, err
 }
 
-func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []prompb.TimeSeries, releaseMem func()) (uint64, error) {
+func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []prompb.TimeSeries) (uint64, error) {
 	ctx, span := tracer.Default().Start(ctx, "ingest-timeseries")
 	defer span.End()
 	var (
@@ -237,7 +202,6 @@ func (ingestor *DBIngestor) ingestTimeseries(ctx context.Context, timeseries []p
 		ts.Samples = nil
 		ts.Exemplars = nil
 	}
-	releaseMem()
 
 	numInsertablesIngested, errSamples := ingestor.dispatcher.InsertTs(ctx, model.Data{Rows: insertables, ReceivedTime: time.Now()})
 	if errSamples == nil && numInsertablesIngested != totalRowsExpected {
@@ -256,7 +220,7 @@ func (ingestor *DBIngestor) exemplars(l *model.Series, ts *prompb.TimeSeries) (m
 
 // ingestMetadata ingests metric metadata received from Prometheus. It runs as a secondary routine, independent from
 // the main dataflow (i.e., samples ingestion) since metadata ingestion is not as frequent as that of samples.
-func (ingestor *DBIngestor) ingestMetadata(ctx context.Context, metadata []prompb.MetricMetadata, releaseMem func()) (uint64, error) {
+func (ingestor *DBIngestor) ingestMetadata(ctx context.Context, metadata []prompb.MetricMetadata) (uint64, error) {
 	_, span := tracer.Default().Start(ctx, "ingest-metadata")
 	defer span.End()
 	num := len(metadata)
@@ -270,7 +234,6 @@ func (ingestor *DBIngestor) ingestMetadata(ctx context.Context, metadata []promp
 			Help:         tmp.Help,
 		}
 	}
-	releaseMem()
 	numMetadataIngested, errMetadata := ingestor.dispatcher.InsertMetadata(ctx, data)
 	if errMetadata != nil {
 		return 0, errMetadata
