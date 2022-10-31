@@ -13,9 +13,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/timescale/promscale/pkg/dataset"
 )
 
 func TestParseFlags(t *testing.T) {
+	// Clearing environment variables so they don't interfere with the test.
+	os.Clearenv()
 	defaultConfig, err := ParseFlags(&Config{}, []string{})
 	if err != nil {
 		t.Fatal("error occured on default config with no arguments")
@@ -197,12 +200,8 @@ func TestParseFlags(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			// Clearing environment variables so they don't interfere with the test.
-			os.Clearenv()
 			for name, value := range c.env {
-				if err := os.Setenv(name, value); err != nil {
-					t.Fatalf("unexpected error when setting env variable: name %s, value %s, error %s", name, value, err)
-				}
+				t.Setenv(name, value)
 			}
 			config, err := ParseFlags(&Config{}, c.args)
 			if c.shouldError {
@@ -242,10 +241,101 @@ func TestParseFlagsConfigPrecedence(t *testing.T) {
 			result: func(c Config) Config { return c },
 		},
 		{
-			name:               "Config file only",
-			configFileContents: "web.listen-address: localhost:9201",
+			name: "Config file only",
+			configFileContents: `
+web:
+  listen-address: localhost:9201
+  auth:
+    password: my-password
+    username: promscale
+`,
 			result: func(c Config) Config {
 				c.ListenAddr = "localhost:9201"
+				c.AuthConfig.BasicAuthUsername = "promscale"
+				c.AuthConfig.BasicAuthPassword = "my-password"
+				return c
+			},
+		},
+		{
+			name: "Config file with dataset",
+			configFileContents: `
+web:
+  listen-address: localhost:9201
+  auth:
+    password: my-password
+    username: promscale
+startup.dataset.config: |
+  metrics:
+    default_chunk_interval: 1h
+startup:
+  dataset:
+    metrics:
+      default_chunk_interval: 1d
+      compress_data: false
+      ha_lease_refresh: 2d
+      ha_lease_timeout: 3d
+      default_retention_period: 4d
+    traces:
+      default_retention_period: 5d`,
+			result: func(c Config) Config {
+				c.ListenAddr = "localhost:9201"
+				c.AuthConfig.BasicAuthUsername = "promscale"
+				c.AuthConfig.BasicAuthPassword = "my-password"
+				c.DatasetCfg.Metrics.ChunkInterval = dataset.DayDuration(24 * time.Hour)
+				c.DatasetCfg.Metrics.Compression = func(b bool) *bool { return &b }(false)
+				c.DatasetCfg.Metrics.HALeaseRefresh = dataset.DayDuration(24 * time.Hour * 2)
+				c.DatasetCfg.Metrics.HALeaseTimeout = dataset.DayDuration(24 * time.Hour * 3)
+				c.DatasetCfg.Metrics.RetentionPeriod = dataset.DayDuration(24 * time.Hour * 4)
+				c.DatasetCfg.Traces.RetentionPeriod = dataset.DayDuration(24 * time.Hour * 5)
+				c.DatasetConfig = "metrics:\n  default_chunk_interval: 1h\n"
+				return c
+			},
+		},
+		{
+			name: "Config file only with flat map",
+			configFileContents: `
+web.listen-address: localhost:9201
+web.auth.password: my-password
+web.auth.username: promscale
+`,
+			result: func(c Config) Config {
+				c.ListenAddr = "localhost:9201"
+				c.AuthConfig.BasicAuthUsername = "promscale"
+				c.AuthConfig.BasicAuthPassword = "my-password"
+				return c
+			},
+		},
+		{
+			name: "Config file only with semi flat map",
+			configFileContents: `
+web:
+  listen-address: localhost:9201
+  auth.password: my-password
+  auth.username: promscale
+`,
+			result: func(c Config) Config {
+				c.ListenAddr = "localhost:9201"
+				c.AuthConfig.BasicAuthUsername = "promscale"
+				c.AuthConfig.BasicAuthPassword = "my-password"
+				return c
+			},
+		},
+		{
+			name: "Config file only flat takes precendence over yaml mapping",
+			configFileContents: `
+web.listen-address: localhost:9242
+web.auth.password: my-password-42
+web.auth.username: promscale-42
+web:
+  listen-address: localhost:9201
+  auth:
+    password: my-password
+    username: promscale
+`,
+			result: func(c Config) Config {
+				c.ListenAddr = "localhost:9242"
+				c.AuthConfig.BasicAuthUsername = "promscale-42"
+				c.AuthConfig.BasicAuthPassword = "my-password-42"
 				return c
 			},
 		},
@@ -287,12 +377,8 @@ func TestParseFlagsConfigPrecedence(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.name, func(t *testing.T) {
-			// Clearing environment variables so they don't interfere with the test.
-			os.Clearenv()
 			for name, value := range c.env {
-				if err := os.Setenv(name, value); err != nil {
-					t.Fatalf("unexpected error when setting env variable: name %s, value %s, error %s", name, value, err)
-				}
+				t.Setenv(name, value)
 			}
 
 			var configFilePath string
@@ -404,9 +490,7 @@ func TestRemovedFlagUsage(t *testing.T) {
 			// Clearing environment variables so they don't interfere with the test.
 			os.Clearenv()
 			for name, value := range c.env {
-				if err := os.Setenv(name, value); err != nil {
-					t.Fatalf("unexpected error when setting env variable: name %s, value %s, error %s", name, value, err)
-				}
+				t.Setenv(name, value)
 			}
 
 			if c.configFileContents != "" {

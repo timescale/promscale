@@ -5,8 +5,11 @@ package dataset
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
+
+	"github.com/mitchellh/mapstructure"
 )
 
 const (
@@ -66,4 +69,29 @@ func handleDays(s []byte) (time.Duration, error) {
 // String returns a string value of DayDuration.
 func (d DayDuration) String() string {
 	return time.Duration(d).String()
+}
+
+// StringToDayDurationHookFunc returns a mapstructure.DecodeHookFunc that
+// converts strings to DayDuration.
+func StringToDayDurationHookFunc() mapstructure.DecodeHookFunc {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{}) (interface{}, error) {
+		if f.Kind() != reflect.String {
+			return data, nil
+		}
+
+		var d DayDuration
+
+		if t != reflect.TypeOf(d) {
+			return data, nil
+		}
+
+		err := d.UnmarshalText([]byte(data.(string)))
+		if err != nil {
+			return nil, err
+		}
+		return DayDuration(d), nil
+	}
 }

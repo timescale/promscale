@@ -50,8 +50,7 @@ func TestDatasetConfigApply(t *testing.T) {
 		require.Equal(t, 10*24*time.Hour, getTracesDefaultRetention(t, pgxConn))
 
 		// Set to default if chunk interval is not specified.
-		cfg, err = dataset.NewConfig("")
-		require.NoError(t, err)
+		cfg = dataset.Config{}
 
 		err = cfg.Apply(pgxConn)
 		require.NoError(t, err)

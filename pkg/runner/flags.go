@@ -11,10 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/peterbourgon/ff/v3"
-	"github.com/peterbourgon/ff/v3/ffyaml"
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/auth"
+	"github.com/timescale/promscale/pkg/dataset"
 	jaegerStore "github.com/timescale/promscale/pkg/jaeger/store"
 	"github.com/timescale/promscale/pkg/limits"
 	"github.com/timescale/promscale/pkg/log"
@@ -44,6 +43,7 @@ type Config struct {
 	VacuumCfg                   vacuum.Config
 	ConfigFile                  string
 	DatasetConfig               string
+	DatasetCfg                  dataset.Config
 	TLSCertFile                 string
 	TLSKeyFile                  string
 	ThroughputInterval          time.Duration
@@ -119,6 +119,8 @@ var (
 	}
 )
 
+const configFileFlagName = "config"
+
 func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	var (
 		fs = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
@@ -139,7 +141,7 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 	rules.ParseFlags(fs, &cfg.RulesCfg)
 	vacuum.ParseFlags(fs, &cfg.VacuumCfg)
 
-	fs.StringVar(&cfg.ConfigFile, "config", "config.yml", "YAML configuration file path for Promscale.")
+	fs.StringVar(&cfg.ConfigFile, configFileFlagName, "config.yml", "YAML configuration file path for Promscale.")
 	fs.StringVar(&cfg.ListenAddr, "web.listen-address", ":9201", "Address to listen on for web endpoints.")
 	fs.StringVar(&cfg.ThanosStoreAPIListenAddr, "thanos.store-api.server-address", "", "Address to listen on for Thanos Store API endpoints.")
 	fs.StringVar(&cfg.TracingGRPCListenAddr, "tracing.otlp.server-address", ":9202", "GRPC server address to listen on for Jaeger and OTEL traces(DEPRECATED: use `tracing.grpc.server-address` instead).") //TODO: remove this flag at some point
@@ -165,10 +167,14 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 		return nil, fmt.Errorf("error parsing env variables: %w", err)
 	}
 
-	if err := ff.Parse(fs, args,
-		ff.WithConfigFileFlag("config"),
-		ff.WithConfigFileParser(ffyaml.Parser),
-		ff.WithAllowMissingConfigFile(true),
+	unmarshalRules := []unmarshalRule{
+		{"startup.dataset", &cfg.DatasetCfg},
+	}
+
+	if err := parse(
+		fs,
+		args,
+		withUnmarshalRules(unmarshalRules),
 	); err != nil {
 		// We might be dealing with old flags whose usage needs to be logged.
 		// TODO: remove handling of old flags in a future version
@@ -284,12 +290,7 @@ func checkForRemovedConfigFlags(fs *flag.FlagSet, args []string) error {
 	aliasFS.String("migrate", "true", "")
 	addAliases(aliasFS, flagAliases)
 
-	if err := ff.Parse(aliasFS, args,
-		ff.WithConfigFileFlag("config"),
-		ff.WithConfigFileParser(ffyaml.Parser),
-		ff.WithIgnoreUndefined(true),
-		ff.WithAllowMissingConfigFile(true),
-	); err != nil {
+	if err := parse(aliasFS, args, withIgnoreUndefined(true)); err != nil {
 		// If are having trouble parsing the old flags, just ignore since there isn't much we can do.
 		// Logging this error would just create confusion for the user.
 		return nil
@@ -325,6 +326,7 @@ func checkForRemovedConfigFlags(fs *flag.FlagSet, args []string) error {
 func handleOldFlags(oldFlag, newFlag string) {
 	if oldFlag != "migrate" {
 		log.Warn("msg", fmt.Sprintf("Update removed flag `%s` to new flag `%s`", oldFlag, newFlag))
+		return
 	}
 
 	// Handling the special migrate flag
