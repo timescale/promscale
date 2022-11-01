@@ -143,6 +143,8 @@ func TestSendBatches(t *testing.T) {
 		return l
 	}
 	var workFinished sync.WaitGroup
+	var batched sync.WaitGroup
+	batched.Add(1)
 	errChan := make(chan error, 1)
 	data := []model.Insertable{
 		model.NewPromSamples(makeSeries(1), make([]prompb.Sample, 1)),
@@ -150,7 +152,7 @@ func TestSendBatches(t *testing.T) {
 		model.NewPromSamples(makeSeries(3), make([]prompb.Sample, 1)),
 	}
 	spanCtx := psctx.WithStartTime(context.Background(), time.Now().Add(-time.Hour))
-	firstReq := &insertDataRequest{metric: "test", requestCtx: spanCtx, data: data, finished: &workFinished, errChan: errChan}
+	firstReq := &insertDataRequest{metric: "test", requestCtx: spanCtx, data: data, finished: &workFinished, batched: &batched, errChan: errChan}
 	reservationQ := NewReservationQueue()
 	go sendBatches(firstReq, nil, nil, &pgmodel.MetricInfo{MetricID: 1, TableName: "test"}, reservationQ)
 	resos := make([]readRequest, 0, 1)

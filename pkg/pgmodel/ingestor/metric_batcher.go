@@ -211,6 +211,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 		}
 		metrics.IngestorPipelineTime.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(t).Seconds())
 		reservation.Update(reservationQ, t, len(req.data))
+		req.batched.Done()
 		addSpan.End()
 	}
 	//This channel in synchronous (no buffering). This provides backpressure
@@ -225,7 +226,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 			t = time.Time{}
 		}
 		metrics.IngestorPipelineTime.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(t).Seconds())
-		reservation = reservationQ.Add(copySender, t)
+		reservation = reservationQ.Add(copySender, req.batched, t)
 	}
 
 	pending := NewPendingBuffer()

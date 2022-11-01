@@ -8,8 +8,9 @@ import (
 )
 
 type reservation struct {
-	copySender <-chan copyRequest
-	index      int
+	copySender          <-chan copyRequest
+	firstRequestBatched *sync.WaitGroup
+	index               int
 
 	lock      sync.Mutex
 	startTime time.Time
@@ -17,8 +18,8 @@ type reservation struct {
 	items int64
 }
 
-func newReservation(cs <-chan copyRequest, startTime time.Time) *reservation {
-	return &reservation{cs, -1, sync.Mutex{}, startTime, 1}
+func newReservation(cs <-chan copyRequest, startTime time.Time, batched *sync.WaitGroup) *reservation {
+	return &reservation{cs, batched, -1, sync.Mutex{}, startTime, 1}
 }
 
 func (res *reservation) Update(rq *ReservationQueue, t time.Time, num_insertables int) {
@@ -110,8 +111,8 @@ func NewReservationQueue() *ReservationQueue {
 	return res
 }
 
-func (rq *ReservationQueue) Add(cs <-chan copyRequest, startTime time.Time) Reservation {
-	si := newReservation(cs, startTime)
+func (rq *ReservationQueue) Add(cs <-chan copyRequest, batched *sync.WaitGroup, startTime time.Time) Reservation {
+	si := newReservation(cs, startTime, batched)
 
 	rq.lock.Lock()
 	defer rq.lock.Unlock()
@@ -146,19 +147,42 @@ func (rq *ReservationQueue) Close() {
 // Peek gives the first startTime as well as if the queue is not closed.
 // It blocks until there is an element in the queue or it has been closed.
 func (rq *ReservationQueue) Peek() (time.Time, bool) {
+	reservation, waited, ok := rq.peek()
+	if !ok {
+		return time.Time{}, false
+	}
+	if waited {
+		/* If this is the first reservation in the queue, wait for the entire request to be batched with a timeout.
+		* (timeout is really a safety measure to prevent deadlocks if some metric batcher is full, which is unlikely)*/
+		waitch := make(chan struct{})
+		go func() {
+			reservation.firstRequestBatched.Wait()
+			close(waitch)
+		}()
+		select {
+		case <-waitch:
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	return reservation.GetStartTime(), ok
+}
+
+func (rq *ReservationQueue) peek() (*reservation, bool, bool) {
 	rq.lock.Lock()
 	defer rq.lock.Unlock()
+	waited := false
 	for !rq.closed && rq.q.Len() == 0 {
+		waited = true
 		rq.cond.Wait()
 	}
 
 	if rq.q.Len() > 0 {
-		first := (*rq.q)[0]
-		return first.GetStartTime(), true
+		firstReservation := (*rq.q)[0]
+		return firstReservation, waited, true
 	}
 
 	//must be closed
-	return time.Time{}, false
+	return nil, false, false
 }
 
 // PopBatch pops from the queue to populate the batch until either batch is full or the queue is empty.

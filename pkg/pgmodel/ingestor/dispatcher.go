@@ -227,8 +227,10 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 		maxt         int64
 		rows         = dataTS.Rows
 		workFinished = new(sync.WaitGroup)
+		batched      = new(sync.WaitGroup)
 	)
 	workFinished.Add(len(rows))
+	batched.Add(len(rows))
 	// we only allocate enough space for a single error message here as we only
 	// report one error back upstream. The inserter should not block on this
 	// channel, but only insert if it's empty, anything else can deadlock.
@@ -241,7 +243,7 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 				maxt = ts
 			}
 		}
-		p.getMetricBatcher(metricName) <- &insertDataRequest{requestCtx: ctx, spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, errChan: errChan}
+		p.getMetricBatcher(metricName) <- &insertDataRequest{requestCtx: ctx, spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, batched: batched, errChan: errChan}
 	}
 	span.SetAttributes(attribute.Int64("num_rows", int64(numRows)))
 	span.SetAttributes(attribute.Int("num_metrics", len(rows)))
@@ -339,6 +341,7 @@ type insertDataRequest struct {
 	spanCtx    trace.SpanContext
 	metric     string
 	finished   *sync.WaitGroup
+	batched    *sync.WaitGroup
 	data       []model.Insertable
 	errChan    chan error
 }
