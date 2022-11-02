@@ -202,15 +202,10 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
 	seriesCache := cache.NewSeriesCache(cfg.CacheConfig, sigClose)
-	c := ingestor.Cfg{
+	c := ingestor.Parameters{
 		NumCopiers:              numCopiers,
-		IgnoreCompressedChunks:  cfg.IgnoreCompressedChunks,
-		MetricsAsyncAcks:        cfg.MetricsAsyncAcks,
-		TracesAsyncAcks:         cfg.TracesAsyncAcks,
 		InvertedLabelsCacheSize: cfg.CacheConfig.InvertedLabelsCacheSize,
-		TracesBatchTimeout:      cfg.TracesBatchTimeout,
-		TracesMaxBatchSize:      cfg.TracesMaxBatchSize,
-		TracesBatchWorkers:      cfg.TracesBatchWorkers,
+		Config:                  &cfg.IngestorFlags,
 	}
 
 	var (

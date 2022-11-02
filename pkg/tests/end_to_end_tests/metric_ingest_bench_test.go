@@ -64,7 +64,7 @@ func BenchmarkMetricIngest(b *testing.B) {
 
 	withDB(b, "bench_e2e_metric_ingest", func(db *pgxpool.Pool, t testing.TB) {
 		b.StopTimer()
-		metricsIngestor, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingestor.Cfg{
+		metricsIngestor, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingestor.Parameters{
 			NumCopiers:              8,
 			InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
 		})
@@ -119,7 +119,7 @@ func BenchmarkNewSeriesIngestion(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				withDB(b, "bench_e2e_new_series_ingest", func(db *pgxpool.Pool, t testing.TB) {
-					metricsIngestor, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingestor.Cfg{
+					metricsIngestor, err := ingestor.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingestor.Parameters{
 						NumCopiers:              8,
 						InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
 					})

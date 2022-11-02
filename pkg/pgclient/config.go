@@ -17,13 +17,14 @@ import (
 	"github.com/timescale/promscale/pkg/limits"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
-	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
+	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/version"
 )
 
 // Config for the database.
 type Config struct {
 	CacheConfig             cache.Config
+	IngestorFlags           ingestor.Config
 	AppName                 string
 	Host                    string
 	Port                    int
@@ -32,9 +33,6 @@ type Config struct {
 	Database                string
 	SslMode                 string
 	DbConnectionTimeout     time.Duration
-	IgnoreCompressedChunks  bool
-	MetricsAsyncAcks        bool
-	TracesAsyncAcks         bool
 	WriteConnections        int
 	WriterPoolSize          int
 	WriterSynchronousCommit bool
@@ -44,9 +42,6 @@ type Config struct {
 	UsesHA                  bool
 	DbUri                   string
 	EnableStatementsCache   bool
-	TracesBatchTimeout      time.Duration
-	TracesMaxBatchSize      int
-	TracesBatchWorkers      int
 }
 
 const (
@@ -75,6 +70,7 @@ var (
 // ParseFlags parses the configuration flags specific to PostgreSQL and TimescaleDB
 func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	cache.ParseFlags(fs, &cfg.CacheConfig)
+	ingestor.ParseFlags(fs, &cfg.IngestorFlags)
 
 	fs.StringVar(&cfg.AppName, "db.app", DefaultApp, "This sets the application_name in database connection string. "+
 		"This is helpful during debugging when looking at pg_stat_activity.")
@@ -85,9 +81,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.StringVar(&cfg.Database, "db.name", defaultDBName, "Database name.")
 	fs.StringVar(&cfg.SslMode, "db.ssl-mode", defaultSSLMode, "TimescaleDB connection ssl mode. If you do not want to use ssl, pass 'allow' as value.")
 	fs.DurationVar(&cfg.DbConnectionTimeout, "db.connection-timeout", defaultConnectionTime, "Timeout for establishing the connection between Promscale and TimescaleDB.")
-	fs.BoolVar(&cfg.IgnoreCompressedChunks, "metrics.ignore-samples-written-to-compressed-chunks", false, "Ignore/drop samples that are being written to compressed chunks. "+
-		"Setting this to false allows Promscale to ingest older data by decompressing chunks that were earlier compressed. "+
-		"However, setting this to true will save your resources that may be required during decompression. ")
+
 	fs.IntVar(&cfg.WriteConnections, "db.connections.num-writers", 0, "Number of database connections for writing metrics/traces to database. "+
 		"By default, this will be set based on the number of CPUs available to the DB Promscale is connected to.")
 	fs.IntVar(&cfg.WriterPoolSize, "db.connections.writer-pool.size", defaultPoolSize, "Maximum size of the writer pool of database connections. This defaults to 50% of max_connections "+
@@ -102,16 +96,15 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 		"Example DB URI `postgres://postgres:password@localhost:5432/timescale?sslmode=require`")
 	fs.BoolVar(&cfg.EnableStatementsCache, "db.statements-cache", defaultDbStatementsCache, "Whether database connection pool should use cached prepared statements. "+
 		"Disable if using PgBouncer")
-	fs.BoolVar(&cfg.MetricsAsyncAcks, "metrics.async-acks", false, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of metric data in the database. This increases throughput at the cost of a small chance of data loss.")
-	fs.BoolVar(&cfg.TracesAsyncAcks, "tracing.async-acks", true, "Acknowledge asynchronous inserts. If this is true, the inserter will not wait after insertion of traces data in the database. This increases throughput at the cost of a small chance of data loss.")
-	fs.IntVar(&cfg.TracesMaxBatchSize, "tracing.max-batch-size", trace.DefaultBatchSize, "Maximum size of trace batch that is written to DB")
-	fs.DurationVar(&cfg.TracesBatchTimeout, "tracing.batch-timeout", trace.DefaultBatchTimeout, "Timeout after new trace batch is created")
-	fs.IntVar(&cfg.TracesBatchWorkers, "tracing.batch-workers", trace.DefaultBatchWorkers, "Number of workers responsible for creating trace batches. Defaults to number of CPUs.")
+
 	return cfg
 }
 
 func Validate(cfg *Config, lcfg limits.Config) error {
 	if err := cfg.validateConnectionSettings(); err != nil {
+		return err
+	}
+	if err := ingestor.Validate(&cfg.IngestorFlags); err != nil {
 		return err
 	}
 	return cache.Validate(&cfg.CacheConfig, lcfg)

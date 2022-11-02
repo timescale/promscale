@@ -459,8 +459,8 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		}
 
 		c := cache.NewMetricCache(cache.DefaultConfig)
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, nil, &ingstr.Cfg{
-			DisableEpochSync:        true,
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, nil, &ingstr.Parameters{
+			Config:                  &ingstr.Config{DisableEpochSync: true},
 			InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
 			NumCopiers:              2,
 		})
