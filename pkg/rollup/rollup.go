@@ -11,13 +11,13 @@ import (
 
 	"github.com/jackc/pgx/v4"
 
-	"github.com/timescale/promscale/pkg/util"
+	"github.com/timescale/promscale/pkg/internal/day"
 )
 
 type DownsampleResolution struct {
-	Label      string           `yaml:"label"`
-	Resolution util.DayDuration `yaml:"resolution"`
-	Retention  util.DayDuration `yaml:"retention"`
+	Label      string       `yaml:"label"`
+	Resolution day.Duration `yaml:"resolution"`
+	Retention  day.Duration `yaml:"retention"`
 }
 
 // EnsureRollupWith ensures "strictly" that the given new resolutions are applied in the database.
@@ -43,7 +43,7 @@ func EnsureRollupWith(conn *pgx.Conn, newResolutions []DownsampleResolution) err
 		if err := rows.Scan(&lName, &resolution, &retention); err != nil {
 			return fmt.Errorf("error scanning output rows for existing resolutions: %w", err)
 		}
-		existingResolutions = append(existingResolutions, DownsampleResolution{Label: lName, Resolution: util.DayDuration(resolution), Retention: util.DayDuration(retention)})
+		existingResolutions = append(existingResolutions, DownsampleResolution{Label: lName, Resolution: day.Duration(resolution), Retention: day.Duration(retention)})
 	}
 
 	// Determine which resolutions need to be created and deleted from the DB.

@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/timescale/promscale/pkg/internal/day"
 	"github.com/timescale/promscale/pkg/rollup"
-	"github.com/timescale/promscale/pkg/util"
 )
 
 func TestRollupCreationDeletion(t *testing.T) {
@@ -18,8 +18,8 @@ func TestRollupCreationDeletion(t *testing.T) {
 		rollupResolutions := []rollup.DownsampleResolution{
 			{
 				Label:      "short",
-				Resolution: util.DayDuration(5 * time.Minute),
-				Retention:  util.DayDuration(30 * 24 * time.Hour),
+				Resolution: day.Duration(5 * time.Minute),
+				Retention:  day.Duration(30 * 24 * time.Hour),
 			},
 		}
 
@@ -34,8 +34,8 @@ func TestRollupCreationDeletion(t *testing.T) {
 
 		rollupResolutions = append(rollupResolutions, rollup.DownsampleResolution{
 			Label:      "long",
-			Resolution: util.DayDuration(time.Hour),
-			Retention:  util.DayDuration(395 * 24 * time.Hour),
+			Resolution: day.Duration(time.Hour),
+			Retention:  day.Duration(395 * 24 * time.Hour),
 		})
 
 		err = rollup.EnsureRollupWith(pgCon.Conn(), rollupResolutions)

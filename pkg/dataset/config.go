@@ -12,8 +12,8 @@ import (
 	"github.com/jackc/pgx/v4"
 	"gopkg.in/yaml.v2"
 
+	"github.com/timescale/promscale/pkg/internal/day"
 	"github.com/timescale/promscale/pkg/log"
-	"github.com/timescale/promscale/pkg/util"
 )
 
 const (
@@ -44,17 +44,17 @@ type Config struct {
 
 // Metrics contains dataset configuration options for metrics data.
 type Metrics struct {
-	ChunkInterval   util.DayDuration `yaml:"default_chunk_interval"`
-	Compression     *bool            `yaml:"compress_data"` // Using pointer to check if the value was set.
-	HALeaseRefresh  util.DayDuration `yaml:"ha_lease_refresh"`
-	HALeaseTimeout  util.DayDuration `yaml:"ha_lease_timeout"`
-	RetentionPeriod util.DayDuration `yaml:"default_retention_period"`
-	Downsample      *Downsample      `yaml:"downsample,omitempty"`
+	ChunkInterval   day.Duration `yaml:"default_chunk_interval"`
+	Compression     *bool        `yaml:"compress_data"` // Using pointer to check if the value was set.
+	HALeaseRefresh  day.Duration `yaml:"ha_lease_refresh"`
+	HALeaseTimeout  day.Duration `yaml:"ha_lease_timeout"`
+	RetentionPeriod day.Duration `yaml:"default_retention_period"`
+	Downsample      *Downsample  `yaml:"downsample,omitempty"`
 }
 
 // Traces contains dataset configuration options for traces data.
 type Traces struct {
-	RetentionPeriod util.DayDuration `yaml:"default_retention_period"`
+	RetentionPeriod day.Duration `yaml:"default_retention_period"`
 }
 
 // NewConfig creates a new dataset config based on the configuration YAML contents.
@@ -100,21 +100,21 @@ func (c *Config) Apply(conn *pgx.Conn) error {
 
 func (c *Config) applyDefaults() {
 	if c.Metrics.ChunkInterval <= 0 {
-		c.Metrics.ChunkInterval = util.DayDuration(defaultMetricChunkInterval)
+		c.Metrics.ChunkInterval = day.Duration(defaultMetricChunkInterval)
 	}
 	if c.Metrics.Compression == nil {
 		c.Metrics.Compression = &defaultMetricCompressionVar
 	}
 	if c.Metrics.HALeaseRefresh <= 0 {
-		c.Metrics.HALeaseRefresh = util.DayDuration(defaultMetricHALeaseRefresh)
+		c.Metrics.HALeaseRefresh = day.Duration(defaultMetricHALeaseRefresh)
 	}
 	if c.Metrics.HALeaseTimeout <= 0 {
-		c.Metrics.HALeaseTimeout = util.DayDuration(defaultMetricHALeaseTimeout)
+		c.Metrics.HALeaseTimeout = day.Duration(defaultMetricHALeaseTimeout)
 	}
 	if c.Metrics.RetentionPeriod <= 0 {
-		c.Metrics.RetentionPeriod = util.DayDuration(defaultMetricRetentionPeriod)
+		c.Metrics.RetentionPeriod = day.Duration(defaultMetricRetentionPeriod)
 	}
 	if c.Traces.RetentionPeriod <= 0 {
-		c.Traces.RetentionPeriod = util.DayDuration(defaultTraceRetentionPeriod)
+		c.Traces.RetentionPeriod = day.Duration(defaultTraceRetentionPeriod)
 	}
 }

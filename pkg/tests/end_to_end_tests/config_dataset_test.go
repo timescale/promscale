@@ -2,7 +2,6 @@ package end_to_end_tests
 
 import (
 	"context"
-	"github.com/timescale/promscale/pkg/util"
 	"testing"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/dataset"
+	"github.com/timescale/promscale/pkg/internal/day"
 )
 
 func TestDatasetConfigApply(t *testing.T) {
@@ -29,14 +29,14 @@ func TestDatasetConfigApply(t *testing.T) {
 
 		cfg := dataset.Config{
 			Metrics: dataset.Metrics{
-				ChunkInterval:   util.DayDuration(4 * time.Hour),
+				ChunkInterval:   day.Duration(4 * time.Hour),
 				Compression:     &disableCompression,
-				HALeaseRefresh:  util.DayDuration(15 * time.Second),
-				HALeaseTimeout:  util.DayDuration(2 * time.Minute),
-				RetentionPeriod: util.DayDuration(15 * 24 * time.Hour),
+				HALeaseRefresh:  day.Duration(15 * time.Second),
+				HALeaseTimeout:  day.Duration(2 * time.Minute),
+				RetentionPeriod: day.Duration(15 * 24 * time.Hour),
 			},
 			Traces: dataset.Traces{
-				RetentionPeriod: util.DayDuration(10 * 24 * time.Hour),
+				RetentionPeriod: day.Duration(10 * 24 * time.Hour),
 			},
 		}
 
