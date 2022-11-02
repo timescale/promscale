@@ -2,7 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 
-package util
+package day
 
 import (
 	"fmt"
@@ -15,13 +15,13 @@ const (
 	unknownUnitDErrorPrefix = `time: unknown unit "d"`
 )
 
-// DayDuration acts like a time.Duration with support for "d" unit
+// Duration acts like a time.Duration with support for "d" unit
 // which is used for specifying number of days in duration.
-type DayDuration time.Duration
+type Duration time.Duration
 
 // UnmarshalText unmarshals strings into DayDuration values while
 // handling the day unit. It leans heavily into time.ParseDuration.
-func (d *DayDuration) UnmarshalText(s []byte) error {
+func (d *Duration) UnmarshalText(s []byte) error {
 	val, err := time.ParseDuration(string(s))
 	if err != nil {
 		// Check for specific error indicating we are using days unit.
@@ -34,7 +34,7 @@ func (d *DayDuration) UnmarshalText(s []byte) error {
 			return err
 		}
 	}
-	*d = DayDuration(val)
+	*d = Duration(val)
 	return nil
 }
 
@@ -65,6 +65,6 @@ func handleDays(s []byte) (time.Duration, error) {
 }
 
 // String returns a string value of DayDuration.
-func (d DayDuration) String() string {
+func (d Duration) String() string {
 	return time.Duration(d).String()
 }

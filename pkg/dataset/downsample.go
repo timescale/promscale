@@ -11,9 +11,9 @@ import (
 
 	"github.com/jackc/pgx/v4"
 
+	"github.com/timescale/promscale/pkg/internal/day"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/rollup"
-	"github.com/timescale/promscale/pkg/util"
 )
 
 const defaultDownsampleState = true
@@ -25,13 +25,13 @@ var (
 	defaultDownsampleResolution = []rollup.DownsampleResolution{
 		{
 			Label:      "short",
-			Resolution: util.DayDuration(5 * time.Minute),
-			Retention:  util.DayDuration(90 * 24 * time.Hour),
+			Resolution: day.Duration(5 * time.Minute),
+			Retention:  day.Duration(90 * 24 * time.Hour),
 		},
 		{
 			Label:      "long",
-			Resolution: util.DayDuration(time.Hour),
-			Retention:  util.DayDuration(395 * 24 * time.Hour),
+			Resolution: day.Duration(time.Hour),
+			Retention:  day.Duration(395 * 24 * time.Hour),
 		},
 	}
 )
