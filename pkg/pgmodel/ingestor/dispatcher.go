@@ -21,6 +21,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/psctx"
 	"github.com/timescale/promscale/pkg/tracer"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 )
@@ -245,6 +246,16 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 		}
 		p.getMetricBatcher(metricName) <- &insertDataRequest{requestCtx: ctx, spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, batched: batched, errChan: errChan}
 	}
+
+	var startTime time.Time
+	if log.TraceRequestEnabled() {
+		t, err := psctx.StartTime(ctx)
+		if err != nil {
+			log.TraceRequest("component", "dispatcher", "err", err)
+		}
+		startTime = t
+		log.TraceRequest("component", "dispatcher", "event", "start", "metrics", len(rows), "samples", numRows, "start_time", startTime.UnixNano())
+	}
 	span.SetAttributes(attribute.Int64("num_rows", int64(numRows)))
 	span.SetAttributes(attribute.Int("num_metrics", len(rows)))
 	reportIncomingBatch(numRows)
@@ -261,6 +272,7 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 		case err = <-errChan:
 		default:
 		}
+		log.TraceRequest("component", "dispatcher", "event", "ack", "start_time", startTime.UnixNano(), "took", time.Since(startTime))
 		reportMetricsTelemetry(maxt, numRows, 0)
 		close(errChan)
 	} else {
@@ -275,6 +287,7 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 			if err != nil {
 				log.Error("msg", fmt.Sprintf("error on async send, dropping %d datapoints", numRows), "err", err)
 			}
+			log.TraceRequest("component", "dispatcher", "event", "async_ack", "start_time", startTime.UnixNano(), "took", time.Since(startTime))
 			reportMetricsTelemetry(maxt, numRows, 0)
 		}()
 	}

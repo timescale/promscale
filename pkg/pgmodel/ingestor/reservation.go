@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/timescale/promscale/pkg/log"
 )
 
 type reservation struct {
@@ -163,6 +165,7 @@ func (rq *ReservationQueue) Peek() (time.Time, bool) {
 		case <-waitch:
 		case <-time.After(250 * time.Millisecond):
 		}
+		log.TraceRequest("component", "reservation", "event", "peek", "batched_metrics", rq.q.Len(), "waited", waited, "took", time.Since((*rq.q)[0].GetStartTime()))
 	}
 	return reservation.GetStartTime(), ok
 }
@@ -213,6 +216,7 @@ func (rq *ReservationQueue) PopOntoBatch(batch []readRequest) ([]readRequest, in
 	} else if !(len(batch) == 0 || items+total_items < 20000) {
 		reason = "size_samples"
 	}
+	log.TraceRequest("component", "reservation", "event", "pop", "reason", reason, "metrics", count, "items", total_items, "remaining_metrics", rq.q.Len())
 	return batch, count, reason
 }
 
