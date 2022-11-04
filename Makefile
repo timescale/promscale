@@ -71,5 +71,15 @@ check-docs:
 	@echo ">> checking formatting and local/remote links"
 	$(MDOX_BIN) fmt --soft-wraps --check -l --links.validate.config-file=$(MDOX_VALIDATE_CONFIG) **/*.md
 
+.PHONY: deepcopy-gen
+deepcopy-gen: deepcopy-gen-install
+	@echo ">> generating deepcopy code"
+	deepcopy-gen -i ./pkg/dataset -h build/deepcopy-gen-header.txt -o '.'
+
+.PHONY: deepcopy-gen-install
+deepcopy-gen-install:
+	@echo ">> installing deepcopy-gen"
+	go install k8s.io/code-generator/cmd/deepcopy-gen@latest
+
 .PHONY: all
 all: build test go-fmt go-lint
