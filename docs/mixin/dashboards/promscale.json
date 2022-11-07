@@ -665,7 +665,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.90, rate(promscale_ingest_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, rate(promscale_ingest_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval]))",
               "hide": false,
               "interval": "",
               "legendFormat": "p95 {{ type }}",
@@ -953,7 +953,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.5, rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.9, rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval]))",
               "hide": false,
               "interval": "",
               "legendFormat": "p90 {{ type }}",
@@ -965,7 +965,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.5, rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval]))",
               "hide": false,
               "interval": "",
               "legendFormat": "p95 {{ type }}",
