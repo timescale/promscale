@@ -2460,6 +2460,330 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": true,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 41
+          },
+          "id": 54,
+          "interval": "2m",
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "histogram_quantile(0.99, max(rate(promscale_sql_database_worker_maintenance_job_metrics_compression_last_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le, job))",
+              "interval": "",
+              "legendFormat": "metrics-compression",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "histogram_quantile(0.99, max(rate(promscale_sql_database_worker_maintenance_job_metrics_retention_last_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le, job))",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "metrics-retention",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "histogram_quantile(0.99, max(rate(promscale_sql_database_worker_maintenance_job_traces_retention_last_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le, job))",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "traces-retention",
+              "range": true,
+              "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "histogram_quantile(0.99, max(rate(promscale_sql_database_worker_maintenance_job_traces_compression_last_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le, job))",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "traces-compression",
+              "range": true,
+              "refId": "D"
+            }
+          ],
+          "title": "Duration of recent jobs",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": true,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "opm"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 41
+          },
+          "id": 57,
+          "interval": "2m",
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "single",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_metrics_compression_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "interval": "",
+              "legendFormat": "metrics-compression-total",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_metrics_retention_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "metrics-retention-total",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_traces_retention_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "traces-retention-total",
+              "range": true,
+              "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_metrics_compression_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "metrics-compression-failures",
+              "range": true,
+              "refId": "D"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_metrics_retention_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "metrics-retention-failures",
+              "range": true,
+              "refId": "E"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_traces_retention_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "traces-retention-failures",
+              "range": true,
+              "refId": "F"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_traces_compression_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "traces-compression-failures",
+              "range": true,
+              "refId": "G"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_traces_retention_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "hide": false,
+              "interval": "",
+              "legendFormat": "traces-compression-total",
+              "range": true,
+              "refId": "H"
+            }
+          ],
+          "title": "Completion and failure rates",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -2514,7 +2838,7 @@
             "h": 9,
             "w": 12,
             "x": 0,
-            "y": 49
+            "y": 42
           },
           "id": 50,
           "interval": "2m",
@@ -2691,7 +3015,7 @@
             "h": 9,
             "w": 12,
             "x": 12,
-            "y": 49
+            "y": 42
           },
           "id": 52,
           "interval": "2m",
