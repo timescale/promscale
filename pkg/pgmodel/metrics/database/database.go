@@ -200,6 +200,8 @@ func updateMetric(m prometheus.Collector, value int64) {
 		n.Set(float64(value))
 	case prometheus.Counter:
 		n.Add(float64(value))
+	case prometheus.Histogram:
+		n.Observe(float64(value))
 	default:
 		panic(fmt.Sprintf("metric %s is of type %T", m, m))
 	}

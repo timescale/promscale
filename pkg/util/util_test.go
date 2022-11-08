@@ -5,6 +5,7 @@
 package util
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -138,9 +139,8 @@ func TestExtractMetricValue(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, float64(164), value)
 
-	wrongMetric := prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "test", Name: "wrong", Buckets: prometheus.DefBuckets})
+	wrongMetric := prometheus.NewInvalidMetric(prometheus.NewDesc("invalid", "invalid", nil, nil), errors.New("an invalid metric"))
 
-	wrongMetric.Observe(164)
 	_, err = ExtractMetricValue(wrongMetric)
 	require.Error(t, err)
 }
