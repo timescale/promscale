@@ -6,13 +6,20 @@ receivers:
 
 exporters:
   logging:
-  otlp:
-    endpoint: promscale:9202
+  jaeger:
+    endpoint: jaeger-all-in-one:14250
+    tls:
+      insecure: true
+  prometheusremotewrite:
+    endpoint: "http://promscale:9201/write"
     tls:
       insecure: true
 
 processors:
   batch:
+  spanmetrics:
+    metrics_exporter: prometheusremotewrite
+
 
 service:
   telemetry:
@@ -22,6 +29,10 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp, logging]
+      exporters: [jaeger, logging]
+      processors: [batch, spanmetrics]
+    metrics:
+      receivers: [otlp]
+      exporters: [logging, prometheusremotewrite]
       processors: [batch]
 
