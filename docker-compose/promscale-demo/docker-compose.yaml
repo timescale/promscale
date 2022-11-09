@@ -48,7 +48,7 @@ services:
       PROMSCALE_PKG: "docker-quick-start"
 
   collector:
-    image: "otel/opentelemetry-collector:0.56.0"
+    image: "otel/opentelemetry-collector-contrib:0.63.1"
     restart: on-failure
     command: [ "--config=/etc/otel-collector-config.yml" ]
     depends_on:
@@ -60,14 +60,15 @@ services:
     volumes:
       - ${PWD}/../otel-collector-config.yml:/etc/otel-collector-config.yml
 
-  jaeger:
-    image: jaegertracing/jaeger-query:1.37.0
+  jaeger-all-in-one:
+    image: jaegertracing/all-in-one:1.39.0
     restart: on-failure
     environment:
       SPAN_STORAGE_TYPE: grpc-plugin
-    command: [
-      "--grpc-storage.server=promscale:9202",
-    ]
+      METRICS_STORAGE_TYPE: prometheus
+      GRPC_STORAGE_SERVER: promscale:9202
+      PROMETHEUS_SERVER_URL: "http://promscale:9201"
+
     depends_on:
     - timescaledb
     - promscale
