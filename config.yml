@@ -1,0 +1,3 @@
+startup.dataset:
+  metrics:
+    default_chunk_interval: 1d

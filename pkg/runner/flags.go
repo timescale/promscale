@@ -65,7 +65,10 @@ var (
 	removedEnvVarError    = fmt.Errorf("using removed environmental variables, please update your configuration to new variable names to proceed")
 	removedFlagsError     = fmt.Errorf("using removed flags, please update to new flag names to proceed")
 	removedConfigVarError = fmt.Errorf("using removed configuration file variables, please update to new variable names to proceed")
-	flagAliases           = map[string]string{
+	toBeDeprecated        = map[string]string{
+		"startup.dataset.config": "The config option `startup.dataset.config` and environment variable PROMETHEUS_STARTUP_DATASET_CONFIG are going to be deprecated in an upcoming release. Update your config.yaml as in https://github.com/timescale/promscale/blob/master/docs/dataset.md to use the new dataset config",
+	}
+	flagAliases = map[string]string{
 		"auth.tls-cert-file":                "tls-cert-file",
 		"auth.tls-key-file":                 "tls-key-file",
 		"cache.memory-target":               "memory-target",
@@ -184,6 +187,8 @@ func ParseFlags(cfg *Config, args []string) (*Config, error) {
 
 		return nil, fmt.Errorf("configuration error when parsing flags: %w", err)
 	}
+
+	handleToBeDeprecated(fs, toBeDeprecated)
 
 	// Checking if TLS files are not both set or both empty.
 	if (cfg.TLSCertFile != "") != (cfg.TLSKeyFile != "") {
@@ -418,4 +423,22 @@ argloop:
 		}
 	}
 	return result
+}
+
+func handleToBeDeprecated(fs *flag.FlagSet, toBeDeprecated map[string]string) {
+
+	if len(toBeDeprecated) == 0 {
+		return
+	}
+
+	setFlags := getFlagsThatHaveBeenSet(fs)
+
+	for key, message := range toBeDeprecated {
+		_, ok := setFlags[key]
+		if !ok {
+			continue
+		}
+
+		log.Warn("msg", message)
+	}
 }
