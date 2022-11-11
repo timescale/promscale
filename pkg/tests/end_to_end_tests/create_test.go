@@ -1597,7 +1597,7 @@ func TestRegisterMetricView(t *testing.T) {
 
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		// Cannot register non-existant schema.
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('nonexistant', 'missing')"); err == nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('nonexistant', 'missing', NULL)"); err == nil {
 			t.Fatal("Should not be able to register a metric view from a non-existant schema")
 		}
 
@@ -1606,7 +1606,7 @@ func TestRegisterMetricView(t *testing.T) {
 		}
 
 		// Cannot register non-existant view.
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'missing')"); err == nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'missing', NULL)"); err == nil {
 			t.Fatal("Should not be able to register a metric view from a non-existant metric view")
 		}
 
@@ -1640,7 +1640,7 @@ func TestRegisterMetricView(t *testing.T) {
 		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_view.metric_view_in_data_schema AS SELECT * FROM prom_data."rawMetric"`); err != nil {
 			t.Fatalf("unexpected error while creating view in data schema: %s", err)
 		}
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_data', 'metric_view_in_data_schema')"); err == nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_data', 'metric_view_in_data_schema', NULL)"); err == nil {
 			t.Fatal("Should not be able to register a metric view in data schema")
 		}
 
@@ -1648,7 +1648,7 @@ func TestRegisterMetricView(t *testing.T) {
 		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_view.metric_view_bad_columns AS SELECT time, series_id, true as bad_column FROM prom_data."rawMetric"`); err != nil {
 			t.Fatalf("unexpected error while creating view: %s", err)
 		}
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view_bad_columns')"); err == nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view_bad_columns', NULL)"); err == nil {
 			t.Fatal("Should not be able to register a metric view with different columns than raw metric")
 		}
 
@@ -1656,7 +1656,7 @@ func TestRegisterMetricView(t *testing.T) {
 		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_view.metric_view_bad_column_types AS SELECT time, series_id, true as value FROM prom_data."rawMetric"`); err != nil {
 			t.Fatalf("unexpected error while creating view: %s", err)
 		}
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view_bad_column_types')"); err == nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view_bad_column_types', NULL)"); err == nil {
 			t.Fatal("Should not be able to register a metric view with column types different than raw metric")
 		}
 
@@ -1664,7 +1664,7 @@ func TestRegisterMetricView(t *testing.T) {
 		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_view.metric_view_not_based AS SELECT time, series_id, 1.0 as value FROM prom_view."metric_view_bad_columns"`); err != nil {
 			t.Fatalf("unexpected error while creating view: %s", err)
 		}
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view_not_based')"); err == nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view_not_based', NULL)"); err == nil {
 			t.Fatal("Should not be able to register a metric view with column types different than raw metric")
 		}
 
@@ -1672,7 +1672,7 @@ func TestRegisterMetricView(t *testing.T) {
 		if _, err = db.Exec(context.Background(), `CREATE VIEW prom_view.metric_view AS SELECT * FROM prom_data."rawMetric"`); err != nil {
 			t.Fatalf("unexpected error while creating view: %s", err)
 		}
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view')"); err != nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view', NULL)"); err != nil {
 			t.Fatalf("Error creating valid metric view: %v", err)
 		}
 
@@ -1694,12 +1694,12 @@ func TestRegisterMetricView(t *testing.T) {
 		}
 
 		// Cannot register the same view twice.
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view')"); err == nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view', NULL)"); err == nil {
 			t.Fatal("Should not be able to register the same view twice")
 		}
 
 		// Should succeed if we register same view twice but also use `if_not_exists`
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view', true)"); err != nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('prom_view', 'metric_view', NULL, true)"); err != nil {
 			t.Fatalf("Should be able to register the same view twice when using `if_not_exists`: %v", err)
 		}
 
