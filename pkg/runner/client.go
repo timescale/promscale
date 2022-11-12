@@ -87,6 +87,12 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 			log.Info("msg", "Migration successful, exiting")
 			return nil, nil
 		}
+
+		// Bump the current epoch if it was still set to the initial value.
+		_, err = conn.Exec(context.Background(), "SELECT _prom_catalog.initialize_current_epoch(now())")
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		log.Info("msg", "Skipping migration")
 	}

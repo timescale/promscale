@@ -19,8 +19,7 @@ import (
 type SeriesID int64
 
 const (
-	invalidSeriesID    = -1
-	InvalidSeriesEpoch = -1
+	invalidSeriesID = -1
 )
 
 func (s SeriesID) String() string {
@@ -28,7 +27,23 @@ func (s SeriesID) String() string {
 }
 
 // SeriesEpoch represents the series epoch
-type SeriesEpoch int64
+type SeriesEpoch struct {
+	time int64
+}
+
+func NewSeriesEpoch(epochTime int64) *SeriesEpoch {
+	return &SeriesEpoch{
+		time: epochTime,
+	}
+}
+
+func (s *SeriesEpoch) After(o *SeriesEpoch) bool {
+	return s.time > o.time
+}
+
+func (s *SeriesEpoch) Time() int64 {
+	return s.time
+}
 
 // Series stores a Prometheus labels.Labels in its canonical string representation
 type Series struct {
@@ -38,7 +53,7 @@ type Series struct {
 	names    []string
 	values   []string
 	seriesID SeriesID
-	epoch    SeriesEpoch
+	epoch    *SeriesEpoch
 
 	metricName string
 	str        string
@@ -50,7 +65,7 @@ func NewSeries(key string, labelPairs []prompb.Label) *Series {
 		values:   make([]string, len(labelPairs)),
 		str:      key,
 		seriesID: invalidSeriesID,
-		epoch:    InvalidSeriesEpoch,
+		epoch:    nil,
 	}
 	for i, l := range labelPairs {
 		series.names[i] = l.Name
@@ -108,22 +123,22 @@ func (l *Series) FinalSizeBytes() uint64 {
 	return uint64(unsafe.Sizeof(*l)) + uint64(len(l.str)+len(l.metricName)) // #nosec
 }
 
-func (l *Series) GetSeriesID() (SeriesID, SeriesEpoch, error) {
+func (l *Series) GetSeriesID() (SeriesID, *SeriesEpoch, error) {
 	l.lock.RLock()
 	defer l.lock.RUnlock()
 
 	switch l.seriesID {
 	case invalidSeriesID:
-		return 0, 0, fmt.Errorf("Series id not set")
+		return 0, nil, fmt.Errorf("Series id not set")
 	case 0:
-		return 0, 0, fmt.Errorf("Series id invalid")
+		return 0, nil, fmt.Errorf("Series id invalid")
 	default:
 		return l.seriesID, l.epoch, nil
 	}
 }
 
 //note this has to be idempotent
-func (l *Series) SetSeriesID(sid SeriesID, eid SeriesEpoch) {
+func (l *Series) SetSeriesID(sid SeriesID, eid *SeriesEpoch) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	l.seriesID = sid

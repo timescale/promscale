@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -136,7 +137,7 @@ func TestInitializeMetricBatcher(t *testing.T) {
 func TestSendBatches(t *testing.T) {
 	makeSeries := func(seriesID int) *model.Series {
 		l := &model.Series{}
-		l.SetSeriesID(pgmodel.SeriesID(seriesID), 1)
+		l.SetSeriesID(pgmodel.SeriesID(seriesID), model.NewSeriesEpoch(time.Now().Unix()))
 		return l
 	}
 	var workFinished sync.WaitGroup

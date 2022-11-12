@@ -132,7 +132,7 @@ func (p *pgxDispatcher) runCompleteMetricCreationWorker() {
 }
 
 func (p *pgxDispatcher) runSeriesEpochSync() {
-	epoch, err := p.refreshSeriesEpoch(model.InvalidSeriesEpoch)
+	epoch, err := p.refreshSeriesEpoch(nil)
 	// we don't have any great place to report errors, and if the
 	// connection recovers we can still make progress, so we'll just log it
 	// and continue execution
@@ -152,16 +152,19 @@ func (p *pgxDispatcher) runSeriesEpochSync() {
 	}
 }
 
-func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (model.SeriesEpoch, error) {
+func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch *model.SeriesEpoch) (*model.SeriesEpoch, error) {
 	dbEpoch, err := p.getServerEpoch()
+	log.Info("msg", "Refreshing series cache epoch")
 	if err != nil {
+		log.Info("msg", "An error occurred refreshing, will reset series and inverted labels caches")
 		// Trash the cache just in case an epoch change occurred, seems safer
 		p.scache.Reset()
 		// Also trash the inverted labels cache, which can also be invalidated when the series cache is
 		p.invertedLabelsCache.Reset()
-		return model.InvalidSeriesEpoch, err
+		return nil, err
 	}
-	if existingEpoch == model.InvalidSeriesEpoch || dbEpoch != existingEpoch {
+	if existingEpoch == nil || *dbEpoch != *existingEpoch {
+		log.Info("msg", "The local epoch is no longer up-to-date, will reset series and inverted labels caches")
 		p.scache.Reset()
 		// If the series cache needs to be invalidated, so does the inverted labels cache
 		p.invertedLabelsCache.Reset()
@@ -169,15 +172,15 @@ func (p *pgxDispatcher) refreshSeriesEpoch(existingEpoch model.SeriesEpoch) (mod
 	return dbEpoch, nil
 }
 
-func (p *pgxDispatcher) getServerEpoch() (model.SeriesEpoch, error) {
+func (p *pgxDispatcher) getServerEpoch() (*model.SeriesEpoch, error) {
 	var newEpoch int64
 	row := p.conn.QueryRow(context.Background(), getEpochSQL)
 	err := row.Scan(&newEpoch)
 	if err != nil {
-		return -1, err
+		return nil, err
 	}
 
-	return model.SeriesEpoch(newEpoch), nil
+	return model.NewSeriesEpoch(newEpoch), nil
 }
 
 func (p *pgxDispatcher) CompleteMetricCreation(ctx context.Context) error {
