@@ -8,9 +8,42 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/util"
 )
+
+var (
+	tablesVacuumedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: util.PromNamespace,
+		Subsystem: "vacuum",
+		Name:      "tables_vacuumed_total",
+		Help:      "Total number of tables vacuumed by the Promscale vacuum engine.",
+	})
+	vacuumErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: util.PromNamespace,
+		Subsystem: "vacuum",
+		Name:      "vacuum_errors_total",
+		Help:      "Total number of errors encountered by the Promscale vacuum engine while vacuuming tables.",
+	})
+	tablesNeedingVacuum = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: util.PromNamespace,
+		Subsystem: "vacuum",
+		Name:      "tables_needing_vacuum",
+		Help:      "Number of tables needing a vacuum detected on this iteration of the engine. This will never exceed 1000 even if there are more to vacuum.",
+	})
+	numberVacuumConnections = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: util.PromNamespace,
+		Subsystem: "vacuum",
+		Name:      "number_vacuum_connections",
+		Help:      "Number of database connections currently in use by the vacuum engine. One taken up by the advisory lock, the rest by vacuum commands.",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(tablesVacuumedTotal, vacuumErrorsTotal, tablesNeedingVacuum, numberVacuumConnections)
+}
 
 const (
 	sqlAcquireLock      = "SELECT _prom_catalog.lock_for_vacuum_engine()"
@@ -138,6 +171,7 @@ func (e *Engine) Run(ctx context.Context) {
 		log.Debug("msg", "vacuum engine did not acquire advisory lock")
 		return
 	}
+	numberVacuumConnections.Set(1)
 	// release the advisory lock when we're done
 	defer func() {
 		// don't use the passed context.
@@ -146,6 +180,7 @@ func (e *Engine) Run(ctx context.Context) {
 		if err != nil {
 			log.Error("msg", "vacuum engine failed to release advisory lock", "error", err)
 		}
+		numberVacuumConnections.Set(0)
 	}()
 	// we limit ourselves to batches of 1000 chunks
 	// since we already have the advisory lock, continue to vacuum batches as needed until none left
@@ -155,6 +190,7 @@ func (e *Engine) Run(ctx context.Context) {
 			log.Error("msg", "failed to list chunks for vacuuming", "error", err)
 			return
 		}
+		tablesNeedingVacuum.Set(float64(len(chunks)))
 		if len(chunks) == 0 {
 			log.Info("msg", "zero compressed chunks need to be vacuumed")
 			return
@@ -215,10 +251,15 @@ func (e *Engine) worker(ctx context.Context, id int, todo <-chan string) {
 	for chunk := range todo {
 		log.Debug("msg", "vacuuming a chunk", "worker", id, "chunk", chunk)
 		sql := fmt.Sprintf(sqlVacuumFmt, chunk)
+		numberVacuumConnections.Inc()
 		_, err := e.pool.Exec(ctx, sql)
+		numberVacuumConnections.Dec()
 		if err != nil {
 			log.Error("msg", "failed to vacuum chunk", "chunk", chunk, "worker", id, "error", err)
+			vacuumErrorsTotal.Inc()
 			// don't return error here. attempt to vacuum other chunks. keep working
+		} else {
+			tablesVacuumedTotal.Inc()
 		}
 	}
 }
