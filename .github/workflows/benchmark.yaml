@@ -56,7 +56,7 @@ jobs:
           echo "${OUTPUT}"
           OUTPUT="${OUTPUT//$'\n'/'%0A'}"
           OUTPUT="${OUTPUT//$'\r'/'%0D'}"
-          echo "::set-output name=result::$OUTPUT"
+          echo "result=$OUTPUT" >> ${GITHUB_OUTPUT}
 
       - name: Publish results as comment
         uses: marocchino/sticky-pull-request-comment@v2
