@@ -21,7 +21,7 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-//this seems like a good initial size for /active/ series. Takes about 32MB
+// this seems like a good initial size for /active/ series. Takes about 32MB
 const DefaultSeriesCacheSize = 250000
 
 const growCheckDuration = time.Second * 5 // check whether to grow the series cache this often
@@ -150,7 +150,8 @@ func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Serie
 // The key which this function returns is the concatenation of sorted kv pairs
 // where each of the key and value is prefixed by the little-endian
 // representation of the two bytes of the uint16 length of the key/value string:
-//   <key1-len>key1<val1-len>val1<key2-len>key2<val2-len>val2
+//
+//	<key1-len>key1<val1-len>val1<key2-len>key2<val2-len>val2
 //
 // This formatting ensures isomorphism, hence preventing collisions.
 // An example for how this transform works is as follows:

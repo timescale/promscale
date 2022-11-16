@@ -209,8 +209,8 @@ func (self *Cache) evict() (insertPtr *element) {
 // tries to get a batch of keys and store the corresponding values is valuesOut
 // returns the number of keys that were actually found.
 // NOTE: this function does _not_ preserve the order of keys; the first numFound
-//       keys will be the keys whose values are present, while the remainder
-//       will be the keys not present in the cache
+// keys will be the keys whose values are present, while the remainder
+// will be the keys not present in the cache
 func (self *Cache) GetValues(keys []interface{}, valuesOut []interface{}) (numFound int) {
 	start := time.Now()
 	defer func() { self.metrics.Observe("Get_Values", time.Since(start)) }()

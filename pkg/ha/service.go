@@ -94,9 +94,10 @@ func (s *Service) haStateSyncer() {
 }
 
 // CheckLease verifies the samples are from prom leader & in an expected time range.
-//	An instance is selected a leader for a specific time range, which is expanded as
-//	newer samples come in from that leader, but samples before the granted lease
-//	are supposed to be dropped.
+//
+// An instance is selected a leader for a specific time range, which is expanded as
+// newer samples come in from that leader, but samples before the granted lease
+// are supposed to be dropped.
 func (s *Service) CheckLease(minT, maxT time.Time, clusterName, replicaName string) (
 	allowInsert bool, acceptedMinT time.Time, err error,
 ) {

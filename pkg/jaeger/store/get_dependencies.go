@@ -13,7 +13,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-//note the key='service.name' is there only for constraint exclusion of partitions
+// note the key='service.name' is there only for constraint exclusion of partitions
 const getDependenciesSQL = `
 SELECT
    (SELECT value #>> '{}' FROM _ps_trace.tag WHERE id = parent_op.service_name_id AND key='service.name') as parent_service,

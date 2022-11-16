@@ -112,7 +112,7 @@ func NewAllowAllTenantsConfig(allowNonTenants bool) AuthConfig {
 	return &AllowAllTenantsConfig{nonTenants: allowNonTenants}
 }
 
-//nolint | kept inorder to implement the interface.
+//nolint:all | kept inorder to implement the interface.
 func (cfg *AllowAllTenantsConfig) tenants() []string {
 	return nil
 }

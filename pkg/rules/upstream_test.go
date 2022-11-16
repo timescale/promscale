@@ -121,18 +121,18 @@ func TestYoloVector(t *testing.T) {
 }
 
 // harkishen@harkishen:~/go/src/github.com/timescale/promscale/pkg/rules$ go test -bench . -cpu=1,2,4 -benchtime=100000x
-//goos: linux
-//goarch: amd64
-//pkg: github.com/timescale/promscale/pkg/rules
-//cpu: Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz
-//BenchmarkVectorConversion/yolo                    100000                 0.001350 ns/op
-//BenchmarkVectorConversion/yolo-2                  100000                 0.001100 ns/op
-//BenchmarkVectorConversion/yolo-4                  100000                 0.002040 ns/op
-//BenchmarkVectorConversion/looping                 100000                 1.021 ns/op
-//BenchmarkVectorConversion/looping-2               100000                 0.7710 ns/op
-//BenchmarkVectorConversion/looping-4               100000                 0.6590 ns/op
-//PASS
-//ok      github.com/timescale/promscale/pkg/rules        0.031s
+// goos: linux
+// goarch: amd64
+// pkg: github.com/timescale/promscale/pkg/rules
+// cpu: Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz
+// BenchmarkVectorConversion/yolo                    100000                 0.001350 ns/op
+// BenchmarkVectorConversion/yolo-2                  100000                 0.001100 ns/op
+// BenchmarkVectorConversion/yolo-4                  100000                 0.002040 ns/op
+// BenchmarkVectorConversion/looping                 100000                 1.021 ns/op
+// BenchmarkVectorConversion/looping-2               100000                 0.7710 ns/op
+// BenchmarkVectorConversion/looping-4               100000                 0.6590 ns/op
+// PASS
+// ok      github.com/timescale/promscale/pkg/rules        0.031s
 func BenchmarkVectorConversion(b *testing.B) {
 	var in promscale_promql.Vector
 
