@@ -26,7 +26,7 @@ type traceResponsesStore struct {
 
 const jaegerQueryResponsesPath = "../testdata/jaeger_query_responses.sz"
 
-//nolint
+//nolint:all
 func storeJaegerQueryResponses(responses *traceResponsesStore) error {
 	// #nosec
 	f, err := os.OpenFile(jaegerQueryResponsesPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0777)

@@ -45,22 +45,19 @@ type parserConfig struct {
 // unmarshal a subtree of the configuration into a datastructure via
 // unmarshalRule:
 //
-// ```
-// withUnmarshalRules(
-//   []unmarshalRule{{"startup.dataset", &dataset.Config}}
-// )
-// ```
+//	withUnmarshalRules(
+//	  []unmarshalRule{{"startup.dataset", &dataset.Config}}
+//	)
 //
 // Given a config file that contains the subtree:
 //
-// ```
-// startup:
-//   dataset:
-//     metrics:
-//       ...
-//     traces:
-//       ...
-// ```
+//	startup:
+//
+//	  dataset:
+//	    metrics:
+//	      ...
+//	    traces:
+//	      ...
 //
 // Viper can access a nested field by passing a `.` delimited path of keys.
 // This change also allows us to format our configuration files to use
@@ -75,23 +72,20 @@ type parserConfig struct {
 //
 // Can be rewritten as:
 //
-// ```
-// web:
-//   listen-address: localhost:9201
-//   auth:
-//     password: my-password
-//     username: promscale
-// ```
+//	web:
+//
+//	  listen-address: localhost:9201
+//	  auth:
+//	    password: my-password
+//	    username: promscale
 //
 // In case of conflict the variable that matches the delimited key path will
 // take precedence (https://github.com/spf13/viper#accessing-nested-keys). In
 // the following example the returned value would be `localhost:9201`:
 //
-// ```
-// web.listen-address: localhost:9201
-// web:
-//   listen-address: htto://not.going.to.be.used:9201
-// ```
+//	web.listen-address: localhost:9201
+//	web:
+//	  listen-address: htto://not.going.to.be.used:9201
 //
 // Migrating our codebase to take advantage of all the features of Viper will
 // require some extra effort, and might not bring extra benefits since we

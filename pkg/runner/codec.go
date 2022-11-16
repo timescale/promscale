@@ -8,8 +8,8 @@ import (
 	"google.golang.org/grpc/encoding"
 )
 
-//This file undoes what https://github.com/jaegertracing/jaeger/blob/master/pkg/gogocodec/codec.go does
-//in that it forces everything (both jaeger and not jaeger) to use the new protobuf lib instead of the old one
+// This file undoes what https://github.com/jaegertracing/jaeger/blob/master/pkg/gogocodec/codec.go does
+// in that it forces everything (both jaeger and not jaeger) to use the new protobuf lib instead of the old one
 func init() {
 	encoding.RegisterCodec(newCodec())
 }

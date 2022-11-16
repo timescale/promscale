@@ -24,7 +24,7 @@ var tPool = sync.Pool{
 	},
 }
 
-//wrapper to allow DecodeBinary to reuse the existing array so that a pool is effective
+// wrapper to allow DecodeBinary to reuse the existing array so that a pool is effective
 type timestamptzArrayWrapper struct {
 	*pgtype.TimestamptzArray
 }
@@ -78,7 +78,7 @@ func (dstwrapper *timestamptzArrayWrapper) DecodeBinary(ci *pgtype.ConnInfo, src
 	return nil
 }
 
-//wrapper to to allow DecodeBinary to reuse existing array so that a pool is effective
+// wrapper to to allow DecodeBinary to reuse existing array so that a pool is effective
 type float8ArrayWrapper struct {
 	*pgtype.Float8Array
 }

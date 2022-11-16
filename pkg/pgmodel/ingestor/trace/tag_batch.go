@@ -67,8 +67,8 @@ type tagIDs struct {
 	valueID pgtype.Int8
 }
 
-//tagBatch queues up items to send to the db but it sorts before sending
-//this avoids deadlocks in the db. It also avoids sending the same tags repeatedly.
+// tagBatch queues up items to send to the db but it sorts before sending
+// this avoids deadlocks in the db. It also avoids sending the same tags repeatedly.
 type tagBatch struct {
 	b batcher
 }

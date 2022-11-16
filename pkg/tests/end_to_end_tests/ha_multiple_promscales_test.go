@@ -21,7 +21,7 @@ const (
 // what is sent in the state argument. If nil state
 // sent, no action taken.
 // returns:
-//    - an error if it couldn't set the state
+//   - an error if it couldn't set the state
 func setLeaseExplicitly(db *pgxpool.Pool, state *leaseState) error {
 	if state == nil {
 		return nil

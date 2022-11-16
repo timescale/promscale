@@ -34,10 +34,11 @@ type Lease struct {
 }
 
 // Creates a new Lease and immediately synchronizes with the database, it either
-//	- sets the potentialLeader as the leader for the cluster with a lease
-//	  for the requested minT and maxT
-//	- or the existing leader and lease details are returned and set in the
-//	  new Lease.
+//   - sets the potentialLeader as the leader for the cluster with a lease
+//     for the requested minT and maxT
+//   - or the existing leader and lease details are returned and set in the
+//     new Lease.
+//
 // An error is returned if an error occurred querying the database.
 func NewLease(c client.LeaseClient, cluster, potentialLeader string, minT, maxT, currentTime time.Time) (*Lease, error) {
 	stateFromDB, err := c.UpdateLease(context.Background(), cluster, potentialLeader, minT, maxT)

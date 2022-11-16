@@ -335,11 +335,11 @@ func readMigrationFile(r io.ReadCloser) (string, error) {
 	return s, err
 }
 
-//A migration file is inside a directory that is a semver version number. The filename itself has the format
-//<migration file number)-<description>.sql. That file correspond to the semver of <dirname>.<migration file number>
-//where the migration file number is always part of prerelease tag.
-//All app versions >= (inclusive) migration files's semver will include the migration file
-//That is if we're on version `0.1.1-dev.3` then we'll include all sql files up to and including `0.1.1-dev/3-foo.sql`
+// A migration file is inside a directory that is a semver version number. The filename itself has the format
+// <migration file number)-<description>.sql. That file correspond to the semver of <dirname>.<migration file number>
+// where the migration file number is always part of prerelease tag.
+// All app versions >= (inclusive) migration files's semver will include the migration file
+// That is if we're on version `0.1.1-dev.3` then we'll include all sql files up to and including `0.1.1-dev/3-foo.sql`
 func (t *Migrator) getMigrationFileVersion(dirName string, fileName string) (*semver.Version, error) {
 	var migrationFileNumber int
 	matches := migrationFileNameRegexp.FindStringSubmatch(fileName)

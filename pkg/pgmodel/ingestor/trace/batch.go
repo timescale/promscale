@@ -51,8 +51,8 @@ func (q sortableItems) Swap(i, j int) {
 	q[i], q[j] = q[j], q[i]
 }
 
-//batcher queues up items to send to the DB but it sorts before sending
-//this avoids deadlocks in the DB. It also avoids sending the same items repeatedly.
+// batcher queues up items to send to the DB but it sorts before sending
+// this avoids deadlocks in the DB. It also avoids sending the same items repeatedly.
 // batcher is not thread safe
 type batcher struct {
 	batch map[batchItem]interface{}

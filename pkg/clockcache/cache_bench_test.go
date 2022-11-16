@@ -252,11 +252,12 @@ func BenchmarkInsertConcurrent(b *testing.B) {
 //
 // At the time of writing, this code was tested on an M1 MacBook Pro, where the
 // advantage obtained by introducing padding is approximately 16%:
-//     go test -bench=BenchmarkCacheFalseSharing -cpu=2 -count=10 > no-padding.txt
-//     go test -bench=BenchmarkCacheFalseSharing -cpu=2 -count=10 > padding.txt
-//     benchstat no-padding.txt padding.txt
-//       name                 old time/op    new time/op    delta
-//       CacheFalseSharing-2     230ns ± 6%     193ns ±19%  -16.09%  (p=0.001 n=10+9)
+//
+//	go test -bench=BenchmarkCacheFalseSharing -cpu=2 -count=10 > no-padding.txt
+//	go test -bench=BenchmarkCacheFalseSharing -cpu=2 -count=10 > padding.txt
+//	benchstat no-padding.txt padding.txt
+//	  name                 old time/op    new time/op    delta
+//	  CacheFalseSharing-2     230ns ± 6%     193ns ±19%  -16.09%  (p=0.001 n=10+9)
 //
 // Note: This benchmark _must_ be run with the `-cpu=2` argument, to ensure
 // that each goroutine ends up on a different CPU, possibly causing contention
