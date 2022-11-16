@@ -10,7 +10,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
-//HealthCheckerFn allows checking for proper db operations.
+// HealthCheckerFn allows checking for proper db operations.
 type HealthCheckerFn func() error
 
 func NewHealthChecker(conn pgxconn.PgxConn) HealthCheckerFn {

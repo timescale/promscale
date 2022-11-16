@@ -51,8 +51,8 @@ func (o operation) ScanIDs(r pgx.BatchResults) (interface{}, error) {
 	return id, err
 }
 
-//Operation batch queues up items to send to the db but it sorts before sending
-//this avoids deadlocks in the db
+// Operation batch queues up items to send to the db but it sorts before sending
+// this avoids deadlocks in the db
 type operationBatch struct {
 	b batcher
 }

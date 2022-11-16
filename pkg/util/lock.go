@@ -168,7 +168,7 @@ func runLockFunction(ctx context.Context, conn *pgx.Conn, query string, lockId i
 	return result, nil
 }
 
-//Close cleans up the connection
+// Close cleans up the connection
 func (l *PgAdvisoryLock) Close() {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()

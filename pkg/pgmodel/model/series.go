@@ -62,7 +62,7 @@ func NewSeries(key string, labelPairs []prompb.Label) *Series {
 	return series
 }
 
-//NameValues returns the names and values, only valid if the seriesIDIsNotSet
+// NameValues returns the names and values, only valid if the seriesIDIsNotSet
 func (l *Series) NameValues() (names []string, values []string, ok bool) {
 	l.lock.RLock()
 	defer l.lock.RUnlock()
@@ -101,7 +101,7 @@ func (l *Series) IsSeriesIDSet() bool {
 	return l.isSeriesIDSetNoLock()
 }
 
-//FinalSizeBytes returns the size in bytes /after/ the seriesID is set
+// FinalSizeBytes returns the size in bytes /after/ the seriesID is set
 func (l *Series) FinalSizeBytes() uint64 {
 	//size is the base size of the struct + the str and metricName strings
 	//names and values are not counted since they will be nilled out
@@ -122,7 +122,7 @@ func (l *Series) GetSeriesID() (SeriesID, SeriesEpoch, error) {
 	}
 }
 
-//note this has to be idempotent
+// note this has to be idempotent
 func (l *Series) SetSeriesID(sid SeriesID, eid SeriesEpoch) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
