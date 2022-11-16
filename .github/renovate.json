@@ -31,6 +31,12 @@
       "matchStrings": ["golang-version:\\s(?<currentValue>.*?)\\n"],
       "datasourceTemplate": "golang-version",
       "depNameTemplate": "golang"
+    },
+    {
+      "fileMatch": ["Dockerfile"],
+      "matchStrings": ["FROM golang:(?<currentValue>.*?)-alpine"],
+      "datasourceTemplate": "golang-version",
+      "depNameTemplate": "golang"
     }
   ],
   "packageRules": [
