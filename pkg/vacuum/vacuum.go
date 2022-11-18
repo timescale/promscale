@@ -46,10 +46,25 @@ func init() {
 }
 
 const (
-	sqlAcquireLock      = "SELECT _prom_catalog.lock_for_vacuum_engine()"
-	sqlListChunks       = "SELECT format('%I.%I', schema_name, table_name) FROM _ps_catalog.chunks_to_freeze WHERE coalesce(last_vacuum, '-infinity'::timestamptz) < now() - interval '15 minutes' LIMIT 1000"
-	sqlVacuumFmt        = "VACUUM (FREEZE, ANALYZE) %s"
-	sqlReleaseLock      = "SELECT _prom_catalog.unlock_for_vacuum_engine()"
+	sqlAcquireLock       = "SELECT _prom_catalog.lock_for_vacuum_engine()"
+	sqlVacuumFmt         = "VACUUM (FREEZE, ANALYZE) %s"
+	sqlReleaseLock       = "SELECT _prom_catalog.unlock_for_vacuum_engine()"
+	sqlGetVacuumSettings = `
+	SELECT 
+		max(s.setting::bigint) filter (where s.name = 'vacuum_freeze_min_age') as vacuum_freeze_min_age,
+		max(s.setting::bigint) filter (where s.name = 'autovacuum_freeze_max_age') as autovacuum_freeze_max_age
+	FROM pg_catalog.pg_settings s
+	WHERE s.name IN ('vacuum_freeze_min_age', 'autovacuum_freeze_max_age')
+	`
+	sqlListChunks = `
+	SELECT 
+		format('%I.%I', schema_name, table_name) AS schema_table,
+		pg_stat_get_autovacuum_count(format('%I.%I', schema_name, table_name)::regclass::oid) AS autovacuum_count,
+		pg_catalog.age(relfrozenxid) as age
+	FROM _ps_catalog.chunks_to_freeze 
+	WHERE coalesce(last_vacuum, '-infinity'::timestamptz) < now() - interval '15 minutes' 
+	AND pg_catalog.age(relfrozenxid) > (SELECT setting::bigint FROM pg_settings WHERE name = 'vacuum_freeze_min_age')
+	LIMIT 1000`
 	delay               = 10 * time.Second
 	defaultDisable      = false
 	defaultRunFrequency = 10 * time.Minute
@@ -153,6 +168,12 @@ func every(every time.Duration, task func(ctx context.Context)) (execute, kill f
 	return
 }
 
+type chunk struct {
+	name            string
+	autovacuumCount int64
+	age             int64
+}
+
 // Run attempts vacuum a batch of compressed chunks
 func (e *Engine) Run(ctx context.Context) {
 	con, err := e.pool.Acquire(ctx)
@@ -196,66 +217,107 @@ func (e *Engine) Run(ctx context.Context) {
 			return
 		}
 		log.Info("msg", "compressed chunks need to be vacuumed", "count", len(chunks))
-		p := e.parallelism
-		if len(chunks) < p {
-			// don't spin up more workers than we could possibly use
-			// if parallelism is 6, but we only have 5 chunks to work on, use 5 workers
-			p = len(chunks)
+		numWorkers, err := e.calcNumWorkers(ctx, con, chunks)
+		if err != nil {
+			log.Error("msg", "failed to calc num workers", "error", err)
+			return
 		}
-		runWorkers(ctx, p, chunks, e.worker)
+		runWorkers(ctx, numWorkers, chunks, e.worker)
 		// in some cases, have seen it take up to 10 seconds for the stats to be updated post vacuum
 		time.Sleep(delay)
 	}
 }
 
 // listChunks identifies chunks which need to be vacuumed
-func (e *Engine) listChunks(ctx context.Context, con *pgxpool.Conn) ([]string, error) {
+func (e *Engine) listChunks(ctx context.Context, con *pgxpool.Conn) ([]*chunk, error) {
 	rows, err := con.Query(ctx, sqlListChunks)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	tables := make([]string, 0)
+	chunks := make([]*chunk, 0)
 	for rows.Next() {
-		var table string
-		err := rows.Scan(&table)
+		c := chunk{}
+		err := rows.Scan(&c.name, &c.autovacuumCount, &c.age)
 		if err != nil {
 			return nil, err
 		}
-		tables = append(tables, table)
+		chunks = append(chunks, &c)
 	}
-	return tables, nil
+	return chunks, nil
+}
+
+func (e *Engine) getVacuumSettings(ctx context.Context, con *pgxpool.Conn) (vacuumFreezeMinAge, autovacuumFreezeMaxAge int64, err error) {
+	err = con.QueryRow(ctx, sqlGetVacuumSettings).Scan(&vacuumFreezeMinAge, &autovacuumFreezeMaxAge)
+	if err != nil {
+		return 0, 0, err
+	}
+	return
+}
+
+func interpolate(vacuumFreezeMinAge, autovacuumFreezeMaxAge, maxChunkAge, maxParallelism int64) int {
+	if maxChunkAge <= vacuumFreezeMinAge {
+		return 1
+	}
+	agePerWorker := (autovacuumFreezeMaxAge - vacuumFreezeMinAge) / maxParallelism
+	workers := (maxChunkAge - vacuumFreezeMinAge) / agePerWorker
+	if workers > maxParallelism {
+		workers = maxParallelism
+	} else if workers < 1 {
+		workers = 1
+	}
+	return int(workers)
+}
+
+func (e *Engine) calcNumWorkers(ctx context.Context, con *pgxpool.Conn, chunks []*chunk) (int, error) {
+	vacuumFreezeMinAge, autovacuumFreezeMaxAge, err := e.getVacuumSettings(ctx, con)
+	if err != nil {
+		log.Error("msg", "failed to get vacuum settings", "error", err)
+		return 0, err
+	}
+	var maxChunkAge int64 = 0
+	for _, c := range chunks {
+		if c.age > maxChunkAge {
+			maxChunkAge = c.age
+		}
+	}
+	w := interpolate(vacuumFreezeMinAge, autovacuumFreezeMaxAge, maxChunkAge, int64(e.parallelism))
+	if len(chunks) < w {
+		// don't spin up more workers than we could possibly use
+		w = len(chunks)
+	}
+	return w, nil
 }
 
 // runWorkers kicks off a number of goroutines to work on the chunks in parallel
 // blocks until the workers complete
-func runWorkers(ctx context.Context, parallelism int, chunks []string, worker func(context.Context, int, <-chan string)) {
-	todo := make(chan string, len(chunks))
+func runWorkers(ctx context.Context, numWorkers int, chunks []*chunk, worker func(context.Context, int, <-chan *chunk)) {
+	todo := make(chan *chunk, len(chunks))
 	var wg sync.WaitGroup
-	wg.Add(parallelism)
-	for id := 0; id < parallelism; id++ {
-		go func(ctx context.Context, id int, todo <-chan string) {
+	wg.Add(numWorkers)
+	for id := 0; id < numWorkers; id++ {
+		go func(ctx context.Context, id int, todo <-chan *chunk) {
 			defer wg.Done()
 			worker(ctx, id, todo)
 		}(ctx, id, todo)
 	}
-	for _, chunk := range chunks {
-		todo <- chunk
+	for _, c := range chunks {
+		todo <- c
 	}
 	close(todo)
 	wg.Wait()
 }
 
 // worker pulls chunks from a channel and vacuums them
-func (e *Engine) worker(ctx context.Context, id int, todo <-chan string) {
-	for chunk := range todo {
-		log.Debug("msg", "vacuuming a chunk", "worker", id, "chunk", chunk)
-		sql := fmt.Sprintf(sqlVacuumFmt, chunk)
+func (e *Engine) worker(ctx context.Context, id int, todo <-chan *chunk) {
+	for c := range todo {
+		log.Debug("msg", "vacuuming a chunk", "worker", id, "chunk", c.name)
+		sql := fmt.Sprintf(sqlVacuumFmt, c.name)
 		numberVacuumConnections.Inc()
 		_, err := e.pool.Exec(ctx, sql)
 		numberVacuumConnections.Dec()
 		if err != nil {
-			log.Error("msg", "failed to vacuum chunk", "chunk", chunk, "worker", id, "error", err)
+			log.Error("msg", "failed to vacuum chunk", "chunk", c.name, "worker", id, "error", err)
 			vacuumErrorsTotal.Inc()
 			// don't return error here. attempt to vacuum other chunks. keep working
 		} else {
