@@ -279,7 +279,11 @@ func Run(cfg *Config) error {
 	)
 
 	if !cfg.VacuumCfg.Disable {
-		ve := vacuum.NewEngine(client.MaintenanceConnection(), cfg.VacuumCfg.RunFrequency, cfg.VacuumCfg.Parallelism)
+		ve, err := vacuum.NewEngine(client.MaintenanceConnection(), cfg.VacuumCfg.RunFrequency, cfg.VacuumCfg.MaxParallelism)
+		if err != nil {
+			log.Error("msg", "Failed to create vacuum engine", "err", err)
+			return err
+		}
 		group.Add(
 			func() error {
 				log.Info("msg", "Starting vacuum engine")

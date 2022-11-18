@@ -12,6 +12,15 @@ import (
 	"github.com/timescale/promscale/pkg/vacuum"
 )
 
+const (
+	sqlChunksToFreeze = `
+	SELECT %s 
+	FROM _ps_catalog.chunks_to_freeze
+	WHERE coalesce(last_vacuum, '-infinity'::timestamptz) < now() - interval '15 minutes' 
+	AND pg_catalog.age(relfrozenxid) > current_setting('vacuum_freeze_min_age')::bigint
+	`
+)
+
 type uncompressedChunk struct {
 	id     int
 	schema string
@@ -34,24 +43,23 @@ func TestVacuumNonBlocking(t *testing.T) {
 	}
 	testVacuum(t, func(e *vacuum.Engine, db *pgxpool.Pool) {
 		go e.Start()
-		// wait until view returns 0 or 20 second elapse which ever comes first
-		wait(db)
+		// wait until view returns 0 or a timeout elapses, whichever comes first
+		wait(t, db)
+		t.Log("Stopping the vacuum engine...")
 		e.Stop()
 	})
 }
 
-func wait(db *pgxpool.Pool) {
-	ctx := context.Background()
-	for i := 0; i < 20; i++ {
-		time.Sleep(time.Second)
-		var nbr int64
-		err := db.QueryRow(ctx, "select count(*) from _ps_catalog.chunks_to_freeze").Scan(&nbr)
-		if err != nil {
-			continue
-		}
+func wait(t *testing.T, db *pgxpool.Pool) {
+	const first = 10
+	time.Sleep(first * time.Second)
+	for i := 0; i < 60; i++ {
+		nbr := countChunksToFreeze(t, context.Background(), db)
 		if nbr == 0 {
+			t.Logf("Zero chunks to freeze after %d seconds.", first+i)
 			return
 		}
+		time.Sleep(time.Second)
 	}
 }
 
@@ -66,21 +74,32 @@ func testVacuum(t *testing.T, do func(e *vacuum.Engine, db *pgxpool.Pool)) {
 	var ctx = context.Background()
 	databaseName := fmt.Sprintf("%s_vacuum", *testDatabase)
 	withDB(t, databaseName, func(db *pgxpool.Pool, tb testing.TB) {
+		setVacuumFreezeMinAge(t, ctx, db)
 		createMetric(t, ctx, db, "metric1")
 		createMetric(t, ctx, db, "metric2")
 		loadSamples(t, ctx, db, "metric1")
 		loadSamples(t, ctx, db, "metric2")
 		chunksExist(t, ctx, db)
-		viewEmpty(t, ctx, db)
+		nbr := countChunksToFreeze(t, ctx, db)
+		require.Equal(t, int64(0), nbr, "Expected view to return zero before compressing chunks results but got %d", nbr)
 		const count = 5
 		uncompressed := chooseUncompressedChunks(t, ctx, db, count)
 		compressChunks(t, ctx, db, uncompressed)
 		compressed := view(t, ctx, db)
-		require.Equal(t, count, len(compressed), "Expected to find %d compressed chunks but got %d", count, len(compressed))
-		engine := vacuum.NewEngine(pgxconn.NewPgxConn(db), time.Second, count)
+		require.Equal(t, count, len(compressed), "Expected view to return %d compressed chunks before running engine but got %d", count, len(compressed))
+		engine, err := vacuum.NewEngine(pgxconn.NewPgxConn(db), time.Second, count)
+		require.NoError(t, err, "Failed to create vacuum engine")
 		do(engine, db)
-		viewEmpty(t, ctx, db)
+		nbr = countChunksToFreeze(t, ctx, db)
+		require.Equal(t, int64(0), nbr, "Expected view to return zero after running engine results but got %d", nbr)
 	})
+}
+
+func setVacuumFreezeMinAge(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
+	_, err := db.Exec(ctx, "set vacuum_freeze_min_age to 0")
+	if err != nil {
+		t.Fatalf("Failed to set vacuum_freeze_min_age to 0: %v", err)
+	}
 }
 
 func createMetric(t *testing.T, ctx context.Context, db *pgxpool.Pool, name string) {
@@ -126,13 +145,13 @@ func chunksExist(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	require.GreaterOrEqual(t, nbr, int64(10), "Expected a bunch of chunks but got %d", nbr)
 }
 
-func viewEmpty(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
+func countChunksToFreeze(t *testing.T, ctx context.Context, db *pgxpool.Pool) int64 {
 	var nbr int64
-	err := db.QueryRow(ctx, "select count(*) from _ps_catalog.chunks_to_freeze").Scan(&nbr)
+	err := db.QueryRow(ctx, fmt.Sprintf(sqlChunksToFreeze, "count(*)")).Scan(&nbr)
 	if err != nil {
 		t.Fatalf("Failed to count chunks: %v", err)
 	}
-	require.Equal(t, int64(0), nbr, "Expected view to return zero results but got %d", nbr)
+	return nbr
 }
 
 func chooseUncompressedChunks(t *testing.T, ctx context.Context, db *pgxpool.Pool, count int) []uncompressedChunk {
@@ -171,7 +190,7 @@ func compressChunks(t *testing.T, ctx context.Context, db *pgxpool.Pool, chunks 
 }
 
 func view(t *testing.T, ctx context.Context, db *pgxpool.Pool) []compressedChunk {
-	rows, err := db.Query(ctx, "select id from _ps_catalog.chunks_to_freeze")
+	rows, err := db.Query(ctx, fmt.Sprintf(sqlChunksToFreeze, "id"))
 	if err != nil {
 		t.Fatalf("Failed to select from _ps_catalog.chunks_to_freeze: %v", err)
 	}
