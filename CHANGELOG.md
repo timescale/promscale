@@ -26,6 +26,8 @@ We use the following categories for changes:
 
 ### Changed
 - Reduced the verbosity of the logs emitted by the vacuum engine [#1715]
+- The vacuum engine now throttles the number of workers used based on the oldest txid from
+  the chunks needing freezing [#1761]
 
 ### Fixed
 

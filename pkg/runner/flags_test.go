@@ -182,7 +182,7 @@ func TestParseFlags(t *testing.T) {
 			result: func(c Config) Config {
 				c.VacuumCfg.Disable = true
 				c.VacuumCfg.RunFrequency = 10 * time.Minute
-				c.VacuumCfg.Parallelism = 4
+				c.VacuumCfg.MaxParallelism = 4
 				return c
 			},
 		},
@@ -192,7 +192,7 @@ func TestParseFlags(t *testing.T) {
 			shouldError: false,
 			result: func(c Config) Config {
 				c.VacuumCfg.RunFrequency = 30 * time.Minute
-				c.VacuumCfg.Parallelism = 5
+				c.VacuumCfg.MaxParallelism = 5
 				return c
 			},
 		},
