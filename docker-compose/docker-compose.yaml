@@ -45,7 +45,7 @@ services:
 
   otel-collector:
     platform: linux/amd64
-    image: "otel/opentelemetry-collector:0.56.0"
+    image: "otel/opentelemetry-collector-contrib:0.63.1"
     command: [ "--config=/etc/otel-collector-config.yml" ]
     volumes:
       - ${PWD}/otel-collector-config.yml:/etc/otel-collector-config.yml
