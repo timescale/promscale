@@ -26,6 +26,7 @@ import (
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/tracer"
+	tput "github.com/timescale/promscale/pkg/util/throughput"
 )
 
 const (
@@ -487,17 +488,19 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 	metrics.IngestorRowsPerBatch.With(labelsCopier).Observe(float64(numRowsTotal))
 	metrics.IngestorInsertsPerBatch.With(labelsCopier).Observe(float64(len(reqs)))
 
-	var affectedMetrics uint64
+	var duplicateMetrics, duplicateSamples int64
 	for idx, numRows := range numRowsPerInsert {
 		if numRows != insertedRows[idx] {
-			affectedMetrics++
-			registerDuplicates(int64(numRows - insertedRows[idx]))
+			duplicateMetrics++
+			duplicateSamples += int64(numRows - insertedRows[idx])
 		}
 	}
+	metrics.IngestorDuplicates.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(float64(duplicateSamples))
+	metrics.IngestorDuplicates.With(prometheus.Labels{"type": "metric", "kind": "metric"}).Add(float64(duplicateMetrics))
 	metrics.IngestorItems.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Add(float64(totalSamples))
 	metrics.IngestorItems.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "exemplar"}).Add(float64(totalExemplars))
 
-	reportDuplicates(affectedMetrics)
+	tput.ReportDuplicateMetrics(duplicateSamples, duplicateMetrics)
 	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Observe(time.Since(insertStart).Seconds())
 	return nil, lowestMinTime
 }

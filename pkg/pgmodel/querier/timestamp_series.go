@@ -16,7 +16,7 @@ type TimestampSeries interface {
 	Len() int
 }
 
-//rowTimestampSeries is a TimestampSeries based on data fetched from a database row
+// rowTimestampSeries is a TimestampSeries based on data fetched from a database row
 type rowTimestampSeries struct {
 	times *pgtype.TimestamptzArray
 }

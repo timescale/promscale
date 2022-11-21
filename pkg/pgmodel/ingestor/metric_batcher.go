@@ -176,11 +176,11 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 // 6. the batcher is able to send its batch to the copier
 
 // Notice some properties:
-// 1. The shared channel in step 2 acts as a queue between metric batchers where the priority is approximately the earliest arrival time of any
+//  1. The shared channel in step 2 acts as a queue between metric batchers where the priority is approximately the earliest arrival time of any
 //     request in the batch (that's why we only do step 2 after step 1). Note this means we probably want a single copier reading a batch
 //     of requests consecutively to minimize processing delays. That's what the mutex in the copier does.
-// 2. There is an auto-adjusting adaptation loop in step 3. The longer the copier takes to catch up to the readRequest in the queue, the more things will be batched
-// 3. The batcher has only a single read request out at a time.
+//  2. There is an auto-adjusting adaptation loop in step 3. The longer the copier takes to catch up to the readRequest in the queue, the more things will be batched
+//  3. The batcher has only a single read request out at a time.
 func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, conn pgxconn.PgxConn, info *model.MetricInfo, copierReadRequestCh chan<- readRequest) {
 	var (
 		exemplarsInitialized = false

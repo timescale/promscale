@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+// +k8s:deepcopy-gen=package
 package dataset
 
 import (
@@ -32,22 +36,22 @@ var (
 
 // Config represents a dataset config.
 type Config struct {
-	Metrics `yaml:"metrics"`
-	Traces  `yaml:"traces"`
+	Metrics
+	Traces
 }
 
 // Metrics contains dataset configuration options for metrics data.
 type Metrics struct {
-	ChunkInterval   DayDuration `yaml:"default_chunk_interval"`
-	Compression     *bool       `yaml:"compress_data"` // Using pointer to check if the the value was set.
-	HALeaseRefresh  DayDuration `yaml:"ha_lease_refresh"`
-	HALeaseTimeout  DayDuration `yaml:"ha_lease_timeout"`
-	RetentionPeriod DayDuration `yaml:"default_retention_period"`
+	ChunkInterval   DayDuration `mapstructure:"default_chunk_interval" yaml:"default_chunk_interval"`
+	Compression     *bool       `mapstructure:"compress_data" yaml:"compress_data"` // Using pointer to check if the the value was set.
+	HALeaseRefresh  DayDuration `mapstructure:"ha_lease_refresh" yaml:"ha_lease_refresh"`
+	HALeaseTimeout  DayDuration `mapstructure:"ha_lease_timeout" yaml:"ha_lease_timeout"`
+	RetentionPeriod DayDuration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
 }
 
 // Traces contains dataset configuration options for traces data.
 type Traces struct {
-	RetentionPeriod DayDuration `yaml:"default_retention_period"`
+	RetentionPeriod DayDuration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
 }
 
 // NewConfig creates a new dataset config based on the configuration YAML contents.

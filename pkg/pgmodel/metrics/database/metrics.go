@@ -62,6 +62,13 @@ func counters(opts ...prometheus.CounterOpts) []prometheus.Collector {
 	}
 	return res
 }
+func histograms(opts ...prometheus.HistogramOpts) []prometheus.Collector {
+	res := make([]prometheus.Collector, 0, len(opts))
+	for _, opt := range opts {
+		res = append(res, prometheus.NewHistogram(opt))
+	}
+	return res
+}
 
 var metrics = []metricQueryWrap{
 	{
@@ -242,7 +249,7 @@ var metrics = []metricQueryWrap{
 			prometheus.GaugeOpts{
 				Namespace: util.PromNamespace,
 				Subsystem: "sql_database",
-				Name:      "worker_maintenance_job_locks_total",
+				Name:      "worker_maintenance_job_locks",
 				Help:      "Number of locks held by Promscale maintenance workers.",
 			},
 		),
@@ -319,7 +326,7 @@ var metrics = []metricQueryWrap{
 			prometheus.GaugeOpts{
 				Namespace: util.PromNamespace,
 				Subsystem: "sql_database",
-				Name:      "worker_maintenance_job_long_running_total",
+				Name:      "worker_maintenance_job_long_running",
 				Help:      "Number of Promscale maintenance workers executing long running queries.",
 			},
 		),
@@ -398,6 +405,126 @@ var metrics = []metricQueryWrap{
 				on jobs.job_id = stats.job_id
 			where jobs.proc_name = 'execute_maintenance_job' and stats.last_run_status = 'Failed'`,
 	}, {
+		metrics: append(histograms(
+			prometheus.HistogramOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Buckets:   prometheus.ExponentialBucketsRange(1, 86400.0, 15), // up to a day
+				Name:      "worker_maintenance_job_metrics_compression_last_duration_seconds",
+				Help:      "The duration of the most recently completed metrics compression job.",
+			},
+			prometheus.HistogramOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Buckets:   prometheus.ExponentialBucketsRange(1, 86400.0, 15), // up to a day
+				Name:      "worker_maintenance_job_metrics_retention_last_duration_seconds",
+				Help:      "The duration of the most recently completed metrics retention job.",
+			},
+			prometheus.HistogramOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Buckets:   prometheus.ExponentialBucketsRange(1, 86400.0, 15), // up to a day
+				Name:      "worker_maintenance_job_traces_retention_last_duration_seconds",
+				Help:      "The duration of the most recently completed traces retention job.",
+			},
+			prometheus.HistogramOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Buckets:   prometheus.ExponentialBucketsRange(1, 86400.0, 15), // up to a day
+				Name:      "worker_maintenance_job_traces_compression_last_duration_seconds",
+				Help:      "The duration of the most recently completed traces compression job.",
+			},
+		), gauges(
+			// They need to be guagues, because the source is already a sum
+			// and our DB metric colleciton system uses Add on counters.
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_metrics_compression_failures_count",
+				Help:      "The number of failed metrics compression jobs.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_metrics_compression_total_runs_count",
+				Help:      "The total number of completed metrics compression jobs.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_metrics_retention_failures_count",
+				Help:      "The number of failed metrics retention jobs.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_metrics_retention_total_runs_count",
+				Help:      "The total number of completed metrics retention jobs.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_traces_retention_failures_count",
+				Help:      "The number of failed traces retention jobs.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_traces_retention_total_runs_count",
+				Help:      "The total number of completed traces retention jobs.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_traces_compression_failures_count",
+				Help:      "The number of failed traces compression jobs.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "worker_maintenance_job_traces_compression_total_runs_count",
+				Help:      "The total number of completed traces compression jobs.",
+			},
+		)...),
+		query: `WITH maintenance_jobs_stats AS (
+			SELECT
+				coalesce(config ->> 'signal', 'traces') AS signal_type,
+				coalesce(config ->> 'type', 'compression') AS job_type,
+				MAX(js.last_run_duration) AS last_duration,
+				SUM(js.total_failures) AS failures_count,
+				SUM(js.total_runs) AS total_runs_count
+			FROM timescaledb_information.job_stats js
+			JOIN timescaledb_information.jobs j ON j.job_id = js.job_id
+			WHERE proc_schema = '_prom_catalog' OR proc_schema = '_ps_trace'
+			GROUP BY 1, 2
+			)
+			SELECT
+				coalesce(extract(EPOCH FROM MAX(last_duration)
+						FILTER ( WHERE signal_type = 'metrics' AND job_type = 'compression' )), 0)::BIGINT AS metrics_compression_last_duration,
+				coalesce(extract(EPOCH FROM MAX(last_duration)
+						FILTER ( WHERE signal_type = 'metrics' AND job_type = 'retention' )), 0)::BIGINT   AS metrics_retention_last_duration,
+				coalesce(extract(EPOCH FROM MAX(last_duration)
+						FILTER ( WHERE signal_type = 'traces'  AND job_type = 'retention' )), 0)::BIGINT   AS traces_retention_last_duration,
+				coalesce(extract(EPOCH FROM MAX(last_duration)
+						FILTER ( WHERE signal_type = 'traces'  AND job_type = 'compression' )), 0)::BIGINT AS traces_compression_last_duration,
+				coalesce(MAX(failures_count)
+				FILTER ( WHERE signal_type = 'metrics' AND job_type = 'compression' ), 0)::BIGINT                  AS metrics_compression_failures_count,
+				coalesce(MAX(total_runs_count)
+				FILTER ( WHERE signal_type = 'metrics' AND job_type = 'compression' ), 0)::BIGINT                  AS metrics_compression_total_runs_count,
+				coalesce(MAX(failures_count)
+				FILTER ( WHERE signal_type = 'metrics' AND job_type = 'retention' ), 0)::BIGINT                    AS metrics_retention_failures_count,
+				coalesce(MAX(total_runs_count)
+				FILTER ( WHERE signal_type = 'metrics' AND job_type = 'retention' ), 0)::BIGINT                    AS metrics_retention_total_runs_count,
+				coalesce(MAX(failures_count)
+				FILTER ( WHERE signal_type = 'traces' AND job_type = 'retention' ), 0)::BIGINT                     AS traces_retention_failures_count,
+				coalesce(MAX(total_runs_count)
+				FILTER ( WHERE signal_type = 'traces' AND job_type = 'retention' ), 0)::BIGINT                     AS traces_retention_total_runs_count,
+				coalesce(MAX(failures_count)
+				FILTER ( WHERE signal_type = 'traces' AND job_type = 'compression' ), 0)::BIGINT                   AS traces_compression_failures_count,
+				coalesce(MAX(total_runs_count)
+				FILTER ( WHERE signal_type = 'traces' AND job_type = 'compression' ), 0)::BIGINT                   AS traces_compression_total_runs_count
+			FROM maintenance_jobs_stats;`,
+	}, {
 		metrics: gauges(
 			prometheus.GaugeOpts{
 				Namespace: util.PromNamespace,
@@ -452,6 +579,8 @@ func getMetric(c prometheus.Collector) prometheus.Metric {
 	case prometheus.Gauge:
 		return n
 	case prometheus.Counter:
+		return n
+	case prometheus.Histogram:
 		return n
 	default:
 		panic(fmt.Sprintf("invalid type: %T", n))

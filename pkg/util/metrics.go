@@ -44,8 +44,14 @@ func ExtractMetricValue(counterOrGauge prometheus.Metric) (float64, error) {
 		return internal.Gauge.GetValue(), nil
 	case internal.Counter != nil:
 		return internal.Counter.GetValue(), nil
+	case internal.Histogram != nil:
+		if sampleCnt := internal.Histogram.GetSampleCount(); sampleCnt != 0 {
+			return internal.Histogram.GetSampleSum() / float64(sampleCnt), nil
+		} else {
+			return 0.0, nil
+		}
 	default:
-		return 0, fmt.Errorf("both Gauge and Counter are nil")
+		return 0, fmt.Errorf("all three Gauge, Counter and Histogram are nil")
 	}
 }
 

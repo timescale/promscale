@@ -10,8 +10,8 @@ import (
 	"github.com/timescale/promscale/pkg/pgclient"
 )
 
-/// TestWriterSynchronousCommit ensures that the database pool for the writer can be configured with synchronous_commit
-/// turned on or off and that the effects are limited to that pool
+// TestWriterSynchronousCommit ensures that the database pool for the writer can be configured with synchronous_commit
+// turned on or off and that the effects are limited to that pool
 func TestWriterSynchronousCommit(t *testing.T) {
 
 	// creates a new pool of database connections as would be created for the writer path

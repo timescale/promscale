@@ -11,7 +11,7 @@ on:
     branches: [master, main, force_test, release-*]
 
 env:
-  golang-version: 1.18.4
+  golang-version: 1.19.3
 
 jobs:
   run:
@@ -28,7 +28,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.2.1
+      uses: actions/setup-go@v3.3.1
       with:
         go-version: ${{ env.golang-version }}
       id: go
@@ -42,7 +42,7 @@ jobs:
         stable_branch_tag=$(echo ${extension_version}-ts2-pg${{matrix.pg}})
         image_base="ghcr.io/timescale/dev_promscale_extension"
         docker_image=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag} ${image_base}:${stable_branch_tag})
-        echo "::set-output name=docker_image::${docker_image}"
+        echo "docker_image=${docker_image}" >> ${GITHUB_OUTPUT}
 
     - name: TimescaleDB 2.x with Promscale extension (pg${{matrix.pg}})
       run: ./scripts/end_to_end_tests.sh ${{steps.metadata.outputs.docker_image}}
