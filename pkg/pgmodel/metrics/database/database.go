@@ -19,10 +19,11 @@ type Engine interface {
 }
 
 type metricsEngineImpl struct {
-	conn      pgxconn.PgxConn
-	ctx       context.Context
-	isRunning atomic.Value
-	metrics   []metricQueryWrap
+	conn         pgxconn.PgxConn
+	ctx          context.Context
+	isRunning    atomic.Value
+	metrics      []metricQueryWrap
+	metricSeries []metricsWithSeries
 }
 
 // NewEngine creates an engine that performs database metrics evaluation every evalInterval.
@@ -33,9 +34,10 @@ type metricsEngineImpl struct {
 // will cause evaluation errors.
 func NewEngine(ctx context.Context, conn pgxconn.PgxConn) *metricsEngineImpl {
 	engine := &metricsEngineImpl{
-		conn:    conn,
-		ctx:     ctx,
-		metrics: metrics,
+		conn:         conn,
+		ctx:          ctx,
+		metrics:      metrics,
+		metricSeries: metricSeries,
 	}
 	engine.isRunning.Store(false)
 	return engine
@@ -136,6 +138,13 @@ func (e *metricsEngineImpl) Update() error {
 		return err
 	}
 	handleResults(results, batchMetrics)
+
+	for _, ms := range e.metricSeries {
+		if err = ms.update(e.conn); err != nil {
+			log.Warn("msg", "error evaluating metrics with series", "err", err.Error())
+			continue // We shouldn't stop everything if this fails.
+		}
+	}
 	return results.Close()
 }
 
