@@ -32,11 +32,11 @@ Note: Any configuration omitted from the configuration structure will be set to 
 
 ## Upgrading from startup.dataset.config
 
-In previous releases the dataset config was defined as a YAML string. This was
-so that it could be used not only in the config file, but also as a command
-line flag or environment variable.
+The flag `startup.dataset.config` accepts the string representation of YAML.
+This was so that it could be used not only in the config file, but also as
+a command line flag or environment variable.
 
-In config file:
+In a config file:
 
 ```yaml
 startup.dataset.config: |
@@ -44,22 +44,35 @@ startup.dataset.config: |
     default_chunk_interval: 8h
 ```
 
-As command line flag:
+Or as a command line flag:
 
 ```bash
 ./promscale -startup.dataset.config="metrics:\n  default_chunk_interval: 8h"
 ```
 
-This was deprecated in favor of `startup.dataset` which is a YAML mapping node
-instead of a string:
+Or as an environment variable
+
+```bash
+PROMSCALE_STARTUP_DATASET_CONFIG="metrics:\n  default_chunk_interval: 8h" ./promscale
+```
+
+Using a string has some implications, specially for validation in a
+Kubernetes environment. In a future release of Promscale,
+`statup.dataset.config` will be deprecated in favor of `startup.dataset`
+which is a YAML mapping node, instead of a string, that can only be set
+using the config file:
+
+Old to be deprecated Config:
 
 ```yaml
-# Deprecated config
 startup.dataset.config: |
   metrics:
     default_chunk_interval: 8h
+```
 
-# Newer dataset config as YAML mapping
+Recommended dataset config as YAML mapping
+
+```
 startup:
   dataset:
     metrics:
