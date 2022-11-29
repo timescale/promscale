@@ -11,7 +11,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/stretchr/testify/require"
 )
@@ -318,16 +317,6 @@ func TestReset(t *testing.T) {
 	}
 	if cache.Cap() != 3 {
 		t.Error("Incorrrect len")
-	}
-}
-
-func TestElementCacheAligned(t *testing.T) {
-	elementSize := unsafe.Sizeof(element{})
-	if elementSize%64 != 0 {
-		t.Errorf("unaligned element size: %d", elementSize)
-	}
-	if elementSize != 64 {
-		t.Errorf("unexpected element size: %d", elementSize)
 	}
 }
 
