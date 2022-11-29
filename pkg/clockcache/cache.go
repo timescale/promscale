@@ -49,9 +49,6 @@ type element struct {
 	// Timestamp is stored in Unix seconds (31 bits should be enough for the next 15 years)
 	usedWithTs uint32
 	size       uint64
-
-	// pad Elements out to be cache-aligned, see BenchmarkCacheFalseSharing
-	_ [16]byte
 }
 
 func WithMax(max uint64) *Cache {
@@ -62,19 +59,19 @@ func WithMax(max uint64) *Cache {
 	}
 }
 
-func (self *Cache) applyPerfMetric(m *perfMetrics) {
-	self.metrics = m
+func (cache *Cache) applyPerfMetric(m *perfMetrics) {
+	cache.metrics = m
 }
 
 // Insert a key/value mapping into the cache if the key is not already present,
 // The sizeBytes represents the in-memory size of the key and value (used to estimate cache size).
 // returns the canonical version of the value
 // and if the value is in the map
-func (self *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) (canonicalValue interface{}, in_cache bool) {
-	self.insertLock.Lock()
-	defer self.insertLock.Unlock()
+func (cache *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) (canonicalValue interface{}, in_cache bool) {
+	cache.insertLock.Lock()
+	defer cache.insertLock.Unlock()
 
-	elem, _, inCache := self.insert(key, value, sizeBytes)
+	elem, _, inCache := cache.insert(key, value, sizeBytes)
 	return elem.value, inCache
 }
 
@@ -84,16 +81,16 @@ func (self *Cache) Insert(key interface{}, value interface{}, sizeBytes uint64) 
 // sizesBytes is the in-memory size of the key+value of each element.
 // returns the number of elements inserted, is lower than len(keys) if insertion
 // starved
-func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBytes []uint64) int {
+func (cache *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBytes []uint64) int {
 	if len(keys) != len(values) {
 		panic(fmt.Sprintf("keys and values are not the same len. %d keys, %d values", len(keys), len(values)))
 	}
 	values = values[:len(keys)]
-	self.insertLock.Lock()
-	defer self.insertLock.Unlock()
+	cache.insertLock.Lock()
+	defer cache.insertLock.Unlock()
 
 	for idx := range keys {
-		elem, _, inCache := self.insert(keys[idx], values[idx], sizesBytes[idx])
+		elem, _, inCache := cache.insert(keys[idx], values[idx], sizesBytes[idx])
 		keys[idx], values[idx] = elem.key, elem.value
 		if !inCache {
 			return idx
@@ -102,8 +99,8 @@ func (self *Cache) InsertBatch(keys []interface{}, values []interface{}, sizesBy
 	return len(keys)
 }
 
-func (self *Cache) insert(key interface{}, value interface{}, size uint64) (existingElement *element, inserted bool, inCache bool) {
-	elem, present := self.elements[key]
+func (cache *Cache) insert(key interface{}, value interface{}, size uint64) (existingElement *element, inserted bool, inCache bool) {
+	elem, present := cache.elements[key]
 	if present {
 		// we'll count a double-insert as a hit. See the comment in get
 		if !extractUsed(atomic.LoadUint32(&elem.usedWithTs)) {
@@ -114,52 +111,52 @@ func (self *Cache) insert(key interface{}, value interface{}, size uint64) (exis
 
 	var insertLocation *element
 	newElement := element{key: key, value: value, size: size, usedWithTs: packUsedAndTimestamp(false, int32(time.Now().Unix()))}
-	if len(self.storage) >= cap(self.storage) {
-		insertLocation = self.evict()
+	if len(cache.storage) >= cap(cache.storage) {
+		insertLocation = cache.evict()
 		if insertLocation == nil {
 			return &newElement, false, false
 		}
-		self.elementsLock.Lock()
-		defer self.elementsLock.Unlock()
-		delete(self.elements, insertLocation.key)
-		self.dataSize -= insertLocation.size
-		self.dataSize += size
-		self.evictions++
+		cache.elementsLock.Lock()
+		defer cache.elementsLock.Unlock()
+		delete(cache.elements, insertLocation.key)
+		cache.dataSize -= insertLocation.size
+		cache.dataSize += size
+		cache.evictions++
 		evictionTs := extractTimestamp(insertLocation.usedWithTs)
-		if self.maxEvictionTs < evictionTs {
-			self.maxEvictionTs = evictionTs
+		if cache.maxEvictionTs < evictionTs {
+			cache.maxEvictionTs = evictionTs
 		}
 		*insertLocation = newElement
 	} else {
-		self.elementsLock.Lock()
-		defer self.elementsLock.Unlock()
-		self.storage = append(self.storage, newElement)
-		self.dataSize += size
-		insertLocation = &self.storage[len(self.storage)-1]
+		cache.elementsLock.Lock()
+		defer cache.elementsLock.Unlock()
+		cache.storage = append(cache.storage, newElement)
+		cache.dataSize += size
+		insertLocation = &cache.storage[len(cache.storage)-1]
 	}
 
-	self.elements[key] = insertLocation
+	cache.elements[key] = insertLocation
 	return insertLocation, true, true
 }
 
 // Update updates the cache entry at key position with the new value and size. It inserts the key if not found and
 // returns the 'inserted' as true.
-func (self *Cache) Update(key, value interface{}, size uint64) (canonicalValue interface{}) {
-	self.insertLock.Lock()
-	defer self.insertLock.Unlock()
-	existingElement, inserted, inCache := self.insert(key, value, size)
+func (cache *Cache) Update(key, value interface{}, size uint64) (canonicalValue interface{}) {
+	cache.insertLock.Lock()
+	defer cache.insertLock.Unlock()
+	existingElement, inserted, inCache := cache.insert(key, value, size)
 	// Avoid EQL value comparisons as value is always an interface. Incase, the value is of type map, EQL operator will panic.
 	if !inserted && inCache && (existingElement.size != size || !reflect.DeepEqual(existingElement.value, value)) {
 		// If it is inserted (instead of updated), we don't need to go into this block, as the props are already updated.
-		self.elementsLock.Lock()
-		defer self.elementsLock.Unlock()
+		cache.elementsLock.Lock()
+		defer cache.elementsLock.Unlock()
 		existingElement.value = value
 		existingElement.size = size
 	}
 	return existingElement.value
 }
 
-func (self *Cache) evict() (insertPtr *element) {
+func (cache *Cache) evict() (insertPtr *element) {
 	// this code goes around storage in a ring searching for the first element
 	// not marked as used, which it will evict. The code has two unusual
 	// features:
@@ -173,9 +170,9 @@ func (self *Cache) evict() (insertPtr *element) {
 	//     if the value is merely guarded by e.g. `if next >= len(slice) { next = 0 }`
 	//     the bounds check will not be elided. Doing the walk like this lowers
 	//     eviction time by about a third
-	startLoc := self.next
-	postStart := self.storage[startLoc:]
-	preStart := self.storage[:startLoc]
+	startLoc := cache.next
+	postStart := cache.storage[startLoc:]
+	preStart := cache.storage[:startLoc]
 	for i := 0; i < 2; i++ {
 		for next := range postStart {
 			elem := &postStart[next]
@@ -185,7 +182,7 @@ func (self *Cache) evict() (insertPtr *element) {
 			}
 
 			if insertPtr != nil {
-				self.next = (startLoc + next + 1) % self.Len()
+				cache.next = (startLoc + next + 1) % cache.Len()
 				return
 			}
 		}
@@ -197,7 +194,7 @@ func (self *Cache) evict() (insertPtr *element) {
 			}
 
 			if insertPtr != nil {
-				self.next = next + 1
+				cache.next = next + 1
 				return
 			}
 		}
@@ -211,9 +208,9 @@ func (self *Cache) evict() (insertPtr *element) {
 // NOTE: this function does _not_ preserve the order of keys; the first numFound
 // keys will be the keys whose values are present, while the remainder
 // will be the keys not present in the cache
-func (self *Cache) GetValues(keys []interface{}, valuesOut []interface{}) (numFound int) {
+func (cache *Cache) GetValues(keys []interface{}, valuesOut []interface{}) (numFound int) {
 	start := time.Now()
-	defer func() { self.metrics.Observe("Get_Values", time.Since(start)) }()
+	defer func() { cache.metrics.Observe("Get_Values", time.Since(start)) }()
 
 	if len(keys) != len(valuesOut) {
 		panic(fmt.Sprintf("keys and values are not the same len. %d keys, %d values", len(keys), len(valuesOut)))
@@ -222,11 +219,11 @@ func (self *Cache) GetValues(keys []interface{}, valuesOut []interface{}) (numFo
 	n := len(keys)
 	idx := 0
 
-	self.elementsLock.RLock()
-	defer self.elementsLock.RUnlock()
+	cache.elementsLock.RLock()
+	defer cache.elementsLock.RUnlock()
 
 	for idx < n {
-		value, found := self.get(keys[idx])
+		value, found := cache.get(keys[idx])
 		if !found {
 			if n == 0 {
 				return 0
@@ -242,18 +239,18 @@ func (self *Cache) GetValues(keys []interface{}, valuesOut []interface{}) (numFo
 	return n
 }
 
-func (self *Cache) Get(key interface{}) (interface{}, bool) {
+func (cache *Cache) Get(key interface{}) (interface{}, bool) {
 	start := time.Now()
-	defer func() { self.metrics.Observe("Get", time.Since(start)) }()
+	defer func() { cache.metrics.Observe("Get", time.Since(start)) }()
 
-	self.elementsLock.RLock()
-	defer self.elementsLock.RUnlock()
-	return self.get(key)
+	cache.elementsLock.RLock()
+	defer cache.elementsLock.RUnlock()
+	return cache.get(key)
 }
 
-func (self *Cache) get(key interface{}) (interface{}, bool) {
-	self.metrics.Inc(self.metrics.queriesTotal)
-	elem, present := self.elements[key]
+func (cache *Cache) get(key interface{}) (interface{}, bool) {
+	cache.metrics.Inc(cache.metrics.queriesTotal)
+	elem, present := cache.elements[key]
 	if !present {
 		return 0, false
 	}
@@ -266,16 +263,16 @@ func (self *Cache) get(key interface{}) (interface{}, bool) {
 	if !extractUsed(atomic.LoadUint32(&elem.usedWithTs)) {
 		atomic.StoreUint32(&elem.usedWithTs, packUsedAndTimestamp(true, int32(time.Now().Unix())))
 	}
-	self.metrics.Inc(self.metrics.hitsTotal)
+	cache.metrics.Inc(cache.metrics.hitsTotal)
 
 	return elem.value, true
 }
 
-func (self *Cache) unmark(key string) bool {
-	self.elementsLock.RLock()
-	defer self.elementsLock.RUnlock()
+func (cache *Cache) unmark(key string) bool {
+	cache.elementsLock.RLock()
+	defer cache.elementsLock.RUnlock()
 
-	elem, present := self.elements[key]
+	elem, present := cache.elements[key]
 	if !present {
 		return false
 	}
@@ -292,11 +289,11 @@ func (self *Cache) unmark(key string) bool {
 	return true
 }
 
-func (self *Cache) ExpandTo(newMax int) {
-	self.insertLock.Lock()
-	defer self.insertLock.Unlock()
+func (cache *Cache) ExpandTo(newMax int) {
+	cache.insertLock.Lock()
+	defer cache.insertLock.Unlock()
 
-	oldMax := cap(self.storage)
+	oldMax := cap(cache.storage)
 	if newMax <= oldMax {
 		return
 	}
@@ -304,8 +301,8 @@ func (self *Cache) ExpandTo(newMax int) {
 	newStorage := make([]element, 0, newMax)
 
 	// cannot use copy here despite the data race on element.used
-	for i := range self.storage {
-		elem := &self.storage[i]
+	for i := range cache.storage {
+		elem := &cache.storage[i]
 		newStorage = append(newStorage, element{
 			key:        elem.key,
 			value:      elem.value,
@@ -319,70 +316,70 @@ func (self *Cache) ExpandTo(newMax int) {
 		newElements[elem.key] = elem
 	}
 
-	self.elementsLock.Lock()
-	defer self.elementsLock.Unlock()
+	cache.elementsLock.Lock()
+	defer cache.elementsLock.Unlock()
 
-	self.elements = newElements
-	self.storage = newStorage
-	self.maxEvictionTs = 0
-	self.evictions = 0
+	cache.elements = newElements
+	cache.storage = newStorage
+	cache.maxEvictionTs = 0
+	cache.evictions = 0
 }
 
-func (self *Cache) Reset() {
-	self.insertLock.Lock()
-	defer self.insertLock.Unlock()
-	oldSize := cap(self.storage)
+func (cache *Cache) Reset() {
+	cache.insertLock.Lock()
+	defer cache.insertLock.Unlock()
+	oldSize := cap(cache.storage)
 
 	newElements := make(map[interface{}]*element, oldSize)
 	newStorage := make([]element, 0, oldSize)
 
-	self.elementsLock.Lock()
-	defer self.elementsLock.Unlock()
-	self.elements = newElements
-	self.storage = newStorage
-	self.next = 0
-	self.maxEvictionTs = 0
-	self.evictions = 0
+	cache.elementsLock.Lock()
+	defer cache.elementsLock.Unlock()
+	cache.elements = newElements
+	cache.storage = newStorage
+	cache.next = 0
+	cache.maxEvictionTs = 0
+	cache.evictions = 0
 }
 
-func (self *Cache) Len() int {
-	self.elementsLock.RLock()
-	defer self.elementsLock.RUnlock()
-	return len(self.storage)
+func (cache *Cache) Len() int {
+	cache.elementsLock.RLock()
+	defer cache.elementsLock.RUnlock()
+	return len(cache.storage)
 }
 
-func (self *Cache) Evictions() uint64 {
-	self.elementsLock.RLock()
-	defer self.elementsLock.RUnlock()
-	return self.evictions
+func (cache *Cache) Evictions() uint64 {
+	cache.elementsLock.RLock()
+	defer cache.elementsLock.RUnlock()
+	return cache.evictions
 }
 
-func (self *Cache) MaxEvictionTs() int32 {
-	self.elementsLock.RLock()
-	defer self.elementsLock.RUnlock()
-	return self.maxEvictionTs
+func (cache *Cache) MaxEvictionTs() int32 {
+	cache.elementsLock.RLock()
+	defer cache.elementsLock.RUnlock()
+	return cache.maxEvictionTs
 }
 
-func (self *Cache) SizeBytes() uint64 {
-	self.elementsLock.RLock()
-	defer self.elementsLock.RUnlock()
+func (cache *Cache) SizeBytes() uint64 {
+	cache.elementsLock.RLock()
+	defer cache.elementsLock.RUnlock()
 	//derived from BenchmarkMemoryEmptyCache 120 bytes per element
-	cacheSize := cap(self.storage) * 120
-	return uint64(cacheSize) + self.dataSize
+	cacheSize := cap(cache.storage) * 120
+	return uint64(cacheSize) + cache.dataSize
 }
 
-func (self *Cache) Cap() int {
-	self.elementsLock.RLock()
-	defer self.elementsLock.RUnlock()
-	return cap(self.storage)
+func (cache *Cache) Cap() int {
+	cache.elementsLock.RLock()
+	defer cache.elementsLock.RUnlock()
+	return cap(cache.storage)
 }
 
-func (self *Cache) debugString() string {
-	self.elementsLock.RLock()
-	defer self.elementsLock.RUnlock()
+func (cache *Cache) debugString() string {
+	cache.elementsLock.RLock()
+	defer cache.elementsLock.RUnlock()
 	str := "["
-	for i := range self.storage {
-		elem := &self.storage[i]
+	for i := range cache.storage {
+		elem := &cache.storage[i]
 		str = fmt.Sprintf("%s%v: %v, ", str, elem.key, elem.value)
 	}
 	return fmt.Sprintf("%s]", str)
@@ -396,7 +393,7 @@ func extractTimestamp(in uint32) int32 {
 // extractUsed gets the first bit from the left
 // checking if element has been used
 func extractUsed(in uint32) bool {
-	return 1 == (in >> 31)
+	return (in >> 31) == 1
 }
 
 // setUsed sets first bit from the left. This bit marks if element has been used
