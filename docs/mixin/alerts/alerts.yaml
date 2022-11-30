@@ -194,23 +194,22 @@ groups:
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleCacheHighNumberOfEvictions.md
 - name: promscale-database-connection
   rules:
-  - alert: PromscaleDBHighErrorRate
+  - alert: PromscaleStorageHighErrorRate
     expr: |
       (
-        sum by (job, instance, namespace) (
-          # Error counter exists for query, query_row & exec, and not for send_batch.
-          rate(promscale_database_request_errors_total{method=~"query.*|exec"}[5m])
+        sum by (job, instance, namespace, method) (
+          rate(promscale_database_request_errors_total[5m])
         )
       /
-        sum by (job, instance, namespace) (
-          rate(promscale_database_requests_total{method=~"query.*|exec"}[5m])
+        sum by (job, instance, namespace, method) (
+          rate(promscale_database_requests_total[5m])
         )
       ) > 0.05
     labels:
       severity: warning
     annotations:
       summary: Promscale experiences a high error rate when connecting to the database.
-      description: "Promscale connection with the database has an error of {{ $value | humanizePercentage }}."
+      description: "Promscale connection with the database has an error rate of {{ $value | humanizePercentage }}."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleDBHighErrorRate.md
   - alert: PromscaleStorageHighLatency
     expr: |
