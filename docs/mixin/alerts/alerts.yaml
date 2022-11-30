@@ -216,20 +216,20 @@ groups:
     expr: |
       (
         histogram_quantile(0.9,
-          sum by (job, instance, namespace, le) (
-            rate(promscale_database_requests_duration_seconds_bucket[5m])
+          sum by (job, instance, namespace, method, le) (
+            rate(promscale_database_requests_duration_seconds_bucket{method!="exec"}[5m])
           )
         ) > 5
       and
-        sum by (job, instance, namespace) (
-          rate(promscale_database_requests_duration_seconds_count[5m])
+        sum by (job, instance, namespace, method) (
+          rate(promscale_database_requests_duration_seconds_count{method!="exec"}[5m])
         ) > 0
       )
     labels:
       severity: warning
     annotations:
       summary: Slow database response.
-      description: "Slowest 10% of database requests are taking more than {{ $value | humanizeDuration }} seconds to respond."
+      description: "Slowest 10% of database requests with method {{ $labels.method }} are taking more than {{ $value | humanizeDuration }} seconds to respond."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleStorageHighLatency.md
 - name: promscale-database
   rules:
