@@ -267,7 +267,7 @@
           "editorMode": "code",
           "exemplar": true,
           "expr": "sum by (kind) (rate(promscale_ingest_items_total{namespace=~\"$namespace\",type=~\"$datatype\"}[$__rate_interval]))",
-          "interval": "",
+          "interval": "2m",
           "legendFormat": "{{ kind }}",
           "range": true,
           "refId": "A"
@@ -466,8 +466,9 @@
               },
               "exemplar": true,
               "expr": "sum by (type) (rate(promscale_ingest_requests_total{namespace=~\"$namespace\"}[$__rate_interval]))",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "{{ type }}",
+              "range": true,
               "refId": "A"
             }
           ],
@@ -561,7 +562,7 @@
               "editorMode": "code",
               "exemplar": true,
               "expr": "sum by (type) (rate(promscale_ingest_requests_total{code=~\"5..\",namespace=~\"$namespace\"}[$__rate_interval]))",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "{{ type }}",
               "range": true,
               "refId": "A"
@@ -657,8 +658,9 @@
               },
               "exemplar": true,
               "expr": "histogram_quantile(0.5, rate(promscale_ingest_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval]))",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p50",
+              "range": true,
               "refId": "A"
             },
             {
@@ -669,8 +671,9 @@
               "exemplar": true,
               "expr": "histogram_quantile(0.90, rate(promscale_ingest_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval]))",
               "hide": false,
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p90",
+              "range": true,
               "refId": "B"
             },
             {
@@ -681,8 +684,9 @@
               "exemplar": true,
               "expr": "histogram_quantile(0.95, rate(promscale_ingest_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval]))",
               "hide": false,
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p95",
+              "range": true,
               "refId": "C"
             }
           ],
@@ -791,7 +795,7 @@
               "editorMode": "code",
               "exemplar": true,
               "expr": "rate(grpc_server_msg_received_total{grpc_method=~\"(WriteSpan|WriteSpanStream|Export)\",namespace=~\"$namespace\"}[$__rate_interval])",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "{{ grpc_service }}",
               "range": true,
               "refId": "A"
@@ -887,8 +891,9 @@
               },
               "exemplar": true,
               "expr": "rate(grpc_server_handled_total{grpc_service=~\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_code=~\"Aborted|Unavailable|Internal|Unknown|Unimplemented|DataLoss\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval])",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "{{ grpc_code }}",
+              "range": true,
               "refId": "A"
             }
           ],
@@ -982,8 +987,9 @@
               },
               "exemplar": true,
               "expr": "histogram_quantile(0.5, rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval]))",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p50 {{ type }}",
+              "range": true,
               "refId": "A"
             },
             {
@@ -994,8 +1000,9 @@
               "exemplar": true,
               "expr": "histogram_quantile(0.9, rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval]))",
               "hide": false,
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p90 {{ type }}",
+              "range": true,
               "refId": "B"
             },
             {
@@ -1006,8 +1013,9 @@
               "exemplar": true,
               "expr": "histogram_quantile(0.95, rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval]))",
               "hide": false,
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p95 {{ type }}",
+              "range": true,
               "refId": "C"
             }
           ],
@@ -1118,8 +1126,9 @@
               },
               "exemplar": true,
               "expr": "sum by (type) (rate(promscale_query_requests_total{namespace=~\"$namespace\"}[$__rate_interval]))",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "{{ type }}",
+              "range": true,
               "refId": "A"
             }
           ],
@@ -1212,8 +1221,9 @@
               },
               "exemplar": true,
               "expr": "sum by (type) (rate(promscale_query_requests_total{code=~\"5..\",namespace=~\"$namespace\"}[$__rate_interval]))",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "{{ type }}",
+              "range": true,
               "refId": "A"
             }
           ],
@@ -1307,8 +1317,9 @@
               },
               "exemplar": true,
               "expr": "histogram_quantile(0.5, sum by (le, instance, job) (rate(promscale_query_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])))",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p50",
+              "range": true,
               "refId": "A"
             },
             {
@@ -1319,8 +1330,9 @@
               "exemplar": true,
               "expr": "histogram_quantile(0.90, sum by (le, instance, job) (rate(promscale_query_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])))",
               "hide": false,
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p90",
+              "range": true,
               "refId": "B"
             },
             {
@@ -1331,8 +1343,9 @@
               "exemplar": true,
               "expr": "histogram_quantile(0.95, sum by (le, instance, job) (rate(promscale_query_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])))",
               "hide": false,
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p95",
+              "range": true,
               "refId": "C"
             }
           ],
@@ -1937,8 +1950,9 @@
               },
               "exemplar": true,
               "expr": "histogram_quantile(0.5, rate(promscale_database_requests_duration_seconds_bucket{method=~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval]))",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p50 - {{ method }}",
+              "range": true,
               "refId": "A"
             },
             {
@@ -1949,8 +1963,9 @@
               "exemplar": true,
               "expr": "histogram_quantile(0.9, rate(promscale_database_requests_duration_seconds_bucket{method=~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval]))",
               "hide": false,
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p90 - {{ method }}",
+              "range": true,
               "refId": "B"
             },
             {
@@ -1961,8 +1976,9 @@
               "exemplar": true,
               "expr": "histogram_quantile(0.95, rate(promscale_database_requests_duration_seconds_bucket{method=~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval]))",
               "hide": false,
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p95 - {{ method }}",
+              "range": true,
               "refId": "C"
             }
           ],
@@ -2173,8 +2189,9 @@
               },
               "exemplar": true,
               "expr": "rate(promscale_database_requests_total{namespace=~\"$namespace\"}[$__rate_interval])",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "{{ method }}",
+              "range": true,
               "refId": "A"
             }
           ],
@@ -3321,7 +3338,7 @@
               "editorMode": "code",
               "exemplar": true,
               "expr": "rate(promscale_cache_query_hits_total{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval]) / rate(promscale_cache_queries_total{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval])",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "{{ name }}",
               "range": true,
               "refId": "A"
@@ -3418,7 +3435,7 @@
               "editorMode": "code",
               "exemplar": true,
               "expr": "histogram_quantile(0.5, rate(promscale_cache_query_latency_microseconds_bucket{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval]))",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p50 - {{ name }}",
               "range": true,
               "refId": "A"
@@ -3432,7 +3449,7 @@
               "exemplar": true,
               "expr": "histogram_quantile(0.90, rate(promscale_cache_query_latency_microseconds_bucket{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval]))",
               "hide": false,
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "p90 - {{ name }}",
               "range": true,
               "refId": "B"
@@ -3527,7 +3544,7 @@
               "editorMode": "code",
               "exemplar": true,
               "expr": "sum by (type, name) (rate(promscale_cache_evictions_total{namespace=~\"$namespace\",type=~\"$datatype\"}[$__rate_interval]))",
-              "interval": "",
+              "interval": "2m",
               "legendFormat": "{{ name }}",
               "range": true,
               "refId": "A"
