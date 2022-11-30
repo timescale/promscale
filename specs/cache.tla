@@ -72,6 +72,9 @@ define
     NewDataAfterMarked ==
         {s \in MarkedSeries: s \in series_referenced_from_data}
 
+    InitializeEpoch == 
+        IF current_epoch = 0 THEN now ELSE current_epoch
+
 end define;
 
 process cache_refresh_worker \in CacheRefreshWorkers
@@ -120,6 +123,7 @@ variables
     locally_observed_epoch = 0;
 begin
     IngesterBegin:
+        current_epoch := InitializeEpoch;
         either
             ReceiveInput:
                 (*
@@ -158,8 +162,9 @@ begin
                 (*
                  * The previous line is actually a DB transaction that could
                  * be aborted. We don't handle it here for the sake of not
-                 * bloating this spec even more. It should be entirely safe to
-                 * wipe the cache clean if an abort happens.
+                 * bloating this spec even more. 
+                 * In reality if there are multiple DB transactions. 
+                 * If one fails, we don't add a series  from that transaction to the cache.
                  *)
                 cached_series[self] := cached_series[self] \union new_series;
             IngestTransaction:
@@ -202,6 +207,7 @@ begin
             with dt \in 0..1 do
                 now := now + dt;
             end with;
+            current_epoch := InitializeEpoch;
             (* 
              * In fact, drop_metric_chunks goes through these stages sequentially. So, this actually
              * adds a touch more concurrency. But we assume concurrent phases mutually exclude
