@@ -8,5 +8,3 @@ exclusions:
   template-job-rule:
   template-instance-rule:
   template-datasource-rule:
-  target-counter-agg-rule:
-    reason: "disabled for promscale_sql_database_worker_maintenance_job_locks_total, promscale_sql_database_worker_maintenance_job_long_running_total. This metric should be not have total due to naming conventions as its a gauge, not a counter"
