@@ -28,7 +28,9 @@ const growCheckDuration = time.Second * 5 // check whether to grow the series ca
 const growFactor = float64(2.0)           // multiply cache size by this factor when growing the cache
 var evictionMaxAge = time.Minute * 2      // grow cache if we are evicting elements younger than `now - evictionMaxAge`
 
-// SeriesCache is a cache of model.Series entries.
+// SeriesCache is a cache of model.Series entries. For more information about
+// the series cache, and cache invalidation mechanisms, please refer to the
+// document at pkg/pgmodel/invalidation.readme.md.
 type SeriesCache interface {
 	Reset(epoch model.SeriesEpoch)
 	GetSeriesFromProtos(labelPairs []prompb.Label) (series *model.Series, metricName string, err error)
