@@ -1,3 +1,7 @@
+// This file and its contents are licensed under the Apache License 2.0.
+// Please see the included NOTICE for copyright information and
+// LICENSE for a copy of the license.
+
 package end_to_end_tests
 
 import (
@@ -13,11 +17,10 @@ import (
 	"github.com/timescale/promscale/pkg/rollup"
 )
 
-func TestRollupCreationDeletion(t *testing.T) {
+func TestRollupSync(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		rollupResolutions := []rollup.DownsampleResolution{
-			{
-				Label:      "short",
+		rollupResolutions := rollup.Resolutions{
+			"short": {
 				Resolution: day.Duration(5 * time.Minute),
 				Retention:  day.Duration(30 * 24 * time.Hour),
 			},
@@ -27,30 +30,67 @@ func TestRollupCreationDeletion(t *testing.T) {
 		require.NoError(t, err)
 		defer pgCon.Release()
 
-		err = rollup.EnsureRollupWith(pgCon.Conn(), rollupResolutions)
+		// Test 1: Check if 'short' rollup is created.
+		err = rollup.Sync(context.Background(), pgCon.Conn(), rollupResolutions)
 		require.NoError(t, err)
 
-		verifyRollupExistence(t, pgCon.Conn(), rollupResolutions[0].Label, time.Duration(rollupResolutions[0].Resolution), time.Duration(rollupResolutions[0].Retention), false)
+		verifyRollupExistence(t, pgCon.Conn(), "short",
+			time.Duration(rollupResolutions["short"].Resolution), time.Duration(rollupResolutions["short"].Retention), false)
 
-		rollupResolutions = append(rollupResolutions, rollup.DownsampleResolution{
-			Label:      "long",
+		rollupResolutions["long"] = rollup.Definition{
 			Resolution: day.Duration(time.Hour),
 			Retention:  day.Duration(395 * 24 * time.Hour),
-		})
+		}
 
-		err = rollup.EnsureRollupWith(pgCon.Conn(), rollupResolutions)
+		// Test 2: Check if 'long' rollup is created.
+		err = rollup.Sync(context.Background(), pgCon.Conn(), rollupResolutions)
 		require.NoError(t, err)
 
-		verifyRollupExistence(t, pgCon.Conn(), rollupResolutions[1].Label, time.Duration(rollupResolutions[1].Resolution), time.Duration(rollupResolutions[1].Retention), false)
+		verifyRollupExistence(t, pgCon.Conn(), "long",
+			time.Duration(rollupResolutions["long"].Resolution), time.Duration(rollupResolutions["long"].Retention), false)
 
-		// Remove the first entry and see if the entry is removed or not.
-		newRes := rollupResolutions[1:]
-		err = rollup.EnsureRollupWith(pgCon.Conn(), newRes)
+		// Test 3: Update the resolution and check if error is returned.
+		rollupResolutions["short"] = rollup.Definition{
+			Resolution: day.Duration(4 * time.Minute),
+			Retention:  day.Duration(30 * 24 * time.Hour),
+		}
+		err = rollup.Sync(context.Background(), pgCon.Conn(), rollupResolutions)
+		require.Equal(t,
+			"error on existing resolution mismatch: existing rollup resolutions cannot be updated. Either keep the resolution of existing rollup labels same or remove them",
+			err.Error())
+		// Reset back to original resolution.
+		rollupResolutions["short"] = rollup.Definition{
+			Resolution: day.Duration(5 * time.Minute),
+			Retention:  day.Duration(30 * 24 * time.Hour),
+		}
+
+		// Test 4: Remove the first entry and see if the entry is removed or not.
+		rollupResolutions["short"] = rollup.Definition{
+			Resolution: day.Duration(5 * time.Minute),
+			Retention:  day.Duration(30 * 24 * time.Hour),
+			Delete:     true,
+		}
+		err = rollup.Sync(context.Background(), pgCon.Conn(), rollupResolutions)
 		require.NoError(t, err)
 		// Check if long exists.
-		verifyRollupExistence(t, pgCon.Conn(), rollupResolutions[1].Label, time.Duration(rollupResolutions[1].Resolution), time.Duration(rollupResolutions[1].Retention), false)
+		verifyRollupExistence(t, pgCon.Conn(), "long",
+			time.Duration(rollupResolutions["long"].Resolution), time.Duration(rollupResolutions["long"].Retention), false)
 		// Check if short does not exist.
-		verifyRollupExistence(t, pgCon.Conn(), rollupResolutions[0].Label, time.Duration(rollupResolutions[0].Resolution), time.Duration(rollupResolutions[0].Retention), true)
+		verifyRollupExistence(t, pgCon.Conn(), "short",
+			time.Duration(rollupResolutions["short"].Resolution), time.Duration(rollupResolutions["short"].Retention), true)
+
+		// Test 5: Update retention of long and check if the same is reflected in the DB.
+		rollupResolutions["long"] = rollup.Definition{
+			Resolution: day.Duration(time.Hour),
+			Retention:  day.Duration(500 * 24 * time.Hour), // Updated retention duration.
+		}
+		err = rollup.Sync(context.Background(), pgCon.Conn(), rollupResolutions)
+		require.NoError(t, err)
+		verifyRollupExistence(t, pgCon.Conn(), "long",
+			time.Duration(rollupResolutions["long"].Resolution), time.Duration(rollupResolutions["long"].Retention), false)
+		// Short should still not exists.
+		verifyRollupExistence(t, pgCon.Conn(), "short",
+			time.Duration(rollupResolutions["short"].Resolution), time.Duration(rollupResolutions["short"].Retention), true)
 	})
 }
 

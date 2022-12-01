@@ -14,6 +14,7 @@ import (
 
 	"github.com/timescale/promscale/pkg/internal/day"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/rollup"
 )
 
 const (
@@ -49,7 +50,7 @@ type Metrics struct {
 	HALeaseRefresh  day.Duration `mapstructure:"ha_lease_refresh" yaml:"ha_lease_refresh"`
 	HALeaseTimeout  day.Duration `mapstructure:"ha_lease_timeout" yaml:"ha_lease_timeout"`
 	RetentionPeriod day.Duration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
-	Downsample   	*Downsample `mapstructure:"downsample" yaml:"downsample,omitempty"`
+	Rollups         *rollup.Config `mapstructure:"rollups" yaml:"rollups,omitempty"`
 }
 
 // Traces contains dataset configuration options for traces data.
@@ -64,11 +65,11 @@ func NewConfig(contents string) (cfg Config, err error) {
 }
 
 // Apply applies the configuration to the database via the supplied DB connection.
-func (c *Config) Apply(conn *pgx.Conn) error {
+func (c *Config) Apply(ctx context.Context, conn *pgx.Conn) error {
 	c.applyDefaults()
 
-	if c.Metrics.Downsample != nil {
-		if err := c.Metrics.Downsample.Apply(conn); err != nil {
+	if c.Metrics.Rollups != nil {
+		if err := c.Metrics.Rollups.Apply(ctx, conn); err != nil {
 			return fmt.Errorf("error applying configuration for downsampling: %w", err)
 		}
 	}
