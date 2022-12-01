@@ -238,13 +238,13 @@ func isBGWLessThanDBs(conn *pgx.Conn) (bool, error) {
 	return false, nil
 }
 
-func applyDatasetConfig(conn *pgx.Conn, cfgFilename string) error {
+func applyDatasetConfig(ctx context.Context, conn *pgx.Conn, cfgFilename string) error {
 	cfg, err := dataset.NewConfig(cfgFilename)
 	if err != nil {
 		return err
 	}
 
-	return cfg.Apply(conn)
+	return cfg.Apply(ctx, conn)
 }
 
 func compileAnchoredRegexString(s string) (*regexp.Regexp, error) {
