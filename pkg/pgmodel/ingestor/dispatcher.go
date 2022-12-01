@@ -189,6 +189,10 @@ func (p *PgxDispatcher) getDatabaseEpochs() (model.SeriesEpoch, model.SeriesEpoc
 	return model.SeriesEpoch(dbCurrentEpoch), model.SeriesEpoch(dbDeleteEpoch), nil
 }
 
+// RefreshSeriesEpoch fetches series rows which are marked for deletion in the
+// database, and removes them from the series cache, updating the freshness of
+// the cache. For more details about the overall series cache mechanism,
+// consult pkg/pgmodel/invalidation.readme.md.
 func (p *PgxDispatcher) RefreshSeriesEpoch() {
 	// There can be multiple concurrent executions of `RefreshSeriesEpoch`. We
 	// use TryLock here to ensure that we don't have concurrent execution in
