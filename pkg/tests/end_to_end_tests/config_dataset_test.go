@@ -40,7 +40,7 @@ func TestDatasetConfigApply(t *testing.T) {
 			},
 		}
 
-		err = cfg.Apply(pgxConn)
+		err = cfg.Apply(context.Background(), pgxConn)
 		require.NoError(t, err)
 
 		require.Equal(t, 4*time.Hour, getMetricsDefaultChunkInterval(t, pgxConn))
@@ -54,7 +54,7 @@ func TestDatasetConfigApply(t *testing.T) {
 		cfg, err = dataset.NewConfig("")
 		require.NoError(t, err)
 
-		err = cfg.Apply(pgxConn)
+		err = cfg.Apply(context.Background(), pgxConn)
 		require.NoError(t, err)
 
 		require.Equal(t, 8*time.Hour, getMetricsDefaultChunkInterval(t, pgxConn))
