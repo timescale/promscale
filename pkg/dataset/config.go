@@ -14,6 +14,7 @@ import (
 
 	"github.com/timescale/promscale/pkg/internal/day"
 	"github.com/timescale/promscale/pkg/log"
+	"github.com/timescale/promscale/pkg/rollup"
 )
 
 const (
@@ -44,12 +45,12 @@ type Config struct {
 
 // Metrics contains dataset configuration options for metrics data.
 type Metrics struct {
-	ChunkInterval   day.Duration `yaml:"default_chunk_interval"`
-	Compression     *bool        `yaml:"compress_data"` // Using pointer to check if the value was set.
-	HALeaseRefresh  day.Duration `yaml:"ha_lease_refresh"`
-	HALeaseTimeout  day.Duration `yaml:"ha_lease_timeout"`
-	RetentionPeriod day.Duration `yaml:"default_retention_period"`
-	Downsample      *Downsample  `yaml:"downsample,omitempty"`
+	ChunkInterval   day.Duration   `yaml:"default_chunk_interval"`
+	Compression     *bool          `yaml:"compress_data"` // Using pointer to check if the value was set.
+	HALeaseRefresh  day.Duration   `yaml:"ha_lease_refresh"`
+	HALeaseTimeout  day.Duration   `yaml:"ha_lease_timeout"`
+	RetentionPeriod day.Duration   `yaml:"default_retention_period"`
+	Rollups         *rollup.Config `yaml:"rollups,omitempty"`
 }
 
 // Traces contains dataset configuration options for traces data.
@@ -64,11 +65,11 @@ func NewConfig(contents string) (cfg Config, err error) {
 }
 
 // Apply applies the configuration to the database via the supplied DB connection.
-func (c *Config) Apply(conn *pgx.Conn) error {
+func (c *Config) Apply(ctx context.Context, conn *pgx.Conn) error {
 	c.applyDefaults()
 
-	if c.Metrics.Downsample != nil {
-		if err := c.Metrics.Downsample.Apply(conn); err != nil {
+	if c.Metrics.Rollups != nil {
+		if err := c.Metrics.Rollups.Apply(ctx, conn); err != nil {
 			return fmt.Errorf("error applying configuration for downsampling: %w", err)
 		}
 	}
