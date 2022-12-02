@@ -205,11 +205,12 @@ func TestExemplarQueryingAPI(t *testing.T) {
 		// since the return will be 0, as they have already been ingested by TestExemplarIngestion.
 
 		labelsReader := lreader.NewLabelsReader(pgxconn.NewPgxConn(db), cache.NewLabelsCache(cache.DefaultConfig), tenancy.NewNoopAuthorizer().ReadAuthorizer())
-		r := querier.NewQuerier(
+		r, err := querier.NewQuerier(
 			pgxconn.NewPgxConn(db),
 			cache.NewMetricCache(cache.DefaultConfig),
 			labelsReader,
-			cache.NewExemplarLabelsPosCache(cache.DefaultConfig), nil)
+			cache.NewExemplarLabelsPosCache(cache.DefaultConfig), nil, 0, false)
+		require.NoError(t, err)
 		queryable := query.NewQueryable(r, labelsReader)
 
 		// Query all exemplars corresponding to metric_2 histogram.

@@ -36,7 +36,7 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, nil, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, nil, mt, false, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -56,7 +56,8 @@ func TestMultiTenancyWithoutValidTenants(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, mt.ReadAuthorizer())
-		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
+		qr, err := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer(), 0, false)
+		require.NoError(t, err)
 
 		// ----- query-test: querying a single tenant (tenant-a) -----
 		expectedResult := []prompb.TimeSeries{
@@ -224,7 +225,7 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, nil, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, nil, mt, false, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -256,7 +257,8 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, mt.ReadAuthorizer())
-		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
+		qr, err := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer(), 0, false)
+		require.NoError(t, err)
 
 		// ----- query-test: querying a valid tenant (tenant-a) -----
 		expectedResult := []prompb.TimeSeries{
@@ -382,7 +384,8 @@ func TestMultiTenancyWithValidTenants(t *testing.T) {
 		require.NoError(t, err)
 
 		labelsReader = lreader.NewLabelsReader(dbConn, lCache, mt.ReadAuthorizer())
-		qr = querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
+		qr, err = querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer(), 0, false)
+		require.NoError(t, err)
 
 		expectedResult = []prompb.TimeSeries{}
 
@@ -413,7 +416,7 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, nil, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, nil, mt, false, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -461,7 +464,8 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, mt.ReadAuthorizer())
-		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
+		qr, err := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer(), 0, false)
+		require.NoError(t, err)
 
 		// ----- query-test: querying a non-tenant -----
 		expectedResult := []prompb.TimeSeries{
@@ -550,7 +554,8 @@ func TestMultiTenancyWithValidTenantsAndNonTenantOps(t *testing.T) {
 		require.NoError(t, err)
 
 		labelsReader = lreader.NewLabelsReader(dbConn, lCache, mt.ReadAuthorizer())
-		qr = querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
+		qr, err = querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer(), 0, false)
+		require.NoError(t, err)
 
 		expectedResult = []prompb.TimeSeries{
 			{
@@ -627,7 +632,7 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 		require.NoError(t, err)
 
 		// Ingestion.
-		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, nil, mt, false)
+		client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, nil, mt, false, false)
 		require.NoError(t, err)
 		defer client.Close()
 
@@ -659,7 +664,8 @@ func TestMultiTenancyWithValidTenantsAsLabels(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(db)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, mt.ReadAuthorizer())
-		qr := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer())
+		qr, err := querier.NewQuerier(dbConn, mCache, labelsReader, nil, mt.ReadAuthorizer(), 0, false)
+		require.NoError(t, err)
 
 		// ----- query-test: querying a single tenant (tenant-b) -----
 		expectedResult := []prompb.TimeSeries{
@@ -759,7 +765,7 @@ func TestMultiTenancyLabelNamesValues(t *testing.T) {
 	ts, _ := generateSmallMultiTenantTimeseries()
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, tb testing.TB) {
 		getClient := func(auth tenancy.Authorizer) *pgclient.Client {
-			client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, nil, auth, false)
+			client, err := pgclient.NewClientWithPool(prometheus.NewRegistry(), &testConfig, 1, db, db, nil, auth, false, false)
 			require.NoError(t, err)
 			return client
 		}

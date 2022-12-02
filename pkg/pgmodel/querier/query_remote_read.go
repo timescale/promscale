@@ -28,7 +28,7 @@ func (q *queryRemoteRead) Query(query *prompb.Query) ([]*prompb.TimeSeries, erro
 		return nil, err
 	}
 
-	qrySamples := newQuerySamples(q.ctx, q.pgxQuerier)
+	qrySamples := newQuerySamples(q.ctx, q.pgxQuerier, nil)
 	sampleRows, _, err := qrySamples.fetchSamplesRows(query.StartTimestampMs, query.EndTimestampMs, nil, nil, nil, matchers)
 	if err != nil {
 		return nil, err

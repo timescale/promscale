@@ -50,7 +50,7 @@ type Metrics struct {
 	HALeaseRefresh  day.Duration   `yaml:"ha_lease_refresh"`
 	HALeaseTimeout  day.Duration   `yaml:"ha_lease_timeout"`
 	RetentionPeriod day.Duration   `yaml:"default_retention_period"`
-	Rollups         *rollup.Config `yaml:"rollups,omitempty"`
+	Rollup          *rollup.Config `yaml:"rollup,omitempty"`
 }
 
 // Traces contains dataset configuration options for traces data.
@@ -68,8 +68,8 @@ func NewConfig(contents string) (cfg Config, err error) {
 func (c *Config) Apply(ctx context.Context, conn *pgx.Conn) error {
 	c.applyDefaults()
 
-	if c.Metrics.Rollups != nil {
-		if err := c.Metrics.Rollups.Apply(ctx, conn); err != nil {
+	if c.Metrics.Rollup != nil {
+		if err := c.Metrics.Rollup.Apply(ctx, conn); err != nil {
 			return fmt.Errorf("error applying configuration for downsampling: %w", err)
 		}
 	}

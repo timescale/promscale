@@ -6,17 +6,21 @@ package querier
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/rollup"
 	"github.com/timescale/promscale/pkg/tenancy"
 )
 
 type pgxQuerier struct {
-	tools *queryTools
+	tools  *queryTools
+	schema *rollup.Decider
 }
 
 var _ Querier = (*pgxQuerier)(nil)
@@ -29,7 +33,9 @@ func NewQuerier(
 	labelsReader lreader.LabelsReader,
 	exemplarCache cache.PositionCache,
 	rAuth tenancy.ReadAuthorizer,
-) Querier {
+	scrapeInterval time.Duration,
+	useRollups bool,
+) (Querier, error) {
 	querier := &pgxQuerier{
 		tools: &queryTools{
 			conn:             conn,
@@ -39,7 +45,14 @@ func NewQuerier(
 			rAuth:            rAuth,
 		},
 	}
-	return querier
+	if useRollups {
+		decider, err := rollup.NewDecider(context.Background(), conn, scrapeInterval)
+		if err != nil {
+			return nil, fmt.Errorf("error creating rollups schema decider: %w", err)
+		}
+		querier.schema = decider
+	}
+	return querier, nil
 }
 
 func (q *pgxQuerier) RemoteReadQuerier(ctx context.Context) RemoteReadQuerier {
@@ -47,7 +60,7 @@ func (q *pgxQuerier) RemoteReadQuerier(ctx context.Context) RemoteReadQuerier {
 }
 
 func (q *pgxQuerier) SamplesQuerier(ctx context.Context) SamplesQuerier {
-	return newQuerySamples(ctx, q)
+	return newQuerySamples(ctx, q, q.schema)
 }
 
 func (q *pgxQuerier) ExemplarsQuerier(ctx context.Context) ExemplarQuerier {

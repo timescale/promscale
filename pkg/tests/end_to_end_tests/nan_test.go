@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/prometheus/prometheus/model/value"
+	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
@@ -129,7 +130,8 @@ func TestSQLStaleNaN(t *testing.T) {
 			lCache := clockcache.WithMax(100)
 			dbConn := pgxconn.NewPgxConn(db)
 			labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
-			r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
+			r, err := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil, 0, false)
+			require.NoError(t, err)
 			resp, err := r.RemoteReadQuerier(ctx).Query(c.query)
 			if err != nil {
 				t.Fatalf("unexpected error while ingesting test dataset: %s", err)
