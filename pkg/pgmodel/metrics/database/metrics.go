@@ -99,7 +99,7 @@ var metrics = []metricQueryWrap{
 			},
 		),
 		// Compressed_chunk_id is null for both yet to be compressed and already compressed chunks.
-		query: `SELECT 
+		query: `SELECT
 				count(*) FILTER (WHERE dropped=false AND compressed_chunk_id IS NULL)::BIGINT AS chunks_count,
 				count(*) FILTER (WHERE dropped=false AND compressed_chunk_id IS NOT NULL)::BIGINT AS chunks_compressed_count
 			FROM _timescaledb_catalog.chunk`,
@@ -144,8 +144,8 @@ var metrics = []metricQueryWrap{
 				WHERE c.dropped IS FALSE
 				AND h.compression_state = 1 -- compression_enabled = TRUE
 				AND (c.status & 1) != 1 -- only check for uncompressed chunks
-			) 
-			SELECT 
+			)
+			SELECT
 				count(*) FILTER(WHERE m.delay_compression_until IS NULL OR m.delay_compression_until < now())::BIGINT AS uncompressed,
 				count(*) FILTER(WHERE m.delay_compression_until IS NOT NULL AND m.delay_compression_until >= now())::BIGINT AS delayed_compression
 			FROM chunk_candidates cc
@@ -266,7 +266,8 @@ var metrics = []metricQueryWrap{
 				COUNT(*) :: BIGINT AS total
 			FROM pg_stat_activity sa
 			JOIN pg_locks l ON l.pid = sa.pid
-			WHERE sa.application_name LIKE 'promscale maintenance%'`,
+			WHERE sa.application_name LIKE 'promscale maintenance%'
+			AND sa.state <> 'idle'`,
 	}, {
 		metrics: gauges(
 			prometheus.GaugeOpts{
@@ -358,7 +359,8 @@ var metrics = []metricQueryWrap{
 			},
 		),
 		query: `SELECT coalesce(extract(EPOCH FROM MAX(now() - coalesce(sa.query_start, sa.xact_start))) :: BIGINT, 0)
-			FROM pg_stat_activity sa WHERE sa.application_name LIKE 'promscale maintenance%'`,
+			FROM pg_stat_activity sa WHERE sa.application_name LIKE 'promscale maintenance%'
+			AND sa.state <> 'idle'`,
 	}, {
 		metrics: gauges(
 			prometheus.GaugeOpts{
