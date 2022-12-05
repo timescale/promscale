@@ -7,7 +7,9 @@ package end_to_end_tests
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -577,6 +579,119 @@ func TestInsertAbort(t *testing.T) {
 	})
 }
 
+// Trigger the backround job and eviction simultaneously with a randomized overlap
+func TestEvictionVInsert(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	// Interate until we encounter all acceptable outcomes
+	// (S1, S1 + S2 (ressurection), S1 + S3 (new series id allocation).
+	expectedSeriesIds := map[int64]bool{}
+	for len(expectedSeriesIds) < 3 {
+		withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+			db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
+			defer db.Close()
+
+			ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ingestor.Close()
+
+			// Shrink epoch duration
+			_, err = db.Exec(context.Background(), "SELECT _prom_catalog.set_default_value('epoch_duration', (INTERVAL '1 second')::TEXT)")
+			require.NoError(t, err)
+
+			farFuture := int64((time.Hour / time.Millisecond * 24 * 365 * 3000))
+			insertSamples := func(t0 int64, labelValue string, ignoreError bool) {
+				insertIters := int64(50)
+				samples := make([]prompb.TimeSeries, 0, insertIters)
+				for i := int64(0); i < insertIters; i++ {
+					samples = append(samples, prompb.TimeSeries{
+						Labels: []prompb.Label{
+							{Name: model.MetricNameLabelName, Value: "test"},
+							{Name: "test", Value: labelValue},
+						},
+						Samples: []prompb.Sample{
+							{Timestamp: t0 + i, Value: 0.1},
+						},
+					})
+				}
+				_, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(samples)))
+				if !ignoreError {
+					require.NoError(t, err)
+				}
+			}
+
+			// Ingest some metrics
+			insertSamples(farFuture, "test0", false) // this should survive
+			insertSamples(0, "test1", false)         // this should expire
+			err = ingestor.CompleteMetricCreation(context.Background())
+			require.NoError(t, err)
+
+			// An epoch duration delay
+			time.Sleep(1 * time.Second)
+
+			var wg sync.WaitGroup
+			wg.Add(3)
+
+			bgDelay := time.Duration(rand.Intn(90)) * time.Millisecond
+			go func() {
+				time.Sleep(bgDelay)
+				// Run the maintenance job to get rid of the series ids and advance the epoch
+				_, err := db.Exec(context.Background(), "CALL prom_api.execute_maintenance(false)")
+				require.NoError(t, err)
+				wg.Done()
+			}()
+
+			cacheDelay := time.Duration(rand.Intn(100)) * time.Millisecond
+			go func() {
+				time.Sleep(cacheDelay)
+				// Run invalidation
+				ingestor.Dispatcher().(*ingstr.PgxDispatcher).RefreshSeriesEpoch()
+				wg.Done()
+			}()
+
+			insertDelay := time.Duration(rand.Intn(300)) * time.Millisecond
+			go func() {
+				time.Sleep(insertDelay)
+				// This should either appear as a new series or fail due to epoch change
+				insertSamples(farFuture-int64(time.Hour/time.Millisecond*24*365*10), "test1", true)
+				_ = ingestor.CompleteMetricCreation(context.Background())
+				wg.Done()
+			}()
+			wg.Wait()
+
+			// Retrieve series data
+			rows, err := db.Query(context.Background(), "SELECT series_id FROM prom_data.test")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// there shuold be no dangling references
+			foundSeriesIds := map[int64]bool{}
+			for rows.Next() {
+				var sid int64
+				err = rows.Scan(&sid)
+				if err != nil {
+					t.Fatal(err)
+				}
+				foundSeriesIds[sid] = true
+			}
+
+			if len(foundSeriesIds) > 2 {
+				t.Errorf("Too many series ids in the DB\ngot:\n\t%v\nDelays bg job: %v, cache cleanup %v", foundSeriesIds, bgDelay, cacheDelay)
+			}
+			if _, hasS1 := foundSeriesIds[1]; !hasS1 {
+				t.Errorf("S1 is expected to always survive in the DB\ngot:\n\t%v\nDelays bg job: %v, cache cleanup %v", foundSeriesIds, bgDelay, cacheDelay)
+			}
+			for k := range foundSeriesIds {
+				expectedSeriesIds[k] = true
+			}
+		})
+	}
+}
 func TestCacheEvictionBetweenInserts(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
