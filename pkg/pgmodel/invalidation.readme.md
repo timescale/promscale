@@ -53,10 +53,10 @@ contained in the `current_epoch` column of the `_prom_catalog.ids_epoch` table.
 This indicates: it was decided at `current_epoch` to delete this row at some
 point in the future.
 
-The row is removed when the following condition is met:
-`prom_catalog.series.delete_epoch` >= `current_epoch` - `epoch_duration`
-When the row is removed, `_prom_catalog.ids_epoch.delete_epoch` is set to
-`current_epoch` - `epoch_duration`.
+Periodically, `_prom_catalog.ids_epoch.delete_epoch` is set to
+`current_epoch` - `epoch_duration`, after which all rows matching the following
+condition are removed:
+`prom_catalog.series.delete_epoch` >= `prom_catalog.ids_epoch.delete_epoch`.
 
 ## Cache refresh
 
