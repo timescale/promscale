@@ -84,7 +84,7 @@ services:
       - 3000:3000/tcp
     depends_on:
       - timescaledb
-      - jaeger
+      - jaeger-all-in-one
 
   node_exporter:
     image: quay.io/prometheus/node-exporter
