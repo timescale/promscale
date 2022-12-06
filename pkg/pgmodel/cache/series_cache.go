@@ -21,8 +21,8 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-//this seems like a good initial size for /active/ series. Takes about 32MB
-const DefaultSeriesCacheSize = 250000
+// this seems like a good default size for /active/ series. This results in Promscale using around 360MB on start.
+const DefaultSeriesCacheSize = 1000000
 
 const GrowCheckDuration = time.Minute // check whether to grow the series cache this often
 const GrowEvictionThreshold = 0.2     // grow when evictions more than 20% of cache size
