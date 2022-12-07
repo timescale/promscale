@@ -579,14 +579,23 @@ func TestInsertAbort(t *testing.T) {
 	})
 }
 
-// Trigger the backround job and eviction simultaneously with a randomized overlap
+// This test aims to trigger the retention job, the cache eviction
+// and the data ingestion routines all at once. Randomized delays are
+// injected to randomize scheduler interleavings. The test is not exhaustive:
+// it passes if by the time we've seen all three acceptable outcomes
+// no unaccepable ones were encountered.
 func TestEvictionVInsert(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
 
-	// Interate until we encounter all acceptable outcomes
-	// (S1, S1 + S2 (ressurection), S1 + S3 (new series id allocation).
+	// Interate until we encounter all acceptable outcomes:
+	// - S1 the "epoch abort" case, this is the likeliest outcome
+	// - S1 + S2 series id 2 gets ressurected
+	// - S1 + S3 the series receives a new id allocation after it was properly removed
+	//
+	// It may take quite a few attempts as it is non-deterministic.
+	// What should never happen is both S2 and S3 being present when the test finishes.
 	expectedSeriesIds := map[int64]bool{}
 	for len(expectedSeriesIds) < 3 {
 		withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
@@ -599,15 +608,17 @@ func TestEvictionVInsert(t *testing.T) {
 			}
 			defer ingestor.Close()
 
-			// Shrink epoch duration
+			// Shrink the epoch duration to an interval short enough to be used in a test
+			// 1 second is the shortest time interval supported by epoch stamps
 			_, err = db.Exec(context.Background(), "SELECT _prom_catalog.set_default_value('epoch_duration', (INTERVAL '1 second')::TEXT)")
 			require.NoError(t, err)
 
+			// The specific timestamp doesn't matter, the year 3k-something would do :)
 			farFuture := int64((time.Hour / time.Millisecond * 24 * 365 * 3000))
+			samplesPerIngest := 50
 			insertSamples := func(t0 int64, labelValue string, ignoreError bool) {
-				insertIters := int64(50)
-				samples := make([]prompb.TimeSeries, 0, insertIters)
-				for i := int64(0); i < insertIters; i++ {
+				samples := make([]prompb.TimeSeries, 0, samplesPerIngest)
+				for i := int64(0); i < int64(samplesPerIngest); i++ {
 					samples = append(samples, prompb.TimeSeries{
 						Labels: []prompb.Label{
 							{Name: model.MetricNameLabelName, Value: "test"},
@@ -630,12 +641,16 @@ func TestEvictionVInsert(t *testing.T) {
 			err = ingestor.CompleteMetricCreation(context.Background())
 			require.NoError(t, err)
 
-			// An epoch duration delay
+			// Wait for the epoch duration to pass
 			time.Sleep(1 * time.Second)
 
 			var wg sync.WaitGroup
 			wg.Add(3)
 
+			// Kick off all three routines. As explained above,
+			// the randomized delays are used to produce different
+			// interleavings. The bounds for the delays are picked
+			// to balance the likelyhood of rare vs common interleavings.
 			bgDelay := time.Duration(rand.Intn(90)) * time.Millisecond
 			go func() {
 				time.Sleep(bgDelay)
@@ -656,8 +671,9 @@ func TestEvictionVInsert(t *testing.T) {
 			insertDelay := time.Duration(rand.Intn(300)) * time.Millisecond
 			go func() {
 				time.Sleep(insertDelay)
-				// This should either appear as a new series or fail due to epoch change
-				insertSamples(farFuture-int64(time.Hour/time.Millisecond*24*365*10), "test1", true)
+				// Ingest data. It's acceptable for this ingest to completely fail
+				// when interleaved after the bg job but before the cache eviction.
+				insertSamples(farFuture, "test1", true)
 				_ = ingestor.CompleteMetricCreation(context.Background())
 				wg.Done()
 			}()
@@ -669,7 +685,7 @@ func TestEvictionVInsert(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// there shuold be no dangling references
+			// Extract series ids from ingested data
 			foundSeriesIds := map[int64]bool{}
 			for rows.Next() {
 				var sid int64
@@ -680,12 +696,19 @@ func TestEvictionVInsert(t *testing.T) {
 				foundSeriesIds[sid] = true
 			}
 
-			if len(foundSeriesIds) > 2 {
-				t.Errorf("Too many series ids in the DB\ngot:\n\t%v\nDelays bg job: %v, cache cleanup %v", foundSeriesIds, bgDelay, cacheDelay)
+			if len(foundSeriesIds) < 1 {
+				t.Errorf("Too few series ids found in the DB\ngot:\n\t%v\nDelays bg job: %v, cache cleanup %v", foundSeriesIds, bgDelay, cacheDelay)
 			}
+			// We weren't trying to delete S1, if it's not present something went very wrong
 			if _, hasS1 := foundSeriesIds[1]; !hasS1 {
 				t.Errorf("S1 is expected to always survive in the DB\ngot:\n\t%v\nDelays bg job: %v, cache cleanup %v", foundSeriesIds, bgDelay, cacheDelay)
 			}
+			// No more than 2 series present, since S1 must always be there
+			// the other one is either S2 or S3, but never both.
+			if len(foundSeriesIds) > 2 {
+				t.Errorf("Too many series ids found in the DB\ngot:\n\t%v\nDelays bg job: %v, cache cleanup %v", foundSeriesIds, bgDelay, cacheDelay)
+			}
+			// Mark the progress for the loop condition
 			for k := range foundSeriesIds {
 				expectedSeriesIds[k] = true
 			}
