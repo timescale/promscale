@@ -584,7 +584,7 @@ func TestInsertAbort(t *testing.T) {
 // injected to randomize scheduler interleavings. The test is not exhaustive:
 // it passes if by the time we've seen all three acceptable outcomes
 // no unaccepable ones were encountered.
-func TestEvictionVInsert(t *testing.T) {
+func TestEvictionVIngest(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -596,50 +596,77 @@ func TestEvictionVInsert(t *testing.T) {
 	//
 	// It may take quite a few attempts as it is non-deterministic.
 	// What should never happen is both S2 and S3 being present when the test finishes.
-	expectedSeriesIds := map[int64]bool{}
-	for len(expectedSeriesIds) < 3 {
-		withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
-			db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
-			defer db.Close()
+	var hadS1, hadS12, hadS13 int
+	iteration := 0
+	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
+		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
+		defer db.Close()
 
-			ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingestor.Close()
+
+		// Shrink the epoch duration to an interval short enough to be used in a test
+		// 1 second is the shortest time interval supported by epoch stamps
+		_, err = db.Exec(context.Background(), "SELECT _prom_catalog.set_default_value('epoch_duration', (INTERVAL '1 second')::TEXT)")
+		require.NoError(t, err)
+
+		// The specific timestamp doesn't matter, the year 3k-something would do :)
+		day := time.Hour / time.Millisecond * 24
+		farFuture := int64(day * 365 * 3000)
+		samplesPerIngest := 50
+		ingestSamples := func(t0 int64, labelValue string, ignoreError bool) {
+			samples := make([]prompb.TimeSeries, 0, samplesPerIngest)
+			for i := int64(0); i < int64(samplesPerIngest); i++ {
+				samples = append(samples, prompb.TimeSeries{
+					Labels: []prompb.Label{
+						{Name: model.MetricNameLabelName, Value: "test"},
+						{Name: "series_id_iteration", Value: labelValue},
+					},
+					Samples: []prompb.Sample{
+						{Timestamp: t0 + i, Value: 0.1},
+					},
+				})
+			}
+			_, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(samples)))
+			if !ignoreError {
+				require.NoError(t, err)
+			}
+		}
+
+		extractSid := func(labelValue string) int64 {
+			row, err := db.Query(context.Background(), "SELECT series_id FROM prom_metric.test WHERE val(series_id_iteration_id) = $1 LIMIT 1", labelValue)
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer ingestor.Close()
-
-			// Shrink the epoch duration to an interval short enough to be used in a test
-			// 1 second is the shortest time interval supported by epoch stamps
-			_, err = db.Exec(context.Background(), "SELECT _prom_catalog.set_default_value('epoch_duration', (INTERVAL '1 second')::TEXT)")
-			require.NoError(t, err)
-
-			// The specific timestamp doesn't matter, the year 3k-something would do :)
-			farFuture := int64((time.Hour / time.Millisecond * 24 * 365 * 3000))
-			samplesPerIngest := 50
-			insertSamples := func(t0 int64, labelValue string, ignoreError bool) {
-				samples := make([]prompb.TimeSeries, 0, samplesPerIngest)
-				for i := int64(0); i < int64(samplesPerIngest); i++ {
-					samples = append(samples, prompb.TimeSeries{
-						Labels: []prompb.Label{
-							{Name: model.MetricNameLabelName, Value: "test"},
-							{Name: "test", Value: labelValue},
-						},
-						Samples: []prompb.Sample{
-							{Timestamp: t0 + i, Value: 0.1},
-						},
-					})
-				}
-				_, _, err := ingestor.IngestMetrics(context.Background(), newWriteRequestWithTs(copyMetrics(samples)))
-				if !ignoreError {
-					require.NoError(t, err)
+			var sid int64
+			for row.Next() {
+				err := row.Scan(&sid)
+				if err != nil {
+					t.Fatal(err)
 				}
 			}
+			return sid
+		}
+
+		threshold := 3
+		for !(hadS1 >= threshold && hadS12 >= threshold && hadS13 >= threshold) {
+			iteration++
+
+			// Refresh the cache to guarantee ingest succeeds
+			ingestor.Dispatcher().(*ingstr.PgxDispatcher).RefreshSeriesEpoch()
 
 			// Ingest some metrics
-			insertSamples(farFuture, "test0", false) // this should survive
-			insertSamples(0, "test1", false)         // this should expire
+			seriesLabelS2 := fmt.Sprintf("testS2_it%d", iteration)
+			ingestSamples(farFuture+int64(day)*int64(iteration), "testS1", false) // this should survive
+			ingestSamples(0, seriesLabelS2, false)                                // this should expire
 			err = ingestor.CompleteMetricCreation(context.Background())
 			require.NoError(t, err)
+
+			seriesIdS1 := extractSid("testS1")
+			seriesIdS2 := extractSid(seriesLabelS2)
 
 			// Wait for the epoch duration to pass
 			time.Sleep(1 * time.Second)
@@ -651,7 +678,7 @@ func TestEvictionVInsert(t *testing.T) {
 			// the randomized delays are used to produce different
 			// interleavings. The bounds for the delays are picked
 			// to balance the likelyhood of rare vs common interleavings.
-			bgDelay := time.Duration(rand.Intn(90)) * time.Millisecond
+			bgDelay := time.Duration(rand.Intn(120)) * time.Millisecond
 			go func() {
 				time.Sleep(bgDelay)
 				// Run the maintenance job to get rid of the series ids and advance the epoch
@@ -668,16 +695,19 @@ func TestEvictionVInsert(t *testing.T) {
 				wg.Done()
 			}()
 
-			insertDelay := time.Duration(rand.Intn(300)) * time.Millisecond
+			ingestDelay := time.Duration(rand.Intn(180)) * time.Millisecond
 			go func() {
-				time.Sleep(insertDelay)
+				time.Sleep(ingestDelay)
 				// Ingest data. It's acceptable for this ingest to completely fail
 				// when interleaved after the bg job but before the cache eviction.
-				insertSamples(farFuture, "test1", true)
+				ingestSamples(farFuture, seriesLabelS2, true)
 				_ = ingestor.CompleteMetricCreation(context.Background())
 				wg.Done()
 			}()
 			wg.Wait()
+
+			// Series id could have changed
+			seriesIdS3 := extractSid(seriesLabelS2)
 
 			// Retrieve series data
 			rows, err := db.Query(context.Background(), "SELECT series_id FROM prom_data.test")
@@ -693,27 +723,38 @@ func TestEvictionVInsert(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				foundSeriesIds[sid] = true
+
+				if sid == seriesIdS1 || sid == seriesIdS2 || sid == seriesIdS3 {
+					foundSeriesIds[sid] = true
+				}
+
 			}
 
-			if len(foundSeriesIds) < 1 {
-				t.Errorf("Too few series ids found in the DB\ngot:\n\t%v\nDelays bg job: %v, cache cleanup %v", foundSeriesIds, bgDelay, cacheDelay)
-			}
+			_, hasS1 := foundSeriesIds[seriesIdS1]
+			_, hasS2 := foundSeriesIds[seriesIdS2]
+			_, hasS3 := foundSeriesIds[seriesIdS3]
+			hasS3 = hasS3 && (seriesIdS2 != seriesIdS3) // Only if series id has actually changed
+
 			// We weren't trying to delete S1, if it's not present something went very wrong
-			if _, hasS1 := foundSeriesIds[1]; !hasS1 {
-				t.Errorf("S1 is expected to always survive in the DB\ngot:\n\t%v\nDelays bg job: %v, cache cleanup %v", foundSeriesIds, bgDelay, cacheDelay)
-			}
-			// No more than 2 series present, since S1 must always be there
-			// the other one is either S2 or S3, but never both.
-			if len(foundSeriesIds) > 2 {
-				t.Errorf("Too many series ids found in the DB\ngot:\n\t%v\nDelays bg job: %v, cache cleanup %v", foundSeriesIds, bgDelay, cacheDelay)
-			}
+			require.Truef(t, hasS1, "S1 is expected to always survive in the DB\ngot:\n\t%v\nDelays bg job: %v, cache cleanup %v, ingest %v",
+				foundSeriesIds, bgDelay, cacheDelay, ingestDelay)
+			// Either S2 or S3 could be present, but never both.
+			require.Falsef(t, hasS2 && hasS3, "Too many series ids found in the DB\ngot:\n\t%v\nDelays bg job: %v, cache cleanup %v, ingest %v",
+				foundSeriesIds, bgDelay, cacheDelay, ingestDelay)
+
 			// Mark the progress for the loop condition
-			for k := range foundSeriesIds {
-				expectedSeriesIds[k] = true
+			if hasS1 && !(hasS2 || hasS3) {
+				hadS1 += 1
 			}
-		})
-	}
+			if hasS2 {
+				hadS12 += 1
+			}
+			if hasS3 {
+				hadS13 += 1
+			}
+			t.Logf("Current progress per fenomena:\nS1\tS12\tS13\n%v\t%v\t%v", hadS1, hadS12, hadS13)
+		}
+	})
 }
 func TestCacheEvictionBetweenInserts(t *testing.T) {
 	if testing.Short() {
