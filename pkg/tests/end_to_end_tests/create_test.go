@@ -589,14 +589,6 @@ func TestEvictionVIngest(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	// Interate until we encounter all acceptable outcomes:
-	// - S1 the "epoch abort" case, this is the likeliest outcome
-	// - S1 + S2 series id 2 gets ressurected
-	// - S1 + S3 the series receives a new id allocation after it was properly removed
-	//
-	// It may take quite a few attempts as it is non-deterministic.
-	// What should never happen is both S2 and S3 being present when the test finishes.
-	var hadS1, hadS12, hadS13 int
 	iteration := 0
 	withDB(t, *testDatabase, func(dbOwner *pgxpool.Pool, t testing.TB) {
 		db := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_admin")
@@ -651,6 +643,14 @@ func TestEvictionVIngest(t *testing.T) {
 			return sid
 		}
 
+		// Interate until we encounter all acceptable outcomes several times:
+		// - S1 the "epoch abort" case, this is the likeliest outcome
+		// - S1 + S2 series id 2 gets ressurected
+		// - S1 + S3 the series receives a new id allocation after it was properly removed
+		//
+		// It may take quite a few attempts as it is non-deterministic.
+		// What should never happen is both S2 and S3 being present when the test finishes.
+		var hadS1, hadS12, hadS13 int
 		threshold := 3
 		for !(hadS1 >= threshold && hadS12 >= threshold && hadS13 >= threshold) {
 			iteration++
@@ -677,7 +677,7 @@ func TestEvictionVIngest(t *testing.T) {
 			// Kick off all three routines. As explained above,
 			// the randomized delays are used to produce different
 			// interleavings. The bounds for the delays are picked
-			// to balance the likelyhood of rare vs common interleavings.
+			// to balance the likelihood of rare vs common interleavings.
 			bgDelay := time.Duration(rand.Intn(120)) * time.Millisecond
 			go func() {
 				time.Sleep(bgDelay)
@@ -752,7 +752,7 @@ func TestEvictionVIngest(t *testing.T) {
 			if hasS3 {
 				hadS13 += 1
 			}
-			t.Logf("Current progress per fenomena:\nS1\tS12\tS13\n%v\t%v\t%v", hadS1, hadS12, hadS13)
+			t.Logf("Current progress per phenomena:\nS1\tS12\tS13\n%v\t%v\t%v", hadS1, hadS12, hadS13)
 		}
 	})
 }
