@@ -56,11 +56,12 @@ services:
     image: jaegertracing/jaeger-query:1.37.0
     environment:
       SPAN_STORAGE_TYPE: grpc-plugin
+      METRICS_STORAGE_TYPE: prometheus
+      GRPC_STORAGE_SERVER: promscale:9202
+      PROMETHEUS_SERVER_URL: "http://promscale:9201"
     depends_on:
       - promscale
-    command: [
-      "--grpc-storage.server=promscale:9202",
-    ]
+
     ports:
       - "16686:16686"
 
