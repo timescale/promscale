@@ -26,7 +26,7 @@ const DefaultSeriesCacheSize = 1000000
 
 const growCheckDuration = time.Second * 5 // check whether to grow the series cache this often
 const growFactor = float64(2.0)           // multiply cache size by this factor when growing the cache
-var evictionMaxAge = time.Minute * 2      // grow cache if we are evicting elements younger than `now - evictionMaxAge`
+var evictionMaxAge = time.Minute * 5      // grow cache if we are evicting elements younger than `now - evictionMaxAge`
 
 // SeriesCache is a cache of model.Series entries.
 type SeriesCache interface {
@@ -134,7 +134,14 @@ func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
 // the even of multiple goroutines setting labels concurrently).
 func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Series {
 	//str not counted twice in size since the key and lset.str will point to same thing.
-	val, _ := t.cache.Insert(str, lset, lset.FinalSizeBytes())
+	val, inCache := t.cache.Insert(str, lset, lset.FinalSizeBytes())
+	if !inCache {
+		// It seems that cache was full and eviction failed to remove
+		// element due to starvation caused by a lot of concurrent gets
+		// This is a signal to grow our cache
+		log.Info("growing cache because of eviction starvation")
+		t.grow()
+	}
 	return val.(*model.Series)
 }
 

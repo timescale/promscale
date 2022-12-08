@@ -176,7 +176,7 @@ func (cache *Cache) evict() (insertPtr *element) {
 	for i := 0; i < 2; i++ {
 		for next := range postStart {
 			elem := &postStart[next]
-			old := atomic.SwapUint32(&elem.usedWithTs, setUsed(false, elem.usedWithTs))
+			old := atomic.SwapUint32(&elem.usedWithTs, setUsed(false, atomic.LoadUint32(&elem.usedWithTs)))
 			if !extractUsed(old) {
 				insertPtr = elem
 			}
@@ -188,7 +188,7 @@ func (cache *Cache) evict() (insertPtr *element) {
 		}
 		for next := range preStart {
 			elem := &preStart[next]
-			old := atomic.SwapUint32(&elem.usedWithTs, setUsed(false, elem.usedWithTs))
+			old := atomic.SwapUint32(&elem.usedWithTs, setUsed(false, atomic.LoadUint32(&elem.usedWithTs)))
 			if !extractUsed(old) {
 				insertPtr = elem
 			}
