@@ -143,6 +143,49 @@ func TestEviction(t *testing.T) {
 	}
 }
 
+// Test that we don't starve evictor with a lots of concurrent gets
+func TestEvictionStarvation(t *testing.T) {
+	t.Parallel()
+	cache := WithMax(1000000)
+	// prepopulate cache
+	for i := 0; i < cache.Cap(); i++ {
+		cache.Insert(i, i+1, uint64(16))
+	}
+	// mark all as used
+	for i := 0; i < cache.Cap(); i++ {
+		cache.Get(i)
+	}
+	parallelReq := 10
+	stopCh := make(chan bool, 1)
+	for i := 0; i < parallelReq; i++ {
+		// simulate a lot of parallel gets
+		go func(worker int) {
+			for {
+				select {
+				case <-stopCh:
+					return
+				default:
+					start := worker * 100000
+					end := start + 100000
+					for i := start; i < end; i++ {
+						cache.Get(i)
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+		}(i)
+	}
+	time.Sleep(time.Second)
+	// inserting over capacity will trigger evictions
+	for i := cache.Cap(); i < 1200000; i++ {
+		_, inCache := cache.Insert(i, i+1, uint64(16))
+		if !inCache {
+			t.Fatal("failed to insert due to starved evictor")
+		}
+	}
+	stopCh <- true
+}
+
 func TestCacheGetRandomly(t *testing.T) {
 	t.Parallel()
 

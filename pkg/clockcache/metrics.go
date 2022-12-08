@@ -54,6 +54,7 @@ func (pm *perfMetrics) createAndRegister(r prometheus.Registerer, name, module s
 			Buckets:     prometheus.LinearBuckets(1, 500, 10),
 		}, []string{"method"},
 	)
+
 	r.MustRegister(pm.hitsTotal, pm.queriesTotal, pm.queriesLatency)
 }
 
@@ -143,5 +144,16 @@ func registerMetrics(cacheName, moduleType string, c *Cache) {
 			return float64(c.Evictions())
 		},
 	)
-	r.MustRegister(enabled, count, size, capacity, evictions)
+	maxEvictionTs := prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace:   "promscale",
+			Subsystem:   "cache",
+			Name:        "evicted_element_min_age_seconds",
+			Help:        "Minimum age in seconds between element last usage and eviction",
+			ConstLabels: map[string]string{"type": moduleType, "name": cacheName},
+		}, func() float64 {
+			return float64(time.Now().Unix() - int64(c.MaxEvictionTs()))
+		},
+	)
+	r.MustRegister(enabled, count, size, capacity, evictions, maxEvictionTs)
 }
