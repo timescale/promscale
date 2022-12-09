@@ -12,16 +12,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"sync"
 	"testing"
 
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/prometheus/common/model"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tests/testsupport"
 )
 
 type dataGenerator struct {
@@ -80,34 +78,16 @@ func (t *dataGenerator) generateSamples(count int64) []prompb.Sample {
 	return samples
 }
 
-func getHTTPWriteRequest(protoRequest *prompb.WriteRequest) (*http.Request, error) {
-	data, err := proto.Marshal(protoRequest)
+func promscaleWriteUrl() string {
+	url, err := url.Parse(fmt.Sprintf("http://%s:%d/write", promHost, promPort.Int()))
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-
-	body := string(snappy.Encode(nil, data))
-	u, err := url.Parse(fmt.Sprintf("http://%s:%d/write", promHost, promPort.Int()))
-
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest(
-		"POST",
-		u.String(),
-		strings.NewReader(body),
-	)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("Content-Encoding", "snappy")
-	req.Header.Set("Content-Type", "application/x-protobuf")
-	req.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
-	return req, nil
+	return url.String()
 }
 
 func sendWriteRequest(t testing.TB, router http.Handler, ts []prompb.TimeSeries) {
-	req, err := getHTTPWriteRequest(&prompb.WriteRequest{Timeseries: ts})
+	req, err := testsupport.GetHTTPWriteRequest(promscaleWriteUrl(), &prompb.WriteRequest{Timeseries: ts})
 	if err != nil {
 		t.Errorf("unable to create PromQL label names request: %v", err)
 		return

@@ -6,7 +6,22 @@ package prompb
 
 func (m *Labels) Reset() { *m = Labels{Labels: m.Labels[:0]} }
 func (m *WriteRequest) Reset() {
-	*m = WriteRequest{Timeseries: m.Timeseries[:0], Metadata: m.Metadata[:0]}
+	for i := range m.Timeseries {
+		ts := &m.Timeseries[i]
+		for j := range ts.Labels {
+			ts.Labels[j] = Label{}
+		}
+		ts.Labels = ts.Labels[:0]
+		ts.Samples = ts.Samples[:0]
+		ts.Exemplars = ts.Exemplars[:0]
+		ts.XXX_unrecognized = nil
+	}
+	m.Timeseries = m.Timeseries[:0]
+	m.Metadata = m.Metadata[:0]
+	m.XXX_unrecognized = nil
+	m.XXX_arrayPool.labelsPool = m.XXX_arrayPool.labelsPool[:0]
+	m.XXX_arrayPool.samplesPool = m.XXX_arrayPool.samplesPool[:0]
+	m.XXX_arrayPool.exemplarsPool = m.XXX_arrayPool.exemplarsPool[:0]
 }
 func (m *TimeSeries) Reset() {
 	*m = TimeSeries{Labels: m.Labels[:0], Exemplars: m.Exemplars[:0], Samples: m.Samples[:0]}

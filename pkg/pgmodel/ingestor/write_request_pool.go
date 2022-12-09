@@ -12,7 +12,7 @@ import (
 
 var wrPool = sync.Pool{
 	New: func() interface{} {
-		return new(prompb.WriteRequest)
+		return prompb.NewWriteRequest()
 	},
 }
 
@@ -26,18 +26,6 @@ func FinishWriteRequest(wr *prompb.WriteRequest) {
 	if wr == nil {
 		return
 	}
-	for i := range wr.Timeseries {
-		ts := &wr.Timeseries[i]
-		for j := range ts.Labels {
-			ts.Labels[j] = prompb.Label{}
-		}
-		ts.Labels = ts.Labels[:0]
-		ts.Samples = ts.Samples[:0]
-		ts.Exemplars = ts.Exemplars[:0]
-		ts.XXX_unrecognized = nil
-	}
-	wr.Timeseries = wr.Timeseries[:0]
-	wr.Metadata = wr.Metadata[:0]
-	wr.XXX_unrecognized = nil
+	wr.Reset()
 	wrPool.Put(wr)
 }

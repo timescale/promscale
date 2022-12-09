@@ -24,6 +24,7 @@ import (
 	"github.com/timescale/promscale/pkg/api/parser"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/prompb"
+	"github.com/timescale/promscale/pkg/tests/testsupport"
 )
 
 func TestDetectSnappyStreamFormat(t *testing.T) {
@@ -245,6 +246,47 @@ func TestWrite(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+// BenchmarkProtoUnmarshall is primarily focused on benchmarking
+// memory usage and allocations when unmarshalling WriteRequests
+func BenchmarkProtoUnmarshall(b *testing.B) {
+	seriesGen, err := testsupport.NewSeriesGenerator(100, 100, 5)
+	if err != nil {
+		b.Error(err)
+	}
+	batches := seriesGen.GetTimeseriesInBatch(1000)
+	mock := &mockInserter{}
+	metrics = &Metrics{LastRequestUnixNano: 0}
+	dataParser := parser.NewParser()
+	numSamplesReceived := &mockMetric{}
+	writeHandler := Write(mock, dataParser, mockUpdaterForIngest(&mockMetric{}, nil, numSamplesReceived, nil))
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for _, batch := range batches {
+			b.StopTimer()
+			req, err := testsupport.GetHTTPWriteRequest("", &prompb.WriteRequest{
+				Timeseries:           batch,
+				Metadata:             []prompb.MetricMetadata{},
+				XXX_NoUnkeyedLiteral: struct{}{},
+				XXX_unrecognized:     []byte{},
+				XXX_sizecache:        0,
+			})
+			if err != nil {
+				b.Error(err)
+			}
+			recorder := httptest.NewRecorder()
+			b.StartTimer()
+			writeHandler.ServeHTTP(recorder, req)
+			b.StopTimer()
+			res := recorder.Result()
+			if res.StatusCode != 200 {
+				b.Error("unexpected status code", res.StatusCode)
+			}
+		}
 	}
 }
 

@@ -61,12 +61,25 @@ func (ReadRequest_ResponseType) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_eefc82927d57d89b, []int{1, 0}
 }
 
+// ArrayPool contains arrays that are shared across Timeseries
+// This is to reduce the overhead of allocation of a lots of small arrays
+type ArrayPool struct {
+	labelsPool    []Label
+	samplesPool   []Sample
+	exemplarsPool []Exemplar
+}
+
 type WriteRequest struct {
 	Timeseries           []TimeSeries     `protobuf:"bytes,1,rep,name=timeseries,proto3" json:"timeseries"`
 	Metadata             []MetricMetadata `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata"`
 	XXX_NoUnkeyedLiteral struct{}         `json:"-"`
 	XXX_unrecognized     []byte           `json:"-"`
 	XXX_sizecache        int32            `json:"-"`
+	XXX_arrayPool        ArrayPool       // gogo proto forces us to have XXX_ prefix for unexported fields
+}
+
+func NewWriteRequest() *WriteRequest {
+	return &WriteRequest{}
 }
 
 func (m *WriteRequest) String() string { return proto.CompactTextString(m) }
@@ -302,6 +315,7 @@ type QueryResult struct {
 	XXX_NoUnkeyedLiteral struct{}      `json:"-"`
 	XXX_unrecognized     []byte        `json:"-"`
 	XXX_sizecache        int32         `json:"-"`
+	XXX_arrayPool        ArrayPool
 }
 
 func (m *QueryResult) Reset()         { *m = QueryResult{} }
@@ -971,7 +985,7 @@ func (m *WriteRequest) Unmarshal(dAtA []byte) error {
 			} else {
 				m.Timeseries = append(m.Timeseries, TimeSeries{})
 			}
-			if err := m.Timeseries[len(m.Timeseries)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Timeseries[len(m.Timeseries)-1].Unmarshal(dAtA[iNdEx:postIndex], &m.XXX_arrayPool); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -1493,7 +1507,7 @@ func (m *QueryResult) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Timeseries = append(m.Timeseries, &TimeSeries{})
-			if err := m.Timeseries[len(m.Timeseries)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Timeseries[len(m.Timeseries)-1].Unmarshal(dAtA[iNdEx:postIndex], &m.XXX_arrayPool); err != nil {
 				return err
 			}
 			iNdEx = postIndex

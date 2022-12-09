@@ -186,7 +186,7 @@ func TestParseRequest(t *testing.T) {
 				t.Fatalf("unexpected error occured, none expected: %s", err)
 			}
 
-			if !reflect.DeepEqual(*response, c.response) {
+			if !reflect.DeepEqual(response.String(), c.response.String()) {
 				t.Fatalf("unexpected result:\ngot\n%+v\nwanted\n%+v\n", *response, c.response)
 			}
 		})

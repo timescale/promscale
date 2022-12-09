@@ -9,6 +9,7 @@ import (
 	io "io"
 	math "math"
 	math_bits "math/bits"
+	"unsafe"
 
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
@@ -338,8 +339,8 @@ func (*TimeSeries) ProtoMessage()    {}
 func (*TimeSeries) Descriptor() ([]byte, []int) {
 	return fileDescriptor_d938547f84707355, []int{3}
 }
-func (m *TimeSeries) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
+func (m *TimeSeries) XXX_Unmarshal(b []byte, arrayPool *ArrayPool) error {
+	return m.Unmarshal(b, arrayPool)
 }
 
 func (m *TimeSeries) GetExemplars() []Exemplar {
@@ -393,6 +394,8 @@ type Label struct {
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
+	NameBytes            []byte
+	ValueBytes           []byte
 }
 
 func (m *Label) Reset()         { *m = Label{} }
@@ -1998,7 +2001,11 @@ func (m *Exemplar) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *TimeSeries) Unmarshal(dAtA []byte) error {
+func (m *TimeSeries) Unmarshal(dAtA []byte, arrayPool *ArrayPool) error {
+	labelsPos := len(arrayPool.labelsPool)
+	samplesPos := len(arrayPool.samplesPool)
+	exemplarsPos := len(arrayPool.exemplarsPool)
+
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -2056,13 +2063,13 @@ func (m *TimeSeries) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if len(m.Labels) < cap(m.Labels) {
-				m.Labels = m.Labels[:len(m.Labels)+1]
-				m.Labels[len(m.Labels)-1].Reset()
+			if len(arrayPool.labelsPool) < cap(arrayPool.labelsPool) {
+				arrayPool.labelsPool = arrayPool.labelsPool[:len(arrayPool.labelsPool)+1]
+				arrayPool.labelsPool[len(arrayPool.labelsPool)-1].Reset()
 			} else {
-				m.Labels = append(m.Labels, Label{})
+				arrayPool.labelsPool = append(arrayPool.labelsPool, Label{})
 			}
-			if err := m.Labels[len(m.Labels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := arrayPool.labelsPool[len(arrayPool.labelsPool)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -2095,13 +2102,13 @@ func (m *TimeSeries) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if len(m.Samples) < cap(m.Samples) {
-				m.Samples = m.Samples[:len(m.Samples)+1]
-				m.Samples[len(m.Samples)-1].Reset()
+			if len(arrayPool.samplesPool) < cap(arrayPool.samplesPool) {
+				arrayPool.samplesPool = arrayPool.samplesPool[:len(arrayPool.samplesPool)+1]
+				arrayPool.samplesPool[len(arrayPool.samplesPool)-1].Reset()
 			} else {
-				m.Samples = append(m.Samples, Sample{})
+				arrayPool.samplesPool = append(arrayPool.samplesPool, Sample{})
 			}
-			if err := m.Samples[len(m.Samples)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := arrayPool.samplesPool[len(arrayPool.samplesPool)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -2135,12 +2142,12 @@ func (m *TimeSeries) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if len(m.Exemplars) < cap(m.Exemplars) {
-				m.Exemplars = m.Exemplars[:len(m.Exemplars)+1]
-				m.Exemplars[len(m.Exemplars)-1].Reset()
+				arrayPool.exemplarsPool = arrayPool.exemplarsPool[:len(arrayPool.exemplarsPool)+1]
+				arrayPool.exemplarsPool[len(arrayPool.exemplarsPool)-1].Reset()
 			} else {
-				m.Exemplars = append(m.Exemplars, Exemplar{})
+				arrayPool.exemplarsPool = append(arrayPool.exemplarsPool, Exemplar{})
 			}
-			if err := m.Exemplars[len(m.Exemplars)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := arrayPool.exemplarsPool[len(arrayPool.exemplarsPool)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -2167,6 +2174,9 @@ func (m *TimeSeries) Unmarshal(dAtA []byte) error {
 	if iNdEx > l {
 		return io.ErrUnexpectedEOF
 	}
+	m.Labels = arrayPool.labelsPool[labelsPos:]
+	m.Samples = arrayPool.samplesPool[samplesPos:]
+	m.Exemplars = arrayPool.exemplarsPool[exemplarsPos:]
 	return nil
 }
 func (m *Label) Unmarshal(dAtA []byte) error {
@@ -2228,7 +2238,10 @@ func (m *Label) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Name = string(dAtA[iNdEx:postIndex])
+			tmpNameBytes := dAtA[iNdEx:postIndex]
+			m.NameBytes = make([]byte, len(tmpNameBytes))
+			copy(m.NameBytes, tmpNameBytes)
+			m.Name = *(*string)(unsafe.Pointer(&m.NameBytes))
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
@@ -2260,7 +2273,10 @@ func (m *Label) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Value = string(dAtA[iNdEx:postIndex])
+			tmpValueBytes := dAtA[iNdEx:postIndex]
+			m.ValueBytes = make([]byte, len(tmpValueBytes))
+			copy(m.ValueBytes, tmpValueBytes)
+			m.Value = *(*string)(unsafe.Pointer(&m.ValueBytes))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
