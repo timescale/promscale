@@ -60,10 +60,10 @@ func TestJaegerStorageIntegration(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			withDB(t, "jaeger_storage_integration_tests", func(db *pgxpool.Pool, t testing.TB) {
-				cfg := &ingestor.Cfg{
+				cfg := &ingestor.Parameters{
 					InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
 					NumCopiers:              runtime.NumCPU() / 2,
-					TracesAsyncAcks:         true, // To make GetLargeSpans happy, otherwise it takes quite a few time to ingest.
+					Config:                  &ingestor.Config{TracesAsyncAcks: true}, // To make GetLargeSpans happy, otherwise it takes quite a few time to ingest.
 				}
 				ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), cfg)
 				require.NoError(t, err)

@@ -64,8 +64,8 @@ func TestInsertInCompressedChunks(t *testing.T) {
 
 	// With decompress chunks being false.
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
-		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingstr.Cfg{
-			IgnoreCompressedChunks:  true,
+		ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), &ingstr.Parameters{
+			Config:                  &ingstr.Config{IgnoreCompressedChunks: true},
 			InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
 			NumCopiers:              2,
 		})

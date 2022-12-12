@@ -52,8 +52,8 @@ type pgxDispatcher struct {
 
 var _ model.Dispatcher = &pgxDispatcher{}
 
-func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*pgxDispatcher, error) {
-	numCopiers := cfg.NumCopiers
+func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cache.SeriesCache, eCache cache.PositionCache, params *Parameters) (*pgxDispatcher, error) {
+	numCopiers := params.NumCopiers
 	if numCopiers < 1 {
 		log.Warn("msg", "num copiers less than 1, setting to 1")
 		numCopiers = 1
@@ -66,7 +66,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 	metrics.IngestorChannelCap.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Set(float64(cap(copierReadRequestCh)))
 	metrics.RegisterCopierChannelLenMetric(func() float64 { return float64(len(copierReadRequestCh)) })
 
-	if cfg.IgnoreCompressedChunks {
+	if params.Config.IgnoreCompressedChunks {
 		// Handle decompression to not decompress anything.
 		handleDecompression = skipDecompression
 	}
@@ -76,7 +76,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 	}
 
 	labelArrayOID := model.GetCustomTypeOID(model.LabelArray)
-	labelsCache, err := cache.NewInvertedLabelsCache(cfg.InvertedLabelsCacheSize)
+	labelsCache, err := cache.NewInvertedLabelsCache(params.InvertedLabelsCacheSize)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 		invertedLabelsCache:    labelsCache,
 		exemplarKeyPosCache:    eCache,
 		completeMetricCreation: make(chan struct{}, 1),
-		asyncAcks:              cfg.MetricsAsyncAcks,
+		asyncAcks:              params.Config.MetricsAsyncAcks,
 		copierReadRequestCh:    copierReadRequestCh,
 		// set to run at half our deletion interval
 		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
@@ -112,7 +112,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 
 	go inserter.runCompleteMetricCreationWorker()
 
-	if !cfg.DisableEpochSync {
+	if !params.Config.DisableEpochSync {
 		inserter.doneWG.Add(1)
 		go func() {
 			defer inserter.doneWG.Done()

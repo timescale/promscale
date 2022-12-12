@@ -33,10 +33,10 @@ func BenchmarkTracesIngest(b *testing.B) {
 	for _, c := range cases {
 		b.Run(c.name, func(b *testing.B) {
 			withDB(b, "trace_ingest_bench", func(db *pgxpool.Pool, t testing.TB) {
-				cfg := &ingestor.Cfg{
+				cfg := &ingestor.Parameters{
 					InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
 					NumCopiers:              runtime.NumCPU() / 2,
-					TracesAsyncAcks:         c.async,
+					Config:                  &ingestor.Config{TracesAsyncAcks: c.async},
 				}
 				ingestor, err := ingstr.NewPgxIngestorForTests(pgxconn.NewPgxConn(db), cfg)
 				require.NoError(t, err)

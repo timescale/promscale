@@ -23,18 +23,6 @@ import (
 	"github.com/timescale/promscale/pkg/tracer"
 )
 
-type Cfg struct {
-	MetricsAsyncAcks        bool
-	TracesAsyncAcks         bool
-	NumCopiers              int
-	DisableEpochSync        bool
-	IgnoreCompressedChunks  bool
-	InvertedLabelsCacheSize uint64
-	TracesBatchTimeout      time.Duration
-	TracesMaxBatchSize      int
-	TracesBatchWorkers      int
-}
-
 // DBIngestor ingest the TimeSeries data into Timescale database.
 type DBIngestor struct {
 	sCache     cache.SeriesCache
@@ -43,33 +31,42 @@ type DBIngestor struct {
 	closed     *atomic.Bool
 }
 
+type Parameters struct {
+	NumCopiers              int
+	InvertedLabelsCacheSize uint64
+	Config                  *Config
+}
+
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*DBIngestor, error) {
-	dispatcher, err := newPgxDispatcher(conn, cache, sCache, eCache, cfg)
+func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache cache.PositionCache, params *Parameters) (*DBIngestor, error) {
+	dispatcher, err := newPgxDispatcher(conn, cache, sCache, eCache, params)
 	if err != nil {
 		return nil, err
 	}
 
 	batcherConfg := trace.BatcherConfig{
-		MaxBatchSize: cfg.TracesMaxBatchSize,
-		BatchTimeout: cfg.TracesBatchTimeout,
-		Writers:      cfg.NumCopiers,
+		MaxBatchSize: params.Config.TracesMaxBatchSize,
+		BatchTimeout: params.Config.TracesBatchTimeout,
+		Writers:      params.NumCopiers,
 	}
 	traceWriter := trace.NewWriter(conn)
 	return &DBIngestor{
 		sCache:     sCache,
 		dispatcher: dispatcher,
-		tWriter:    trace.NewDispatcher(traceWriter, cfg.TracesAsyncAcks, batcherConfg),
+		tWriter:    trace.NewDispatcher(traceWriter, params.Config.TracesAsyncAcks, batcherConfg),
 		closed:     atomic.NewBool(false),
 	}, nil
 }
 
 // NewPgxIngestorForTests returns a new Ingestor that write to PostgreSQL using PGX
 // with an empty config, a new default size metrics cache and a non-ha-aware data parser
-func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error) {
+func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Parameters) (*DBIngestor, error) {
 	if cfg == nil {
-		cfg = &Cfg{InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize, NumCopiers: 2}
+		cfg = &Parameters{InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize, NumCopiers: 2}
+	}
+	if cfg.Config == nil {
+		cfg.Config = &Config{}
 	}
 	cacheConfig := cache.DefaultConfig
 	c := cache.NewMetricCache(cacheConfig)
