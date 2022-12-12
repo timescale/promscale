@@ -578,6 +578,48 @@ var metrics = []metricQueryWrap{
 		),
 		query: `select count(*)::bigint from _prom_catalog.metric`,
 	},
+	{
+		metrics: gauges(
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "shared_buffers_size",
+				Help:      "Size of shared_buffers in bytes",
+			},
+		),
+		query: `SELECT (setting::BIGINT*pg_size_bytes(unit))::BIGINT FROM pg_settings WHERE name = 'shared_buffers'`,
+	},
+	{
+		metrics: gauges(
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "open_chunks_total_table_size",
+				Help:      "Total table size of currently open chunks in bytes",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "open_chunks_total_index_size",
+				Help:      "Total indexes size of currently open chunks in bytes",
+			},
+		),
+		query: `SELECT 
+					coalesce(sum(chunk_total_size)::BIGINT,0) as total_table_size, 
+					coalesce(sum(chunk_index_size)::BIGINT, 0) as total_index_size 
+				FROM (
+					SELECT DISTINCT ON (hypertable_id)
+					  pg_indexes_size(format('%I.%I', c.schema_name, c.table_name)) chunk_index_size,
+					  pg_total_relation_size(format('%I.%I', c.schema_name, c.table_name)) chunk_total_size
+					FROM _timescaledb_catalog.dimension_slice ds 
+					INNER JOIN _timescaledb_catalog.chunk_constraint cc on (cc.dimension_slice_id = ds.id)
+					INNER JOIN _timescaledb_catalog.chunk c on (c.id = cc.chunk_id) 
+					WHERE range_end > _timescaledb_internal.time_to_internal(now()- interval '30 minutes') 
+					and range_start < _timescaledb_internal.time_to_internal(now())
+					ORDER BY hypertable_id, range_end DESC
+					) AS info;`,
+		customPollConfig: updateAtMostEvery(6 * time.Minute),
+	},
 }
 
 // GetMetric returns the metric whose Description best matches the supplied name.

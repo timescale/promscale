@@ -342,3 +342,18 @@ groups:
       summary: High uncompressed data.
       description: "High uncompressed data in Promscale, on average, {{ $value }} uncompressed chunks per metric."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleCompressionLow.md
+  - alert: PromscalePostgreSQLSharedBuffersLow
+    expr: |
+      (
+        ((promscale_sql_database_open_chunks_total_table_size + promscale_sql_database_open_chunks_total_index_size) 
+        / 
+        promscale_sql_database_shared_buffers_size)
+        > 1 )
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: Promscale database performance will be affected.
+      description: "Currently open chunks are {{ $value | humanizePercentage }} of PostgreSQL shared_buffers. This will impact database performance."
+      runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscalePostgreSQLSharedBuffersLow.md
+
