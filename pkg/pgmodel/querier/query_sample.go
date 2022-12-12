@@ -9,17 +9,20 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
+	"github.com/timescale/promscale/pkg/rollup"
 )
 
 type querySamples struct {
 	*pgxQuerier
-	ctx context.Context
+	ctx    context.Context
+	schema *rollup.Decider
 }
 
-func newQuerySamples(ctx context.Context, qr *pgxQuerier) *querySamples {
-	return &querySamples{qr, ctx}
+func newQuerySamples(ctx context.Context, qr *pgxQuerier, schema *rollup.Decider) *querySamples {
+	return &querySamples{qr, ctx, schema}
 }
 
 // Select implements the SamplesQuerier interface. It is the entry point for our
@@ -38,6 +41,24 @@ func (q *querySamples) fetchSamplesRows(mint, maxt int64, hints *storage.SelectH
 	if err != nil {
 		return nil, nil, fmt.Errorf("get evaluation metadata: %w", err)
 	}
+
+	var useRollups bool
+	if q.schema != nil {
+		// Querying via rollups is available.
+		supported := q.schema.SupportsRollup(metadata.metric) // Ensure that rollups for the given metric is supported.
+		if !supported {
+			// Rollups for the given metric wasn't supported. Let's refresh and check again.
+			if err := q.schema.Refresh(); err != nil {
+				log.Error("msg", "error refreshing schema decider", "error", err.Error())
+			}
+			supported = q.schema.SupportsRollup(metadata.metric) // If supported is still false, then rollups really don't exist for 'metadata.metric'.
+		}
+		if supported {
+			schemaName := q.schema.Decide(mint, maxt)
+			useRollups = schemaName != rollup.DefaultSchema
+		}
+	}
+	_ = useRollups // To avoid unused error. This will be used in the following PRs for querying rollups.
 
 	filter := metadata.timeFilter
 	if metadata.isSingleMetric {

@@ -722,7 +722,12 @@ func TestPGXQuerierQuery(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error setting up mock cache: %s", err.Error())
 			}
-			querier := pgxQuerier{&queryTools{conn: mock, metricTableNames: mockMetrics, labelsReader: lreader.NewLabelsReader(mock, clockcache.WithMax(0), tenancy.NewNoopAuthorizer().ReadAuthorizer())}}
+			querier := pgxQuerier{
+				&queryTools{
+					conn: mock, metricTableNames: mockMetrics, labelsReader: lreader.NewLabelsReader(mock, clockcache.WithMax(0), tenancy.NewNoopAuthorizer().ReadAuthorizer()),
+				},
+				nil,
+			}
 
 			result, err := querier.RemoteReadQuerier(context.Background()).Query(c.query)
 

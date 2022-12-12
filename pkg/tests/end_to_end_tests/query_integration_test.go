@@ -114,8 +114,9 @@ func TestDroppedViewQuery(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
-		_, err := r.RemoteReadQuerier(ctx).Query(&prompb.Query{
+		r, err := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil, 0, false)
+		require.NoError(t, err)
+		_, err = r.RemoteReadQuerier(ctx).Query(&prompb.Query{
 			Matchers: []*prompb.LabelMatcher{
 				{
 					Type:  prompb.LabelMatcher_EQ,
@@ -692,7 +693,8 @@ func TestSQLQuery(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
+		r, err := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil, 0, false)
+		require.NoError(t, err)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				resp, err := r.RemoteReadQuerier(context.Background()).Query(c.query)
@@ -1099,7 +1101,8 @@ func TestPromQL(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
+		r, err := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil, 0, false)
+		require.NoError(t, err)
 		for _, c := range testCases {
 			tester.Run(c.name, func(t *testing.T) {
 				connResp, connErr := r.RemoteReadQuerier(context.Background()).Query(c.query)
@@ -1300,7 +1303,8 @@ func TestPushdownDelta(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
+		r, err := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil, 0, false)
+		require.NoError(t, err)
 		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute*5, time.Minute, 50000000, nil)
 		if err != nil {
@@ -1375,7 +1379,8 @@ func TestPushdownVecSel(t *testing.T) {
 		lCache := clockcache.WithMax(100)
 		dbConn := pgxconn.NewPgxConn(readOnly)
 		labelsReader := lreader.NewLabelsReader(dbConn, lCache, noopReadAuthorizer)
-		r := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil)
+		r, err := querier.NewQuerier(dbConn, mCache, labelsReader, nil, nil, 0, false)
+		require.NoError(t, err)
 		queryable := query.NewQueryable(r, labelsReader)
 		queryEngine, err := query.NewEngine(log.GetLogger(), time.Minute, time.Minute*5, time.Minute, 50000000, nil)
 		if err != nil {

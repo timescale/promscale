@@ -18,6 +18,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
+	"github.com/timescale/promscale/pkg/rollup"
 	"github.com/timescale/promscale/pkg/version"
 )
 
@@ -34,6 +35,7 @@ type Config struct {
 	DbConnectionTimeout     time.Duration
 	IgnoreCompressedChunks  bool
 	MetricsAsyncAcks        bool
+	MetricsScrapeInterval   time.Duration
 	TracesAsyncAcks         bool
 	WriteConnections        int
 	WriterPoolSize          int
@@ -107,6 +109,7 @@ func ParseFlags(fs *flag.FlagSet, cfg *Config) *Config {
 	fs.IntVar(&cfg.TracesMaxBatchSize, "tracing.max-batch-size", trace.DefaultBatchSize, "Maximum size of trace batch that is written to DB")
 	fs.DurationVar(&cfg.TracesBatchTimeout, "tracing.batch-timeout", trace.DefaultBatchTimeout, "Timeout after new trace batch is created")
 	fs.IntVar(&cfg.TracesBatchWorkers, "tracing.batch-workers", trace.DefaultBatchWorkers, "Number of workers responsible for creating trace batches. Defaults to number of CPUs.")
+	fs.DurationVar(&cfg.MetricsScrapeInterval, "metrics.rollup.scrape-interval", rollup.DefaultScrapeInterval, "Default scrape interval in Prometheus. This is used to estimate samples while choosing rollup for querying.")
 	return cfg
 }
 

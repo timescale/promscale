@@ -165,16 +165,18 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 		cfg.APICfg.MultiTenancy = multiTenancy
 	}
 
+	var useRollups bool
 	if cfg.DatasetConfig != "" {
-		err = ApplyDatasetConfig(context.Background(), conn, cfg.DatasetConfig)
+		cfg, err := ApplyDatasetConfig(context.Background(), conn, cfg.DatasetConfig)
 		if err != nil {
 			return nil, fmt.Errorf("error applying dataset configuration: %w", err)
 		}
+		useRollups = *cfg.Metrics.Rollup.Enabled
 	}
 
 	// client has to be initiated after migrate since migrate
 	// can change database GUC settings
-	client, err := pgclient.NewClient(r, &cfg.PgmodelCfg, multiTenancy, leasingFunction, cfg.APICfg.ReadOnly)
+	client, err := pgclient.NewClient(r, &cfg.PgmodelCfg, multiTenancy, leasingFunction, cfg.APICfg.ReadOnly, useRollups)
 	if err != nil {
 		return nil, fmt.Errorf("client creation error: %w", err)
 	}
@@ -226,13 +228,15 @@ func isBGWLessThanDBs(conn *pgx.Conn) (bool, error) {
 	return false, nil
 }
 
-func ApplyDatasetConfig(ctx context.Context, conn *pgx.Conn, cfgFilename string) error {
+func ApplyDatasetConfig(ctx context.Context, conn *pgx.Conn, cfgFilename string) (*dataset.Config, error) {
 	cfg, err := dataset.NewConfig(cfgFilename)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	return cfg.Apply(ctx, conn)
+	if err = cfg.Apply(ctx, conn); err != nil {
+		return nil, fmt.Errorf("error applying dataset config: %w", err)
+	}
+	return &cfg, nil
 }
 
 func compileAnchoredRegexString(s string) (*regexp.Regexp, error) {

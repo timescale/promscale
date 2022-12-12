@@ -61,7 +61,7 @@ type Client struct {
 }
 
 // NewClient creates a new PostgreSQL client
-func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOnly bool) (*Client, error) {
+func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, schemaLocker LockFunc, readOnly, useRollups bool) (*Client, error) {
 	var (
 		err            error
 		dbMaxConns     int
@@ -137,7 +137,7 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 	if err != nil {
 		return nil, fmt.Errorf("err creating reader connection pool: %w", err)
 	}
-	client, err := NewClientWithPool(r, cfg, numCopiers, writerPool, readerPool, maintPool, mt, readOnly)
+	client, err := NewClientWithPool(r, cfg, numCopiers, writerPool, readerPool, maintPool, mt, readOnly, useRollups)
 	if err != nil {
 		return client, err
 	}
@@ -197,7 +197,7 @@ func getRedactedConnStr(s string) string {
 }
 
 // NewClientWithPool creates a new PostgreSQL client with an existing connection pool.
-func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, writerPool, readerPool, maintPool *pgxpool.Pool, mt tenancy.Authorizer, readOnly bool) (*Client, error) {
+func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, writerPool, readerPool, maintPool *pgxpool.Pool, mt tenancy.Authorizer, readOnly, useRollups bool) (*Client, error) {
 	sigClose := make(chan struct{})
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
@@ -223,7 +223,11 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 	exemplarKeyPosCache := cache.NewExemplarLabelsPosCache(cfg.CacheConfig)
 
 	labelsReader := lreader.NewLabelsReader(readerConn, labelsCache, mt.ReadAuthorizer())
-	dbQuerier := querier.NewQuerier(readerConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer())
+	dbQuerier, err := querier.NewQuerier(readerConn, metricsCache, labelsReader, exemplarKeyPosCache, mt.ReadAuthorizer(), cfg.MetricsScrapeInterval, useRollups)
+	if err != nil {
+		return nil, fmt.Errorf("error starting querier: %w", err)
+	}
+
 	queryable := query.NewQueryable(dbQuerier, labelsReader)
 
 	dbIngestor := ingestor.DBInserter(ingestor.ReadOnlyIngestor{})
@@ -232,8 +236,7 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 		writerConn = pgxconn.NewPgxConn(writerPool)
 		dbIngestor, err = ingestor.NewPgxIngestor(writerConn, metricsCache, seriesCache, exemplarKeyPosCache, &c)
 		if err != nil {
-			log.Error("msg", "err starting the ingestor", "err", err)
-			return nil, err
+			return nil, fmt.Errorf("error starting ingestor: %w", err)
 		}
 	}
 	if maintPool != nil {

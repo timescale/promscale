@@ -17,6 +17,7 @@ import (
 )
 
 const (
+	DefaultScrapeInterval        = time.Second * 30
 	setDefaultDownsampleStateSQL = "SELECT prom_api.set_automatic_downsample($1)"
 
 	// short and long represent system resolutions.
