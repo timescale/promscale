@@ -12,8 +12,8 @@ on:
     branches: ['**']
 
 env:
-  golang-version: 1.19.3
-  goreleaser-version: v1.12.3
+  golang-version: 1.19.4
+  goreleaser-version: v1.13.1
 
 jobs:
   goreleaser:
@@ -27,7 +27,7 @@ jobs:
 
       -
         name: Set up Go
-        uses: actions/setup-go@v3.3.1
+        uses: actions/setup-go@v3.5.0
         with:
           go-version: ${{ env.golang-version }}
       -

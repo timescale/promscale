@@ -11,7 +11,7 @@ on:
     branches: ['**']
 
 env:
-  golang-version: 1.19.3
+  golang-version: 1.19.4
   golangci-lint-version: v1.50.1
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.3.1
+      uses: actions/setup-go@v3.5.0
       with:
         go-version: ${{ env.golang-version }}
       id: go
@@ -67,7 +67,7 @@ jobs:
       run: wget https://github.com/timescale/promscale-test-data/raw/main/traces-dataset.sz -O pkg/tests/testdata/traces-dataset.sz
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.3.1
+      uses: actions/setup-go@v3.5.0
       with:
         go-version: ${{ env.golang-version }}
       id: go
@@ -107,7 +107,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.3.1
+      uses: actions/setup-go@v3.5.0
       with:
         go-version: ${{ env.golang-version }}
 
