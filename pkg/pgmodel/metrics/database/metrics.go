@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/timescale/promscale/pkg/util"
@@ -39,6 +40,20 @@ func init() {
 	prometheus.MustRegister(dbHealthErrors, upMetric, dbNetworkLatency)
 }
 
+type metricQueryPollConfig struct {
+	enabled    bool
+	interval   time.Duration
+	lastUpdate time.Time
+}
+
+func updateAtMostEvery(interval time.Duration) metricQueryPollConfig {
+	return metricQueryPollConfig{
+		enabled:    true,
+		interval:   interval,
+		lastUpdate: time.Now(),
+	}
+}
+
 type metricQueryWrap struct {
 	// Multiple metrics could be retrieved via single query
 	// In that case they should appear in the same order as
@@ -46,6 +61,10 @@ type metricQueryWrap struct {
 	metrics       []prometheus.Collector
 	query         string
 	isHealthCheck bool // if set only metrics[0] is used
+	// Allows to configure custom polling intervals for individual queries.
+	// The actual polling still happens on `evalInterval`, but this setting
+	// can by used to make heavier queries run less often.
+	customPollConfig metricQueryPollConfig
 }
 
 func gauges(opts ...prometheus.GaugeOpts) []prometheus.Collector {
@@ -112,6 +131,7 @@ var metrics = []metricQueryWrap{
 				Help:      "The number of metrics chunks soon to be removed by maintenance jobs.",
 			},
 		),
+		customPollConfig: updateAtMostEvery(6 * time.Minute),
 		query: `WITH conf AS MATERIALIZED (SELECT _prom_catalog.get_default_retention_period() AS def_retention)
 		SELECT count(*)::BIGINT
 		FROM _timescaledb_catalog.dimension_slice ds
@@ -136,6 +156,7 @@ var metrics = []metricQueryWrap{
 				Help:      "The number of metrics chunks not-compressed due to a set delay.",
 			},
 		),
+		customPollConfig: updateAtMostEvery(9 * time.Minute),
 		query: `WITH chunk_candidates AS MATERIALIZED (
 				SELECT chcons.dimension_slice_id, h.table_name, h.schema_name
 				FROM _timescaledb_catalog.chunk_constraint chcons
@@ -163,6 +184,7 @@ var metrics = []metricQueryWrap{
 				Help:      "The number of traces chunks soon to be removed by maintenance jobs.",
 			},
 		),
+		customPollConfig: updateAtMostEvery(6 * time.Minute),
 		query: `WITH conf AS MATERIALIZED (SELECT coalesce(ps_trace.get_trace_retention_period(), interval '0 day') AS def_retention)
 		SELECT count(*)::BIGINT
 		FROM _timescaledb_catalog.dimension_slice ds
@@ -181,6 +203,7 @@ var metrics = []metricQueryWrap{
 				Help:      "The number of traces chunks soon to be compressed by maintenance jobs.",
 			},
 		),
+		customPollConfig: updateAtMostEvery(9 * time.Minute),
 		query: `WITH chunk_candidates AS MATERIALIZED (
 				SELECT chcons.dimension_slice_id
 				FROM _timescaledb_catalog.chunk_constraint chcons
@@ -488,6 +511,7 @@ var metrics = []metricQueryWrap{
 				Help:      "The total number of completed traces compression jobs.",
 			},
 		)...),
+		customPollConfig: updateAtMostEvery(6 * time.Minute),
 		query: `WITH maintenance_jobs_stats AS (
 			SELECT
 				coalesce(config ->> 'signal', 'traces') AS signal_type,
