@@ -5,17 +5,11 @@
 package telemetry
 
 import (
-	"context"
 	"testing"
-
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-
-	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/tests/testsupport"
 )
 
 func TestRegisterMetric(t *testing.T) {
@@ -41,35 +35,8 @@ func TestRegisterMetric(t *testing.T) {
 
 func TestEngineStop(t *testing.T) {
 	engine := &engineImpl{
-		conn: mockPgxConn{},
+		conn: testsupport.MockPgxConn{},
 	}
 	engine.Start()
 	engine.Stop()
 }
-
-type mockRow struct{}
-
-func (mockRow) Scan(dest ...interface{}) error { return nil }
-
-type mockPgxConn struct{}
-
-func (mockPgxConn) Close() {}
-func (mockPgxConn) Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error) {
-	return pgconn.CommandTag{}, nil
-}
-func (mockPgxConn) Query(ctx context.Context, sql string, args ...interface{}) (pgxconn.PgxRows, error) {
-	return nil, nil
-}
-func (mockPgxConn) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
-	return mockRow{}
-}
-func (mockPgxConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
-	return 0, nil
-}
-func (mockPgxConn) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource { return nil }
-func (mockPgxConn) NewBatch() pgxconn.PgxBatch                           { return nil }
-func (mockPgxConn) SendBatch(ctx context.Context, b pgxconn.PgxBatch) (pgx.BatchResults, error) {
-	return nil, nil
-}
-func (mockPgxConn) Acquire(ctx context.Context) (*pgxpool.Conn, error) { return nil, nil }
-func (mockPgxConn) BeginTx(ctx context.Context) (pgx.Tx, error)        { return nil, nil }
