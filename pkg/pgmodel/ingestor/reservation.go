@@ -165,7 +165,7 @@ func (rq *ReservationQueue) Peek() (time.Time, bool) {
 		case <-waitch:
 		case <-time.After(250 * time.Millisecond):
 		}
-		log.TraceRequest("component", "reservation", "event", "peek", "batched_metrics", rq.q.Len(), "waited", waited, "took", time.Since((*rq.q)[0].GetStartTime()))
+		log.TraceRequest("component", "reservation", "event", "peek", "batched_metrics", rq.Len(), "waited", waited, "took", time.Since(reservation.GetStartTime()))
 	}
 	return reservation.GetStartTime(), ok
 }

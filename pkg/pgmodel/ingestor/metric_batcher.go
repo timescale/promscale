@@ -256,7 +256,8 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 
 		numSeries := pending.batch.CountSeries()
 		numSamples, numExemplars := pending.batch.Count()
-
+		wasFull := pending.IsFull()
+		start := pending.Start
 		select {
 		//try to batch as much as possible before sending
 		case req, ok := <-recvCh:
@@ -265,7 +266,7 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 					span.AddEvent("Sending last non-empty batch")
 					copySender <- copyRequest{pending, info}
 					metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
-					metrics.IngestorBatchDuration.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(pending.Start).Seconds())
+					metrics.IngestorBatchDuration.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(start).Seconds())
 				}
 				span.AddEvent("Exiting metric batcher batch loop")
 				span.SetAttributes(attribute.Int("num_series", numSeries))
@@ -276,8 +277,8 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 		case copySender <- copyRequest{pending, info}:
 			metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
 			metrics.IngestorFlushInsertables.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSamples + numExemplars))
-			metrics.IngestorBatchDuration.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(pending.Start).Seconds())
-			if pending.IsFull() {
+			metrics.IngestorBatchDuration.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(start).Seconds())
+			if wasFull {
 				metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher", "reason": "size"}).Inc()
 			} else {
 				metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher", "reason": "requested"}).Inc()
