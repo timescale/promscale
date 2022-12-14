@@ -149,6 +149,12 @@ var metrics = []metricQueryWrap{
 				Name:      "chunks_metrics_uncompressed_count",
 				Help:      "The number of metrics chunks soon to be compressed by maintenance jobs.",
 			},
+		),
+		customPollConfig: updateAtMostEvery(9 * time.Minute),
+		query: `SELECT coalesce(sum(jsonb_array_length(chunks_to_compress)), 0)::BIGINT AS uncompressed
+			FROM _prom_catalog.metric_chunks_that_need_to_be_compressed(INTERVAL '1 hour');`,
+	}, {
+		metrics: gauges(
 			prometheus.GaugeOpts{
 				Namespace: util.PromNamespace,
 				Subsystem: "sql_database",
@@ -157,24 +163,16 @@ var metrics = []metricQueryWrap{
 			},
 		),
 		customPollConfig: updateAtMostEvery(9 * time.Minute),
-		query: `WITH chunk_candidates AS MATERIALIZED (
-				SELECT chcons.dimension_slice_id, h.table_name, h.schema_name
-				FROM _timescaledb_catalog.chunk_constraint chcons
-					INNER JOIN _timescaledb_catalog.chunk c ON c.id = chcons.chunk_id
-					INNER JOIN _timescaledb_catalog.hypertable h ON h.id = c.hypertable_id
-				WHERE c.dropped IS FALSE
-				AND h.compression_state = 1 -- compression_enabled = TRUE
-				AND (c.status & 1) != 1 -- only check for uncompressed chunks
-			)
-			SELECT
-				count(*) FILTER(WHERE m.delay_compression_until IS NULL OR m.delay_compression_until < now())::BIGINT AS uncompressed,
-				count(*) FILTER(WHERE m.delay_compression_until IS NOT NULL AND m.delay_compression_until >= now())::BIGINT AS delayed_compression
-			FROM chunk_candidates cc
+		query: `SELECT count(*)::BIGINT AS delayed_compression
+			FROM _prom_catalog.metric m
+				INNER JOIN _timescaledb_catalog.chunk c ON (c.schema_name = m.table_schema AND c.table_name = m.table_schema)
+				INNER JOIN _timescaledb_catalog.chunk_constraint cc ON (cc.chunk_id = c.id)
 				INNER JOIN _timescaledb_catalog.dimension_slice ds ON ds.id = cc.dimension_slice_id
-				INNER JOIN _prom_catalog.metric m ON (m.table_name = cc.table_name AND m.table_schema = cc.schema_name)
 			WHERE NOT m.is_view
-			AND ds.range_start <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')
-			AND ds.range_end <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')`,
+				AND m.delay_compression_until IS NOT NULL
+				AND m.delay_compression_until >= now()
+				AND ds.range_start <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')
+				AND ds.range_end <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')`,
 	}, {
 		metrics: gauges(
 			prometheus.GaugeOpts{
