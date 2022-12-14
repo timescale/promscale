@@ -202,6 +202,8 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 	metricsCache := cache.NewMetricCache(cfg.CacheConfig)
 	labelsCache := cache.NewLabelsCache(cfg.CacheConfig)
 	seriesCache := cache.NewSeriesCache(cfg.CacheConfig, sigClose)
+	invertedLabelsCache := cache.NewInvertedLabelsCache(cfg.CacheConfig, sigClose)
+
 	c := ingestor.Cfg{
 		NumCopiers:              numCopiers,
 		IgnoreCompressedChunks:  cfg.IgnoreCompressedChunks,
@@ -230,7 +232,7 @@ func NewClientWithPool(r prometheus.Registerer, cfg *Config, numCopiers int, wri
 	if !readOnly {
 		var err error
 		writerConn = pgxconn.NewPgxConn(writerPool)
-		dbIngestor, err = ingestor.NewPgxIngestor(writerConn, metricsCache, seriesCache, exemplarKeyPosCache, &c)
+		dbIngestor, err = ingestor.NewPgxIngestor(writerConn, metricsCache, seriesCache, exemplarKeyPosCache, invertedLabelsCache, &c)
 		if err != nil {
 			log.Error("msg", "err starting the ingestor", "err", err)
 			return nil, err

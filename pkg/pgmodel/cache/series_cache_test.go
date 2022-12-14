@@ -80,7 +80,7 @@ func TestGrowSeriesCache(t *testing.T) {
 			cache := NewSeriesCache(Config{SeriesCacheInitialSize: 100, SeriesCacheMemoryMaxBytes: DefaultConfig.SeriesCacheMemoryMaxBytes}, nil)
 			cacheGrowCounter := 0
 			for i := 0; i < 200; i++ {
-				cache.cache.Insert(i, i, 1)
+				cache.Insert(i, i, 1)
 				if i%100 == 0 {
 					time.Sleep(tc.sleep)
 				}
