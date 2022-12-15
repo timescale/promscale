@@ -12,7 +12,7 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
-	"github.com/timescale/promscale/pkg/dataset"
+	"github.com/timescale/promscale/pkg/internal/day"
 )
 
 // unmarshalRule defines that the subtree located on the `key` of the Viper
@@ -260,7 +260,7 @@ func applyUnmarshalRules(v *viper.Viper, unmarshalRules []unmarshalRule) error {
 			rule.target,
 			viper.DecodeHook(
 				mapstructure.ComposeDecodeHookFunc(
-					dataset.StringToDayDurationHookFunc(),
+					day.StringToDayDurationHookFunc(),
 					mapstructure.StringToTimeDurationHookFunc(),
 					mapstructure.StringToSliceHookFunc(","),
 				),

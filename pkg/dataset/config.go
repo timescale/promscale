@@ -45,12 +45,12 @@ type Config struct {
 
 // Metrics contains dataset configuration options for metrics data.
 type Metrics struct {
-	ChunkInterval   day.Duration `mapstructure:"default_chunk_interval" yaml:"default_chunk_interval"`
-	Compression     *bool       `mapstructure:"compress_data" yaml:"compress_data"` // Using pointer to check if the the value was set.
-	HALeaseRefresh  day.Duration `mapstructure:"ha_lease_refresh" yaml:"ha_lease_refresh"`
-	HALeaseTimeout  day.Duration `mapstructure:"ha_lease_timeout" yaml:"ha_lease_timeout"`
-	RetentionPeriod day.Duration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
-	Rollups         *rollup.Config `mapstructure:"rollups" yaml:"rollups,omitempty"`
+	ChunkInterval   day.Duration   `mapstructure:"default_chunk_interval" yaml:"default_chunk_interval"`
+	Compression     *bool          `mapstructure:"compress_data" yaml:"compress_data"` // Using pointer to check if the the value was set.
+	HALeaseRefresh  day.Duration   `mapstructure:"ha_lease_refresh" yaml:"ha_lease_refresh"`
+	HALeaseTimeout  day.Duration   `mapstructure:"ha_lease_timeout" yaml:"ha_lease_timeout"`
+	RetentionPeriod day.Duration   `mapstructure:"default_retention_period" yaml:"default_retention_period"`
+	Rollups         *rollup.Config `mapstructure:"rollup" yaml:"rollup,omitempty"`
 }
 
 // Traces contains dataset configuration options for traces data.
