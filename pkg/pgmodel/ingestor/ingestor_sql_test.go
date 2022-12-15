@@ -536,10 +536,11 @@ func TestPGXInserterInsertData(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name          string
-		rows          map[string][]model.Insertable
-		sqlQueries    []model.SqlQuery
-		metricsGetErr error
+		name                  string
+		rows                  map[string][]model.Insertable
+		sqlQueries            []model.SqlQuery
+		metricsGetErr         error
+		disableMetricCreation bool
 	}{
 		{
 			name: "Zero data",
@@ -810,7 +811,8 @@ func TestPGXInserterInsertData(t *testing.T) {
 					model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1)),
 				},
 			},
-			metricsGetErr: fmt.Errorf("some metrics error"),
+			metricsGetErr:         fmt.Errorf("some metrics error"),
+			disableMetricCreation: true,
 			sqlQueries: []model.SqlQuery{
 				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
 				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
@@ -821,7 +823,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 					Results: model.RowResults{{int64(1), "metric_0", true}},
 					Err:     error(nil),
 				},
-				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Copy: &model.Copy{
 						Table: pgx.Identifier{"prom_data", "metric_0"},
@@ -916,7 +917,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			mock := model.NewSqlRecorder(c.sqlQueries, t)
 			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
-
 			mockMetrics := &model.MockMetricCache{
 				MetricCache:  make(map[string]model.MetricInfo),
 				GetMetricErr: c.metricsGetErr,
@@ -932,7 +932,7 @@ func TestPGXInserterInsertData(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error setting up mock cache: %s", err.Error())
 			}
-			inserter, err := newPgxDispatcher(mock, mockMetrics, scache, nil, &Cfg{DisableEpochSync: true, InvertedLabelsCacheSize: 10, NumCopiers: 2})
+			inserter, err := newPgxDispatcher(mock, mockMetrics, scache, nil, &Cfg{DisableEpochSync: true, InvertedLabelsCacheSize: 10, NumCopiers: 2, DisableMetricCreation: c.disableMetricCreation})
 			if err != nil {
 				t.Fatal(err)
 			}

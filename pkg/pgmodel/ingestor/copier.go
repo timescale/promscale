@@ -40,6 +40,7 @@ type copyRequest struct {
 
 var (
 	getBatchMutex       = &sync.Mutex{}
+	lastGetBatch        = time.Time{}
 	handleDecompression = retryAfterDecompression
 )
 
@@ -72,9 +73,13 @@ func (reqs copyBatch) VisitExemplar(callBack func(info *pgmodel.MetricInfo, s *p
 	return nil
 }
 
+type readRequest struct {
+	copySender <-chan copyRequest
+}
+
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
-func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf *ExemplarLabelFormatter) {
+func runCopier(conn pgxconn.PgxConn, sw *seriesWriter, elf *ExemplarLabelFormatter, reservationQ *ReservationQueue) {
 	requestBatch := make([]readRequest, 0, metrics.MaxInsertStmtPerTxn)
 	insertBatch := make([]copyRequest, 0, cap(requestBatch))
 	for {
@@ -90,7 +95,7 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf 
 		// the fact that we fetch the entire batch before executing any of the
 		// reads. This guarantees that we never need to batch the same metrics
 		// together in the copier.
-		requestBatch, ok = copierGetBatch(ctx, requestBatch, in)
+		requestBatch, ok = copierGetBatch(ctx, requestBatch, reservationQ)
 		if !ok {
 			span.End()
 			return
@@ -157,7 +162,7 @@ func persistBatch(ctx context.Context, conn pgxconn.PgxConn, sw *seriesWriter, e
 	return nil
 }
 
-func copierGetBatch(ctx context.Context, batch []readRequest, in <-chan readRequest) ([]readRequest, bool) {
+func copierGetBatch(ctx context.Context, batch []readRequest, reservationQ *ReservationQueue) ([]readRequest, bool) {
 	_, span := tracer.Default().Start(ctx, "get-batch")
 	defer span.End()
 	//This mutex is not for safety, but rather for better batching.
@@ -173,30 +178,45 @@ func copierGetBatch(ctx context.Context, batch []readRequest, in <-chan readRequ
 		span.AddEvent("Unlocking")
 	}(span)
 
-	req, ok := <-in
+	//note this metric logic does depend on the lock
+	now := time.Now()
+	if !lastGetBatch.IsZero() {
+		timeBetweenGetBatch := now.Sub(lastGetBatch)
+		metrics.IngestorWaitForCopierSeconds.With(labelsCopier).Observe(timeBetweenGetBatch.Seconds())
+
+	}
+	lastGetBatch = now
+
+	startTime, ok := reservationQ.Peek()
 	if !ok {
 		return batch, false
 	}
-	span.AddEvent("Appending first batch")
-	batch = append(batch, req)
+	since := time.Since(startTime)
+	//TODO: make configurable in CLI
+	minDuration := 0 * time.Millisecond
 
-	//we use a small timeout to prevent low-pressure systems from using up too many
-	//txns and putting pressure on system
-	timeout := time.After(20 * time.Millisecond)
-hot_gather:
-	for len(batch) < cap(batch) {
-		select {
-		case r2 := <-in:
-			span.AddEvent("Appending batch")
-			batch = append(batch, r2)
-		case <-timeout:
-			span.AddEvent("Timeout appending batches")
-			break hot_gather
-		}
+	// Having a minimum batching duration can be useful if the system is using up too many txns or mxids.
+	// The prometheus remote-write dynamic sharding strategy should auto-adjust things to slow down writes
+	// in low-pressure environments but having a CLI-settable backstop can also be usefull in certain scenarios.
+	// Values that have previously been tested with good results: 50ms-250ms.
+	if since < minDuration {
+		span.AddEvent("Sleep waiting to batch")
+		sleepDuration := minDuration - since
+		metrics.IngestorWaitForBatchSleepSeconds.With(labelsCopier).Add(sleepDuration.Seconds())
+		metrics.IngestorWaitForBatchSleepTotal.With(labelsCopier).Inc()
+		time.Sleep(sleepDuration)
 	}
-	if len(batch) == cap(batch) {
-		span.AddEvent("Batch is full")
-	}
+
+	metrics.IngestorPipelineTime.With(labelsCopier).Observe(time.Since(startTime).Seconds())
+	span.AddEvent("After sleep")
+
+	var reason string
+	batch, _, reason = reservationQ.PopOntoBatch(batch)
+	metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "reason": reason}).Inc()
+
+	span.AddEvent("Flushed due to" + reason)
+
+	metrics.IngestorBatchRemainingAfterFlushTotal.With(labelsCopier).Observe(float64(reservationQ.Len()))
 	span.SetAttributes(attribute.Int("num_batches", len(batch)))
 	return batch, true
 }
@@ -501,7 +521,9 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 	metrics.IngestorItems.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "exemplar"}).Add(float64(totalExemplars))
 
 	tput.ReportDuplicateMetrics(duplicateSamples, duplicateMetrics)
-	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Observe(time.Since(insertStart).Seconds())
+	duration := time.Since(insertStart).Seconds()
+	metrics.IngestorInsertDuration.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Observe(duration)
+	metrics.IngestorInsertDurationPerRow.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Observe(duration / (float64(totalExemplars + totalSamples)))
 	return nil, lowestMinTime
 }
 

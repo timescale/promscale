@@ -21,6 +21,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/psctx"
 	"github.com/timescale/promscale/pkg/tracer"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 )
@@ -41,13 +42,14 @@ type pgxDispatcher struct {
 	invertedLabelsCache    *cache.InvertedLabelsCache
 	exemplarKeyPosCache    cache.PositionCache
 	batchers               sync.Map
+	batchersWG             sync.WaitGroup
 	completeMetricCreation chan struct{}
 	asyncAcks              bool
-	copierReadRequestCh    chan<- readRequest
 	seriesEpochRefresh     *time.Ticker
 	doneChannel            chan struct{}
 	closed                 *uber_atomic.Bool
 	doneWG                 sync.WaitGroup
+	reservationQ           *ReservationQueue
 }
 
 var _ model.Dispatcher = &pgxDispatcher{}
@@ -58,13 +60,6 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 		log.Warn("msg", "num copiers less than 1, setting to 1")
 		numCopiers = 1
 	}
-
-	// the copier read request channel retains the queue order between metrics
-	maxMetrics := 10000
-	copierReadRequestCh := make(chan readRequest, maxMetrics)
-
-	metrics.IngestorChannelCap.With(prometheus.Labels{"type": "metric", "subsystem": "copier", "kind": "sample"}).Set(float64(cap(copierReadRequestCh)))
-	metrics.RegisterCopierChannelLenMetric(func() float64 { return float64(len(copierReadRequestCh)) })
 
 	if cfg.IgnoreCompressedChunks {
 		// Handle decompression to not decompress anything.
@@ -82,9 +77,9 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 	}
 	sw := NewSeriesWriter(conn, labelArrayOID, labelsCache)
 	elf := NewExamplarLabelFormatter(conn, eCache)
-
+	reservationQ := NewReservationQueue()
 	for i := 0; i < numCopiers; i++ {
-		go runCopier(conn, copierReadRequestCh, sw, elf)
+		go runCopier(conn, sw, elf, reservationQ)
 	}
 
 	inserter := &pgxDispatcher{
@@ -95,11 +90,11 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 		exemplarKeyPosCache:    eCache,
 		completeMetricCreation: make(chan struct{}, 1),
 		asyncAcks:              cfg.MetricsAsyncAcks,
-		copierReadRequestCh:    copierReadRequestCh,
 		// set to run at half our deletion interval
 		seriesEpochRefresh: time.NewTicker(30 * time.Minute),
 		doneChannel:        make(chan struct{}),
 		closed:             uber_atomic.NewBool(false),
+		reservationQ:       reservationQ,
 	}
 	inserter.closed.Store(false)
 	runBatchWatcher(inserter.doneChannel)
@@ -110,7 +105,13 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 		return nil, err
 	}
 
-	go inserter.runCompleteMetricCreationWorker()
+	if !cfg.DisableMetricCreation {
+		inserter.doneWG.Add(1)
+		go func() {
+			defer inserter.doneWG.Done()
+			inserter.runCompleteMetricCreationWorker()
+		}()
+	}
 
 	if !cfg.DisableEpochSync {
 		inserter.doneWG.Add(1)
@@ -204,7 +205,8 @@ func (p *pgxDispatcher) Close() {
 		return true
 	})
 
-	close(p.copierReadRequestCh)
+	p.batchersWG.Wait()
+	p.reservationQ.Close()
 	close(p.doneChannel)
 	p.doneWG.Wait()
 }
@@ -226,8 +228,10 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 		maxt         int64
 		rows         = dataTS.Rows
 		workFinished = new(sync.WaitGroup)
+		batched      = new(sync.WaitGroup)
 	)
 	workFinished.Add(len(rows))
+	batched.Add(len(rows))
 	// we only allocate enough space for a single error message here as we only
 	// report one error back upstream. The inserter should not block on this
 	// channel, but only insert if it's empty, anything else can deadlock.
@@ -240,7 +244,17 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 				maxt = ts
 			}
 		}
-		p.getMetricBatcher(metricName) <- &insertDataRequest{spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, errChan: errChan}
+		p.getMetricBatcher(metricName) <- &insertDataRequest{requestCtx: ctx, spanCtx: span.SpanContext(), metric: metricName, data: data, finished: workFinished, batched: batched, errChan: errChan}
+	}
+
+	var startTime time.Time
+	if log.TraceRequestEnabled() {
+		t, err := psctx.StartTime(ctx)
+		if err != nil {
+			log.TraceRequest("component", "dispatcher", "err", err)
+		}
+		startTime = t
+		log.TraceRequest("component", "dispatcher", "event", "start", "metrics", len(rows), "samples", numRows, "start_time", startTime.UnixNano())
 	}
 	span.SetAttributes(attribute.Int64("num_rows", int64(numRows)))
 	span.SetAttributes(attribute.Int("num_metrics", len(rows)))
@@ -258,6 +272,7 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 		case err = <-errChan:
 		default:
 		}
+		log.TraceRequest("component", "dispatcher", "event", "ack", "start_time", startTime.UnixNano(), "took", time.Since(startTime))
 		reportMetricsTelemetry(maxt, numRows, 0)
 		close(errChan)
 	} else {
@@ -272,6 +287,7 @@ func (p *pgxDispatcher) InsertTs(ctx context.Context, dataTS model.Data) (uint64
 			if err != nil {
 				log.Error("msg", fmt.Sprintf("error on async send, dropping %d datapoints", numRows), "err", err)
 			}
+			log.TraceRequest("component", "dispatcher", "event", "async_ack", "start_time", startTime.UnixNano(), "took", time.Since(startTime))
 			reportMetricsTelemetry(maxt, numRows, 0)
 		}()
 	}
@@ -321,7 +337,11 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 		actual, old := p.batchers.LoadOrStore(metric, c)
 		batcher = actual
 		if !old {
-			go runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.copierReadRequestCh)
+			p.batchersWG.Add(1)
+			go func() {
+				defer p.batchersWG.Done()
+				runMetricBatcher(p.conn, c, metric, p.completeMetricCreation, p.metricTableNames, p.reservationQ)
+			}()
 		}
 	}
 	ch := batcher.(chan *insertDataRequest)
@@ -330,11 +350,13 @@ func (p *pgxDispatcher) getMetricBatcher(metric string) chan<- *insertDataReques
 }
 
 type insertDataRequest struct {
-	spanCtx  trace.SpanContext
-	metric   string
-	finished *sync.WaitGroup
-	data     []model.Insertable
-	errChan  chan error
+	requestCtx context.Context
+	spanCtx    trace.SpanContext
+	metric     string
+	finished   *sync.WaitGroup
+	batched    *sync.WaitGroup
+	data       []model.Insertable
+	errChan    chan error
 }
 
 func (idr *insertDataRequest) reportResult(err error) {

@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -20,6 +21,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgxconn"
+	"github.com/timescale/promscale/pkg/psctx"
 	"github.com/timescale/promscale/pkg/tracer"
 )
 
@@ -33,10 +35,6 @@ func containsExemplars(data []model.Insertable) bool {
 		}
 	}
 	return false
-}
-
-type readRequest struct {
-	copySender <-chan copyRequest
 }
 
 func metricTableName(conn pgxconn.PgxConn, metric string) (info model.MetricInfo, possiblyNew bool, err error) {
@@ -139,7 +137,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	metricName string,
 	completeMetricCreationSignal chan struct{},
 	metricTableNames cache.MetricCache,
-	copierReadRequestCh chan<- readRequest,
+	reservationQ *ReservationQueue,
 ) {
 	var (
 		info        model.MetricInfo
@@ -164,7 +162,7 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 	if !firstReqSet {
 		return
 	}
-	sendBatches(firstReq, input, conn, &info, copierReadRequestCh)
+	sendBatches(firstReq, input, conn, &info, reservationQ)
 }
 
 //the basic structure of communication from the batcher to the copier is as follows:
@@ -181,12 +179,13 @@ func runMetricBatcher(conn pgxconn.PgxConn,
 //     of requests consecutively to minimize processing delays. That's what the mutex in the copier does.
 //  2. There is an auto-adjusting adaptation loop in step 3. The longer the copier takes to catch up to the readRequest in the queue, the more things will be batched
 //  3. The batcher has only a single read request out at a time.
-func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, conn pgxconn.PgxConn, info *model.MetricInfo, copierReadRequestCh chan<- readRequest) {
+func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, conn pgxconn.PgxConn, info *model.MetricInfo, reservationQ *ReservationQueue) {
 	var (
 		exemplarsInitialized = false
 		span                 trace.Span
 	)
 
+	var reservation Reservation
 	addReq := func(req *insertDataRequest, buf *pendingBuffer) {
 		if !exemplarsInitialized && containsExemplars(req.data) {
 			if err := initializeExemplars(conn, info.TableName); err != nil {
@@ -205,19 +204,36 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 			trace.WithAttributes(attribute.Int("insertable_count", len(req.data))),
 		)
 		buf.addReq(req)
+		t, err := psctx.StartTime(req.requestCtx)
+		if err != nil {
+			log.Error("msg", err)
+			t = time.Time{}
+		}
+		metrics.IngestorPipelineTime.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(t).Seconds())
+		reservation.Update(reservationQ, t, len(req.data))
+		req.batched.Done()
 		addSpan.End()
 	}
 	//This channel in synchronous (no buffering). This provides backpressure
 	//to the batcher to keep batching until the copier is ready to read.
 	copySender := make(chan copyRequest)
 	defer close(copySender)
-	readRequest := readRequest{copySender: copySender}
+
+	startReservation := func(req *insertDataRequest) {
+		t, err := psctx.StartTime(req.requestCtx)
+		if err != nil {
+			log.Error("msg", err)
+			t = time.Time{}
+		}
+		metrics.IngestorPipelineTime.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(t).Seconds())
+		reservation = reservationQ.Add(copySender, req.batched, t)
+	}
 
 	pending := NewPendingBuffer()
 	pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
 	span.SetAttributes(attribute.String("metric", info.TableName))
+	startReservation(firstReq)
 	addReq(firstReq, pending)
-	copierReadRequestCh <- readRequest
 	span.AddEvent("Sent a read request")
 
 	for {
@@ -227,8 +243,8 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 			if !ok {
 				return
 			}
+			startReservation(req)
 			addReq(req, pending)
-			copierReadRequestCh <- readRequest
 			span.AddEvent("Sent a read request")
 		}
 
@@ -239,22 +255,18 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 		}
 
 		numSeries := pending.batch.CountSeries()
-
+		numSamples, numExemplars := pending.batch.Count()
+		wasFull := pending.IsFull()
+		start := pending.Start
 		select {
-		//try to send first, if not then keep batching
-		case copySender <- copyRequest{pending, info}:
-			metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
-			span.SetAttributes(attribute.Int("num_series", numSeries))
-			span.End()
-			pending = NewPendingBuffer()
-			pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
-			span.SetAttributes(attribute.String("metric", info.TableName))
+		//try to batch as much as possible before sending
 		case req, ok := <-recvCh:
 			if !ok {
 				if !pending.IsEmpty() {
 					span.AddEvent("Sending last non-empty batch")
 					copySender <- copyRequest{pending, info}
 					metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
+					metrics.IngestorBatchDuration.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(start).Seconds())
 				}
 				span.AddEvent("Exiting metric batcher batch loop")
 				span.SetAttributes(attribute.Int("num_series", numSeries))
@@ -262,6 +274,23 @@ func sendBatches(firstReq *insertDataRequest, input chan *insertDataRequest, con
 				return
 			}
 			addReq(req, pending)
+		case copySender <- copyRequest{pending, info}:
+			metrics.IngestorFlushSeries.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSeries))
+			metrics.IngestorFlushInsertables.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(numSamples + numExemplars))
+			metrics.IngestorBatchDuration.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(time.Since(start).Seconds())
+			if wasFull {
+				metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher", "reason": "size"}).Inc()
+			} else {
+				metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher", "reason": "requested"}).Inc()
+			}
+			//note that this is the number of <requests> waiting in the queue, not samples or series.
+			metrics.IngestorBatchRemainingAfterFlushTotal.With(prometheus.Labels{"type": "metric", "subsystem": "metric_batcher"}).Observe(float64(len(recvCh)))
+			span.SetAttributes(attribute.Int("num_series", numSeries))
+			span.End()
+			pending = NewPendingBuffer()
+			pending.spanCtx, span = tracer.Default().Start(context.Background(), "send-batches")
+			span.SetAttributes(attribute.String("metric", info.TableName))
+
 		}
 	}
 }

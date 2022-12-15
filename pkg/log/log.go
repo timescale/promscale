@@ -95,6 +95,7 @@ func Init(cfg Config) error {
 	// NOTE: we add a level of indirection with our logging functions,
 	//       so we need additional caller depth
 	logger = log.With(l, "ts", timestampFormat, "caller", log.Caller(4))
+	traceRequestEnabled = isTraceRequestEnabled()
 	return nil
 }
 
@@ -204,4 +205,29 @@ func WarnRateLimited(keyvals ...interface{}) {
 // DebugRateLimited logs Debug level logs once in every logOnceTimedDuration.
 func DebugRateLimited(keyvals ...interface{}) {
 	rateLimit(debug, keyvals...)
+}
+
+var traceRequestEnabled bool
+
+func isTraceRequestEnabled() bool {
+	value := os.Getenv("PROMSCALE_TRACE_REQUEST")
+	if value == "" {
+		return false
+	}
+	enabled, err := strconv.ParseBool(value)
+	if err != nil || !enabled {
+		//assume off
+		return false
+	}
+	return true
+}
+
+func TraceRequestEnabled() bool {
+	return traceRequestEnabled
+}
+
+func TraceRequest(keyvals ...interface{}) {
+	if TraceRequestEnabled() {
+		Debug(keyvals...)
+	}
 }

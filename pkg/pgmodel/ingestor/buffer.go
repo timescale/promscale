@@ -7,6 +7,7 @@ package ingestor
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/timescale/promscale/pkg/pgmodel/metrics"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -34,6 +35,7 @@ type pendingBuffer struct {
 	spanCtx       context.Context
 	needsResponse []insertDataTask
 	batch         model.Batch
+	Start         time.Time
 }
 
 var pendingBuffers = sync.Pool{
@@ -46,7 +48,9 @@ var pendingBuffers = sync.Pool{
 }
 
 func NewPendingBuffer() *pendingBuffer {
-	return pendingBuffers.Get().(*pendingBuffer)
+	pb := pendingBuffers.Get().(*pendingBuffer)
+	pb.Start = time.Now()
+	return pb
 }
 
 func (p *pendingBuffer) IsFull() bool {

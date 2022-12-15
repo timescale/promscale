@@ -159,7 +159,7 @@ func (b *Batcher) batch(batchIdx int) {
 			ticker.Reset(b.config.BatchTimeout)
 		}
 		if batch.isFull() {
-			metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "trace", "reason": "size"}).Inc()
+			metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "trace", "subsystem": "batcher", "reason": "size"}).Inc()
 			batch = flushBatch(batch)
 		}
 	}
@@ -169,7 +169,7 @@ func (b *Batcher) batch(batchIdx int) {
 			processReq(item)
 		case <-ticker.C:
 			batcherSpan.AddEvent("Batch timeout reached")
-			metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "trace", "reason": "timeout"}).Inc()
+			metrics.IngestorBatchFlushTotal.With(prometheus.Labels{"type": "trace", "subsystem": "batcher", "reason": "timeout"}).Inc()
 			if !batch.isEmpty() {
 				batch = flushBatch(batch)
 			}

@@ -24,6 +24,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgclient"
 	pgMetrics "github.com/timescale/promscale/pkg/pgmodel/metrics"
+	"github.com/timescale/promscale/pkg/psctx"
 	"github.com/timescale/promscale/pkg/query"
 	"github.com/timescale/promscale/pkg/telemetry"
 )
@@ -167,6 +168,8 @@ func withWarnLog(msg string, handler http.Handler) http.HandlerFunc {
 func timeHandler(histogramVec prometheus.ObserverVec, path string, handler http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		ctx := psctx.WithStartTime(r.Context(), start)
+		r = r.WithContext(ctx)
 		handler.ServeHTTP(w, r)
 		elapsedMs := time.Since(start).Milliseconds()
 		histogramVec.WithLabelValues(path).Observe(float64(elapsedMs))
