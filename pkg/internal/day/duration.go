@@ -83,7 +83,7 @@ func StringToDayDurationHookFunc() mapstructure.DecodeHookFunc {
 			return data, nil
 		}
 
-		var d DayDuration
+		var d Duration
 
 		if t != reflect.TypeOf(d) {
 			return data, nil
@@ -93,6 +93,6 @@ func StringToDayDurationHookFunc() mapstructure.DecodeHookFunc {
 		if err != nil {
 			return nil, err
 		}
-		return DayDuration(d), nil
+		return Duration(d), nil
 	}
 }
