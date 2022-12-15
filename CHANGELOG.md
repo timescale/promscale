@@ -33,7 +33,8 @@ We use the following categories for changes:
   metrics is expected to change faster than its new collection interval [#1793]
 
 ### Fixed
-
+- Fixing the query behind chunks_uncompressed. The new definition should
+  change the baseline value [#1794]
 
 ## [0.16.0] - 2022-10-20
 
