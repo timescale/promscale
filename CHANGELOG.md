@@ -35,7 +35,8 @@ We use the following categories for changes:
 - Aggregate metrics at global level to avoid legend pollution in dashboards [#1800]
 
 ### Fixed
-
+- Fixing the query behind chunks_uncompressed. The new definition should
+  change the baseline value [#1794]
 
 ## [0.16.0] - 2022-10-20
 

@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -47,10 +48,16 @@ type metricQueryPollConfig struct {
 }
 
 func updateAtMostEvery(interval time.Duration) metricQueryPollConfig {
+	// If we initialize lastUpdate as 0 or now - interval, then
+	// all the heavy queries that we aim to spread out by using this
+	// funciton will hammer the database simultaneously at the start.
+	// At the same time delaying them for the full duration of interval
+	// might be too much. Hence the jitter.
+	jitterDelta := time.Duration(rand.Int63n(int64(interval) / 3))
 	return metricQueryPollConfig{
 		enabled:    true,
 		interval:   interval,
-		lastUpdate: time.Now(),
+		lastUpdate: time.Now().Add(-interval + jitterDelta),
 	}
 }
 
