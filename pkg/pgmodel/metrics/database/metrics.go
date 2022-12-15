@@ -1,8 +1,9 @@
 package database
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"strings"
 	"time"
 
@@ -53,11 +54,14 @@ func updateAtMostEvery(interval time.Duration) metricQueryPollConfig {
 	// funciton will hammer the database simultaneously at the start.
 	// At the same time delaying them for the full duration of interval
 	// might be too much. Hence the jitter.
-	jitterDelta := time.Duration(rand.Int63n(int64(interval) / 3))
+	jitterDelta, err := rand.Int(rand.Reader, big.NewInt(int64(interval)/3))
+	if err != nil {
+		panic(err)
+	}
 	return metricQueryPollConfig{
 		enabled:    true,
 		interval:   interval,
-		lastUpdate: time.Now().Add(-interval + jitterDelta),
+		lastUpdate: time.Now().Add(-interval + time.Duration(jitterDelta.Int64())),
 	}
 }
 
