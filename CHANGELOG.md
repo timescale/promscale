@@ -31,6 +31,7 @@ We use the following categories for changes:
 - In order to reduce the overall load on the system, some internal database
   metrics won't be collected as often as they used to. None of the affected 
   metrics is expected to change faster than its new collection interval [#1793]
+- Aggregate metrics at global level to avoid legend pollution in dashboards [#1800]
 
 ### Fixed
 
