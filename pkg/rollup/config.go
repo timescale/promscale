@@ -25,9 +25,7 @@ const (
 )
 
 var (
-	defaultDownsampleState = false
-	useDefaultResolution   = false
-	systemResolution       = map[string]Definition{
+	systemResolution = map[string]Definition{
 		short: {
 			Resolution: day.Duration(5 * time.Minute),
 			Retention:  day.Duration(90 * 24 * time.Hour),
@@ -40,8 +38,8 @@ var (
 )
 
 type Config struct {
-	Enabled              *bool `yaml:"enabled,omitempty"`
-	UseDefaultResolution *bool `yaml:"use_default_resolution"`
+	Enabled              bool `yaml:"enabled,omitempty"`
+	UseDefaultResolution bool `yaml:"use_default_resolution"`
 	Resolutions          `yaml:"resolutions,omitempty"`
 }
 
@@ -54,19 +52,17 @@ type Definition struct {
 type Resolutions map[string]Definition
 
 func (d *Config) Apply(ctx context.Context, conn *pgx.Conn) error {
-	d.applyDefaults()
-
 	if containsSystemResolutions(d.Resolutions) {
 		return fmt.Errorf("'short' and 'long' are system resolutions. These cannot be applied as rollup labels")
 	}
 
-	log.Info("msg", fmt.Sprintf("Setting automatic metric downsample to %t", *d.Enabled))
+	log.Info("msg", fmt.Sprintf("Setting automatic metric downsample to %t", d.Enabled))
 	if _, err := conn.Exec(context.Background(), setDefaultDownsampleStateSQL, d.Enabled); err != nil {
 		return err
 	}
 
-	if *d.Enabled {
-		if *d.UseDefaultResolution {
+	if d.Enabled {
+		if d.UseDefaultResolution {
 			d.Resolutions["short"] = systemResolution["short"]
 			d.Resolutions["long"] = systemResolution["long"]
 		}
@@ -77,13 +73,16 @@ func (d *Config) Apply(ctx context.Context, conn *pgx.Conn) error {
 	return nil
 }
 
-func (d *Config) applyDefaults() {
-	if d.Enabled == nil {
-		d.Enabled = &defaultDownsampleState
+func (d *Config) DeepCopy() *Config {
+	out := Config{
+		Enabled:              d.Enabled,
+		UseDefaultResolution: d.UseDefaultResolution,
+		Resolutions:          make(Resolutions, len(d.Resolutions)),
 	}
-	if d.UseDefaultResolution == nil {
-		d.UseDefaultResolution = &useDefaultResolution
+	for k, v := range d.Resolutions {
+		out.Resolutions[k] = v
 	}
+	return &out
 }
 
 func containsSystemResolutions(r Resolutions) bool {

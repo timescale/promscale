@@ -35,6 +35,10 @@ func (in *Metrics) DeepCopyInto(out *Metrics) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.Rollups != nil {
+		in, out := &in.Rollups, &out.Rollups
+		*out = (*in).DeepCopy()
+	}
 	return
 }
 
