@@ -166,7 +166,7 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 		cfg.APICfg.MultiTenancy = multiTenancy
 	}
 
-	if (cfg.DatasetCfg != dataset.Config{}) {
+	if cfg.DatasetCfg != (dataset.Config{}) {
 		if cfg.DatasetConfig != "" {
 			log.Warn("msg", "Ignoring `startup.dataset.config` in favor of the newer `startup.dataset` config option since both were set.")
 		}

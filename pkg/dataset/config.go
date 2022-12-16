@@ -68,7 +68,7 @@ func NewConfig(contents string) (cfg Config, err error) {
 func (c *Config) Apply(ctx context.Context, conn *pgx.Conn) error {
 	c.applyDefaults()
 
-	if c.Metrics.Rollups != nil {
+	if c.Metrics.Rollups.Enabled {
 		if err := c.Metrics.Rollups.Apply(ctx, conn); err != nil {
 			return fmt.Errorf("error applying configuration for downsampling: %w", err)
 		}
