@@ -126,10 +126,10 @@ func initLabelIdIndexForSamples(index map[int64]labels.Label, rows []sampleRow) 
 	for i := range rows {
 		for _, id := range rows[i].labelIds {
 			//id==0 means there is no label for the key, so nothing to look up
-			if id == 0 {
+			if id == nil || *id == 0 {
 				continue
 			}
-			index[id] = labels.Label{}
+			index[*id] = labels.Label{}
 		}
 	}
 }
@@ -149,21 +149,21 @@ func buildTimeSeries(rows []sampleRow, lr lreader.LabelsReader) ([]*prompb.TimeS
 			return nil, row.err
 		}
 
-		if row.times.Len() != len(row.values.Elements) {
+		if row.times.Len() != len(row.values.FlatArray) {
 			return nil, errors.ErrQueryMismatchTimestampValue
 		}
 
 		promLabels := make([]prompb.Label, 0, len(row.labelIds))
 		for _, id := range row.labelIds {
-			if id == 0 {
+			if id == nil || *id == 0 {
 				continue
 			}
-			label, ok := labelIDMap[id]
+			label, ok := labelIDMap[*id]
 			if !ok {
-				return nil, fmt.Errorf("missing label for id %v", id)
+				return nil, fmt.Errorf("missing label for id %v", *id)
 			}
 			if label == (labels.Label{}) {
-				return nil, fmt.Errorf("label not found for id %v", id)
+				return nil, fmt.Errorf("label not found for id %v", *id)
 			}
 			promLabels = append(promLabels, prompb.Label{Name: label.Name, Value: label.Value})
 
@@ -196,7 +196,7 @@ func buildTimeSeries(rows []sampleRow, lr lreader.LabelsReader) ([]*prompb.TimeS
 			}
 			result.Samples = append(result.Samples, prompb.Sample{
 				Timestamp: ts,
-				Value:     row.values.Elements[i].Float,
+				Value:     row.values.FlatArray[i].Float64,
 			})
 		}
 

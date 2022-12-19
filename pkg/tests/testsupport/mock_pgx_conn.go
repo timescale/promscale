@@ -3,10 +3,9 @@ package testsupport
 import (
 	"context"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
-
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -17,23 +16,23 @@ func (MockRow) Scan(dest ...interface{}) error { return nil }
 type MockBatchResults struct{}
 
 func (MockBatchResults) Exec() (pgconn.CommandTag, error) {
-	return nil, nil
+	return pgconn.CommandTag{}, nil
 }
 
 func (MockBatchResults) Query() (pgx.Rows, error) {
 	return nil, nil
 }
+
 func (MockBatchResults) QueryRow() pgx.Row {
 	return MockRow{}
 }
-func (MockBatchResults) QueryFunc(scans []interface{}, f func(pgx.QueryFuncRow) error) (pgconn.CommandTag, error) {
-	return nil, nil
-}
+
 func (MockBatchResults) Close() error { return nil }
 
 type MockBatch struct{}
 
-func (MockBatch) Queue(query string, arguments ...interface{}) {}
+func (MockBatch) Queue(query string, arguments ...any) *pgx.QueuedQuery { return nil }
+
 func (MockBatch) Len() int {
 	return 0
 }

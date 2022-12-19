@@ -3,9 +3,8 @@ package pgxconn
 import (
 	"time"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgproto3/v2"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // rowWithTelemetry wraps the row returned by QueryRow() for metrics telemetry.
@@ -52,7 +51,7 @@ func (r rowsWithDuration) CommandTag() pgconn.CommandTag {
 	return r.rows.CommandTag()
 }
 
-func (r rowsWithDuration) FieldDescriptions() []pgproto3.FieldDescription {
+func (r rowsWithDuration) FieldDescriptions() []pgconn.FieldDescription {
 	return r.rows.FieldDescriptions()
 }
 
@@ -92,8 +91,4 @@ func (w batchResultsWithDuration) Query() (pgx.Rows, error) {
 
 func (w batchResultsWithDuration) QueryRow() pgx.Row {
 	return rowWithTelemetry{w.batch.QueryRow()}
-}
-
-func (w batchResultsWithDuration) QueryFunc(scans []interface{}, f func(pgx.QueryFuncRow) error) (pgconn.CommandTag, error) {
-	return w.batch.QueryFunc(scans, f)
 }

@@ -2,10 +2,11 @@ package end_to_end_tests
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgclient"
 )
@@ -15,20 +16,21 @@ import (
 func TestWriterSynchronousCommit(t *testing.T) {
 
 	// creates a new pool of database connections as would be created for the writer path
-	createWriterPool := func(connStr string, lockerCalled *bool, synchronousCommit bool) *pgxpool.Pool {
+	createWriterPool := func(connStr string, lockerCalled *atomic.Bool, synchronousCommit bool) *pgxpool.Pool {
 		pgConfig, err := pgxpool.ParseConfig(connStr)
 		if err != nil {
 			t.Fatal(err)
 		}
 		pgConfig.MaxConns = 2
 		pgConfig.MinConns = 1
-		*lockerCalled = false
+
+		lockerCalled.Store(false)
 		schemaLocker := func(ctx context.Context, conn *pgx.Conn) error {
-			*lockerCalled = true
+			lockerCalled.Store(true)
 			return nil
 		}
-		pgclient.SetWriterPoolAfterConnect(pgConfig, schemaLocker, synchronousCommit)
-		writerPool, err := pgxpool.ConnectConfig(context.Background(), pgConfig)
+		pgConfig.AfterConnect = pgclient.WriterPoolAfterConnect(schemaLocker, synchronousCommit)
+		writerPool, err := pgxpool.NewWithConfig(context.Background(), pgConfig)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -46,13 +48,13 @@ func TestWriterSynchronousCommit(t *testing.T) {
 	}
 
 	withDB(t, "writer_sync_commit", func(db *pgxpool.Pool, t testing.TB) {
-		var lockerCalled bool // used to ensure that the schema locker function is still called
+		lockerCalled := &atomic.Bool{} // used to ensure that the schema locker function is still called
 
 		// create a writer pool with synchronous_commit turned off
-		writerPool1 := createWriterPool(db.Config().ConnString(), &lockerCalled, false)
+		writerPool1 := createWriterPool(db.Config().ConnString(), lockerCalled, false)
 		setting := getSynchronousCommit(writerPool1)
 		require.Equal(t, "off", setting, "expected synchronous_commit to be off but it was %s", setting)
-		require.True(t, lockerCalled, "schemaLocker function should have been called and wasn't")
+		require.True(t, lockerCalled.Load(), "schemaLocker function should have been called and wasn't")
 
 		// ensure that setting synchronous_commit to off on the writer pool did not impact the setting
 		// in other database sessions
@@ -65,13 +67,13 @@ func TestWriterSynchronousCommit(t *testing.T) {
 		writerPool1.Close()
 
 		// now create a writer pool with synchronous_commit turned on
-		lockerCalled = false
-		writerPool2 := createWriterPool(db.Config().ConnString(), &lockerCalled, true)
+		lockerCalled.Store(false)
+		writerPool2 := createWriterPool(db.Config().ConnString(), lockerCalled, true)
 
 		// make sure the setting is on and the schema locker function was called
 		setting = getSynchronousCommit(writerPool2)
 		require.Equal(t, "on", setting, "expected synchronous_commit to be on but it was %s", setting)
-		require.True(t, lockerCalled, "schemaLocker function should have been called and wasn't")
+		require.True(t, lockerCalled.Load(), "schemaLocker function should have been called and wasn't")
 		writerPool2.Close()
 	})
 }

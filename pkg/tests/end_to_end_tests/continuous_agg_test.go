@@ -8,7 +8,7 @@ import (
 
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -338,7 +338,7 @@ func TestContinuousAggDataRetention(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
 		defer dbJob.Close()
-		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
+		dbSuper, err := testhelpers.PgxPoolWithRegisteredTypes(testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
 		require.NoError(t, err)
 		defer dbSuper.Close()
 		//a chunk way back in 2009
@@ -423,7 +423,7 @@ func TestContinuousAgg2StepAgg(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
 		defer dbJob.Close()
-		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
+		dbSuper, err := pgxpool.New(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
 		require.NoError(t, err)
 		defer dbSuper.Close()
 		_, err = dbSuper.Exec(context.Background(), "CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit")

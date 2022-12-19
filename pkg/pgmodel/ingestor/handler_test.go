@@ -38,18 +38,28 @@ func TestLabelArrayCreator(t *testing.T) {
 
 	res, _, err := createLabelArrays(seriesSet, labelMap, 2)
 	require.NoError(t, err)
-	expected := [][]int32{{2, 3}}
+	expected := model.ArrayOfLabelArray{
+		model.LabelArray{
+			{Int32: 2, Valid: true},
+			{Int32: 3, Valid: true},
+		},
+	}
 	require.Equal(t, res, expected)
 
 	res, _, err = createLabelArrays(seriesSet, labelMap, 3)
 	require.NoError(t, err)
-	expected = [][]int32{{2, 3}}
 	require.Equal(t, res, expected)
 
 	labelMap[makeLabelKey(valOne)] = cache.NewLabelInfo(3, 3)
 	res, _, err = createLabelArrays(seriesSet, labelMap, 3)
 	require.NoError(t, err)
-	expected = [][]int32{{2, 0, 3}}
+	expected = model.ArrayOfLabelArray{
+		model.LabelArray{
+			{Int32: 2, Valid: true},
+			{Int32: 0, Valid: false},
+			{Int32: 3, Valid: true},
+		},
+	}
 	require.Equal(t, res, expected)
 
 	/* test two series */
@@ -66,9 +76,21 @@ func TestLabelArrayCreator(t *testing.T) {
 	res, ser, err := createLabelArrays(seriesSet, labelMap, 5)
 	require.NoError(t, err)
 	require.Equal(t, len(ser), 2)
-	expected = [][]int32{
-		{100, 0, 0, 0, 1},
-		{100, 0, 0, 0, 2},
+	expected = model.ArrayOfLabelArray{
+		model.LabelArray{
+			{Int32: 100, Valid: true},
+			{Int32: 0, Valid: false},
+			{Int32: 0, Valid: false},
+			{Int32: 0, Valid: false},
+			{Int32: 1, Valid: true},
+		},
+		model.LabelArray{
+			{Int32: 100, Valid: true},
+			{Int32: 0, Valid: false},
+			{Int32: 0, Valid: false},
+			{Int32: 0, Valid: false},
+			{Int32: 2, Valid: true},
+		},
 	}
 	require.Equal(t, res, expected)
 
@@ -87,6 +109,14 @@ func TestLabelArrayCreator(t *testing.T) {
 	res, ser, err = createLabelArrays(seriesSet, labelMap, 5)
 	require.NoError(t, err)
 	require.Equal(t, len(ser), 1)
-	expected = [][]int32{{100, 0, 0, 0, 1}}
+	expected = model.ArrayOfLabelArray{
+		model.LabelArray{
+			{Int32: 100, Valid: true},
+			{Int32: 0, Valid: false},
+			{Int32: 0, Valid: false},
+			{Int32: 0, Valid: false},
+			{Int32: 1, Valid: true},
+		},
+	}
 	require.Equal(t, res, expected)
 }

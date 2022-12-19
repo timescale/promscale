@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -77,7 +77,7 @@ func (p *pgxSamplesSeriesSet) At() storage.Series {
 	if row.err != nil {
 		return nil
 	}
-	if row.times.Len() != len(row.values.Elements) {
+	if row.times.Len() != len(row.values.FlatArray) {
 		p.err = errors.ErrInvalidRowData
 		return nil
 	}
@@ -114,18 +114,18 @@ func (p *pgxSamplesSeriesSet) At() storage.Series {
 	return ps
 }
 
-func getLabelsFromLabelIds(labelIds []int64, index map[int64]labels.Label) (labels.Labels, error) {
+func getLabelsFromLabelIds(labelIds []*int64, index map[int64]labels.Label) (labels.Labels, error) {
 	lls := make([]labels.Label, 0, len(labelIds))
 	for _, id := range labelIds {
-		if id == 0 {
+		if id == nil || *id == 0 {
 			continue
 		}
-		label, ok := index[id]
+		label, ok := index[*id]
 		if !ok {
-			return nil, fmt.Errorf("missing label for id %v", id)
+			return nil, fmt.Errorf("missing label for id %v", *id)
 		}
 		if label == (labels.Label{}) {
-			return nil, fmt.Errorf("missing label for id %v", id)
+			return nil, fmt.Errorf("missing label for id %v", *id)
 		}
 		lls = append(lls, label)
 	}
@@ -152,7 +152,7 @@ func (p *pgxSamplesSeriesSet) Close() {
 type pgxSeries struct {
 	labels labels.Labels
 	times  TimestampSeries
-	values *pgtype.Float8Array
+	values *model.ReusableArray[pgtype.Float8]
 }
 
 // Labels returns the label names and values for the series.
@@ -170,11 +170,11 @@ type pgxSeriesIterator struct {
 	cur          int
 	totalSamples int
 	times        TimestampSeries
-	values       *pgtype.Float8Array
+	values       *model.ReusableArray[pgtype.Float8]
 }
 
 // newIterator returns an iterator over the samples. It expects times and values to be the same length.
-func newIterator(times TimestampSeries, values *pgtype.Float8Array) *pgxSeriesIterator {
+func newIterator(times TimestampSeries, values *model.ReusableArray[pgtype.Float8]) *pgxSeriesIterator {
 	return &pgxSeriesIterator{
 		cur:          -1,
 		totalSamples: times.Len(),
@@ -203,7 +203,7 @@ func (p *pgxSeriesIterator) getTs() int64 {
 }
 
 func (p *pgxSeriesIterator) getVal() float64 {
-	return p.values.Elements[p.cur].Float
+	return p.values.FlatArray[p.cur].Float64
 }
 
 // At returns a Unix timestamp in milliseconds and value of the sample.
@@ -222,7 +222,7 @@ func (p *pgxSeriesIterator) Next() bool {
 			return false
 		}
 		_, ok := p.times.At(p.cur)
-		if ok && p.values.Elements[p.cur].Status == pgtype.Present {
+		if ok && p.values.FlatArray[p.cur].Valid {
 			return true
 		}
 	}

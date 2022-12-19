@@ -3,7 +3,7 @@ package querier
 import (
 	"time"
 
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	prommodel "github.com/prometheus/common/model"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
@@ -18,19 +18,19 @@ type TimestampSeries interface {
 
 // rowTimestampSeries is a TimestampSeries based on data fetched from a database row
 type rowTimestampSeries struct {
-	times *pgtype.TimestamptzArray
+	times *model.ReusableArray[pgtype.Timestamptz]
 }
 
-func newRowTimestampSeries(times *pgtype.TimestamptzArray) *rowTimestampSeries {
+func newRowTimestampSeries(times *model.ReusableArray[pgtype.Timestamptz]) *rowTimestampSeries {
 	return &rowTimestampSeries{times: times}
 }
 
 func (t *rowTimestampSeries) At(index int) (int64, bool) {
-	return model.TimestamptzToMs(t.times.Elements[index]), t.times.Elements[index].Status == pgtype.Present
+	return model.TimestamptzToMs(t.times.FlatArray[index]), t.times.FlatArray[index].Valid
 }
 
 func (t *rowTimestampSeries) Len() int {
-	return len(t.times.Elements)
+	return len(t.times.FlatArray)
 }
 
 // regularTimestampSeries represents a time-series that is regular (e.g. each timestamp is step duration ahead of the previous one)

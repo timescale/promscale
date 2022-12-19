@@ -14,8 +14,8 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"

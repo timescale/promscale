@@ -13,12 +13,13 @@ import (
 
 	"github.com/prometheus/prometheus/model/timestamp"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
 	"github.com/timescale/promscale/pkg/tenancy"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 func TestPGXQuerierQuery(t *testing.T) {
@@ -267,7 +268,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
 					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{1}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
+					Results: model.RowResults{{[]*int64{util.Pointer(int64(1))}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
 					Err:     error(nil),
 				},
 				{
@@ -310,9 +311,11 @@ func TestPGXQuerierQuery(t *testing.T) {
 						ORDER BY series_id, time ) as time_ordered_rows
 						GROUP BY series_id
 						) as result ON (result.value_array is not null AND result.series_id = series.id)`,
-					Args:    nil,
-					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-					Err:     error(nil),
+					Args: nil,
+					Results: model.RowResults{
+						{[]*int64{util.Pointer(int64(2))}, []time.Time{time.Unix(0, 0)}, []float64{1}},
+					},
+					Err: error(nil),
 				},
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
@@ -357,9 +360,15 @@ func TestPGXQuerierQuery(t *testing.T) {
 						ORDER BY series_id, time ) as time_ordered_rows
 						GROUP BY series_id
 						) as result ON (result.value_array is not null AND result.series_id = series.id)`,
-					Args:    nil,
-					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-					Err:     error(nil),
+					Args: nil,
+					Results: model.RowResults{
+						{
+							[]*int64{util.Pointer(int64(2))},
+							[]time.Time{time.Unix(0, 0)},
+							[]float64{1},
+						},
+					},
+					Err: error(nil),
 				},
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
@@ -405,9 +414,15 @@ func TestPGXQuerierQuery(t *testing.T) {
 						ORDER BY series_id, time ) as time_ordered_rows
 						GROUP BY series_id
 						) as result ON (result.value_array is not null AND result.series_id = series.id)`,
-					Args:    nil,
-					Results: model.RowResults{{[]int64{2}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-					Err:     error(nil),
+					Args: nil,
+					Results: model.RowResults{
+						{
+							[]*int64{util.Pointer(int64(2))},
+							[]time.Time{time.Unix(0, 0)},
+							[]float64{1},
+						},
+					},
+					Err: error(nil),
 				},
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
@@ -470,9 +485,15 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time >= '1970-01-01T00:00:01Z'\n\t" +
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
-					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{3}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-					Err:     error(nil),
+					Args: []interface{}(nil),
+					Results: model.RowResults{
+						{
+							[]*int64{util.Pointer(int64(3))},
+							[]time.Time{time.Unix(0, 0)},
+							[]float64{1},
+						},
+					},
+					Err: error(nil),
 				},
 				{
 					Sql: "SELECT s.labels, array_agg(m.time ORDER BY time), array_agg(m.value ORDER BY time)\n\t" +
@@ -483,9 +504,15 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time >= '1970-01-01T00:00:01Z'\n\t" +
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
-					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{4}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-					Err:     error(nil),
+					Args: []interface{}(nil),
+					Results: model.RowResults{
+						{
+							[]*int64{util.Pointer(int64(4))},
+							[]time.Time{time.Unix(0, 0)},
+							[]float64{1},
+						},
+					},
+					Err: error(nil),
 				},
 				{
 					Sql:           "SELECT (prom_api.labels_info($1::int[])).*",
@@ -568,9 +595,15 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time >= '1970-01-01T00:00:01Z'\n\t" +
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
-					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{7}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-					Err:     error(nil),
+					Args: []interface{}(nil),
+					Results: model.RowResults{
+						{
+							[]*int64{util.Pointer(int64(7))},
+							[]time.Time{time.Unix(0, 0)},
+							[]float64{1},
+						},
+					},
+					Err: error(nil),
 				},
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",
@@ -629,9 +662,15 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time >= '1970-01-01T00:00:01Z'\n\t" +
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
-					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{8, 9}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-					Err:     error(nil),
+					Args: []interface{}(nil),
+					Results: model.RowResults{
+						{
+							[]*int64{util.Pointer(int64(8)), util.Pointer(int64(9))},
+							[]time.Time{time.Unix(0, 0)},
+							[]float64{1},
+						},
+					},
+					Err: error(nil),
 				},
 				{
 					Sql:           "SELECT (prom_api.labels_info($1::int[])).*",
@@ -690,9 +729,15 @@ func TestPGXQuerierQuery(t *testing.T) {
 						"AND time >= '1970-01-01T00:00:01Z'\n\t" +
 						"AND time <= '1970-01-01T00:00:02Z'\n\t" +
 						"GROUP BY s.id",
-					Args:    []interface{}(nil),
-					Results: model.RowResults{{[]int64{10}, []time.Time{time.Unix(0, 0)}, []float64{1}}},
-					Err:     error(nil),
+					Args: []interface{}(nil),
+					Results: model.RowResults{
+						{
+							[]*int64{util.Pointer(int64(10))},
+							[]time.Time{time.Unix(0, 0)},
+							[]float64{1},
+						},
+					},
+					Err: error(nil),
 				},
 				{
 					Sql:     "SELECT (prom_api.labels_info($1::int[])).*",

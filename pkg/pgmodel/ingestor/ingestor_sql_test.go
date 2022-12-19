@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -31,12 +31,21 @@ const (
 	tableName string = "table name"
 )
 
-func getTestLabelArray(t *testing.T, l [][]int32) *pgtype.ArrayType {
-	model.SetLabelArrayOIDForTest(0)
-	labelArrayArray := model.GetCustomType(model.LabelArray)
-	err := labelArrayArray.Set(l)
-	require.NoError(t, err)
-	return labelArrayArray
+func getTestLabelArray(t *testing.T, labelsSlices [][]int32) model.ArrayOfLabelArray {
+	labelsArrays := make(model.ArrayOfLabelArray, 0, len(labelsSlices))
+	for _, labelsSlice := range labelsSlices {
+		labelsArray := make(model.LabelArray, 0, len(labelsSlice))
+		for _, l := range labelsSlice {
+			valid := true
+			if l == 0 {
+				valid = false
+			}
+			labelsArray = append(labelsArray, pgtype.Int4{Int32: l, Valid: valid})
+		}
+		labelsArrays = append(labelsArrays, model.LabelArray(labelsArray))
+	}
+
+	return labelsArrays
 }
 
 func init() {
@@ -265,10 +274,13 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			for i := range c.sqlQueries {
 				for j := range c.sqlQueries[i].Args {
-					if _, ok := c.sqlQueries[i].Args[j].([]string); ok {
-						tmp := &pgutf8str.TextArray{}
-						err := tmp.Set(c.sqlQueries[i].Args[j])
-						require.NoError(t, err)
+					if slice, ok := c.sqlQueries[i].Args[j].([]string); ok {
+						tmp := make(pgtype.FlatArray[pgutf8str.Text], 0, len(slice))
+						for _, item := range slice {
+							text := pgutf8str.Text{}
+							require.NoError(t, text.Scan(item))
+							tmp = append(tmp, text)
+						}
 						c.sqlQueries[i].Args[j] = tmp
 					}
 				}
@@ -277,8 +289,7 @@ func TestPGXInserterInsertSeries(t *testing.T) {
 			scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 			scache.Reset()
 			lCache := cache.NewInvertedLabelsCache(cache.DefaultConfig, nil)
-			sw := NewSeriesWriter(mock, 0, lCache)
-
+			sw := NewSeriesWriter(mock, lCache)
 			lsi := make([]model.Insertable, 0)
 			for _, ser := range c.series {
 				ls, err := scache.GetSeriesFromLabels(ser)
@@ -423,10 +434,16 @@ func TestPGXInserterCacheReset(t *testing.T) {
 
 	for i := range sqlQueries {
 		for j := range sqlQueries[i].Args {
-			if _, ok := sqlQueries[i].Args[j].([]string); ok {
-				tmp := &pgutf8str.TextArray{}
-				err := tmp.Set(sqlQueries[i].Args[j])
-				require.NoError(t, err)
+			if slice, ok := sqlQueries[i].Args[j].([]string); ok {
+				tmp := make(pgtype.FlatArray[pgutf8str.Text], 0, len(slice))
+				for _, item := range slice {
+					tmp = append(tmp, pgutf8str.Text{
+						Text: pgtype.Text{
+							String: item,
+							Valid:  true,
+						},
+					})
+				}
 				sqlQueries[i].Args[j] = tmp
 			}
 		}
@@ -435,7 +452,7 @@ func TestPGXInserterCacheReset(t *testing.T) {
 	mock := model.NewSqlRecorder(sqlQueries, t)
 	scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
 	lcache := cache.NewInvertedLabelsCache(cache.DefaultConfig, nil)
-	sw := NewSeriesWriter(mock, 0, lcache)
+	sw := NewSeriesWriter(mock, lcache)
 	inserter := pgxDispatcher{
 		conn:                mock,
 		scache:              scache,
@@ -544,8 +561,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 		{
 			name: "Zero data",
 			sqlQueries: []model.SqlQuery{
-				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
-				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 			},
 		},
@@ -555,8 +570,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 				"metric_0": {model.NewPromSamples(makeLabel(), make([]prompb.Sample, 1))},
 			},
 			sqlQueries: []model.SqlQuery{
-				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
-				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -591,8 +604,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
-				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
-				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -639,8 +650,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
-				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
-				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -658,8 +667,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
-				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
-				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -730,8 +737,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 			},
 
 			sqlQueries: []model.SqlQuery{
-				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
-				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -790,8 +795,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 				},
 			},
 			sqlQueries: []model.SqlQuery{
-				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
-				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:  "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -812,8 +815,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 			},
 			metricsGetErr: fmt.Errorf("some metrics error"),
 			sqlQueries: []model.SqlQuery{
-				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
-				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",
@@ -850,8 +851,6 @@ func TestPGXInserterInsertData(t *testing.T) {
 			},
 
 			sqlQueries: []model.SqlQuery{
-				{Sql: "SELECT 'prom_api.label_array'::regtype::oid", Results: model.RowResults{{uint32(434)}}},
-				{Sql: "SELECT 'prom_api.label_value_array'::regtype::oid", Results: model.RowResults{{uint32(435)}}},
 				{Sql: "CALL _prom_catalog.finalize_metric_creation()"},
 				{
 					Sql:     "SELECT id, table_name, possibly_new FROM _prom_catalog.get_or_create_metric_table_name($1)",

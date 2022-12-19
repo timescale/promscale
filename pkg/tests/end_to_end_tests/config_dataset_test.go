@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/dataset"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 func TestDatasetConfigApply(t *testing.T) {
@@ -19,6 +20,7 @@ func TestDatasetConfigApply(t *testing.T) {
 		disableCompression := false
 
 		pgxConn := conn.Conn()
+		require.NoError(t, model.RegisterCustomPgTypes(context.Background(), pgxConn))
 		require.Equal(t, 8*time.Hour, getMetricsDefaultChunkInterval(t, pgxConn))
 		require.Equal(t, true, getMetricsDefaultCompressionSetting(t, pgxConn))
 		require.Equal(t, 10*time.Second, getMetricsDefaultHALeaseRefresh(t, pgxConn))

@@ -10,8 +10,8 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"github.com/jackc/pgtype"
-	pgx "github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 

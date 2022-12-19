@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 func TestPrepareExemplarQueryResult(t *testing.T) {
@@ -29,7 +30,7 @@ func TestPrepareExemplarQueryResult(t *testing.T) {
 	}
 	seriesRow := exemplarSeriesRow{
 		metricName: "test_metric_exemplar",
-		labelIds:   []int64{1, 3},
+		labelIds:   []*int64{util.Pointer(int64(1)), util.Pointer(int64(3))},
 		data:       exemplarRows,
 	}
 	lrCache := newMockLabelsReader([]int64{1, 3}, []labels.Label{{Name: "__name__", Value: "test_metric_exemplar"}, {Name: "instance", Value: "localhost:9100"}})

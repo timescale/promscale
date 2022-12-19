@@ -8,7 +8,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/timescale/promscale/pkg/pgxconn"

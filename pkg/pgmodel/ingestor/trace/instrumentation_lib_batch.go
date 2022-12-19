@@ -8,8 +8,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgtype"
-	pgx "github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -36,10 +36,10 @@ func (il instrumentationLibrary) Before(item sortable) bool {
 	if il.version != otherIl.version {
 		return il.version < otherIl.version
 	}
-	if il.schemaURLID.Status != otherIl.schemaURLID.Status {
-		return il.schemaURLID.Status < otherIl.schemaURLID.Status
+	if il.schemaURLID.Valid != otherIl.schemaURLID.Valid {
+		return !il.schemaURLID.Valid
 	}
-	return il.schemaURLID.Int < otherIl.schemaURLID.Int
+	return il.schemaURLID.Int64 < otherIl.schemaURLID.Int64
 }
 
 func (il instrumentationLibrary) AddToDBBatch(batch pgxconn.PgxBatch) {
@@ -76,7 +76,7 @@ func (lib instrumentationLibraryBatch) SendBatch(ctx context.Context, conn pgxco
 }
 func (lib instrumentationLibraryBatch) GetID(name, version string, schemaURLID pgtype.Int8) (pgtype.Int8, error) {
 	if name == "" {
-		return pgtype.Int8{Status: pgtype.Null}, nil
+		return pgtype.Int8{Valid: false}, nil
 	}
 	il := instrumentationLibrary{name, version, schemaURLID}
 	id, err := lib.b.GetID(il)

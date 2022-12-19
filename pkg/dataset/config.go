@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/timescale/promscale/pkg/log"
 	"gopkg.in/yaml.v2"
 )
@@ -72,12 +72,15 @@ func (c *Config) Apply(conn *pgx.Conn) error {
 	log.Info("msg", fmt.Sprintf("Setting trace dataset default retention period to %s", c.Traces.RetentionPeriod))
 
 	queries := map[string]interface{}{
-		setDefaultMetricChunkIntervalSQL:    time.Duration(c.Metrics.ChunkInterval),
-		setDefaultMetricCompressionSQL:      c.Metrics.Compression,
-		setDefaultMetricHAReleaseRefreshSQL: time.Duration(c.Metrics.HALeaseRefresh),
-		setDefaultMetricHAReleaseTimeoutSQL: time.Duration(c.Metrics.HALeaseTimeout),
-		setDefaultMetricRetentionPeriodSQL:  time.Duration(c.Metrics.RetentionPeriod),
-		setDefaultTraceRetentionPeriodSQL:   time.Duration(c.Traces.RetentionPeriod),
+		setDefaultMetricChunkIntervalSQL:   time.Duration(c.Metrics.ChunkInterval),
+		setDefaultMetricCompressionSQL:     c.Metrics.Compression,
+		setDefaultMetricRetentionPeriodSQL: time.Duration(c.Metrics.RetentionPeriod),
+		setDefaultTraceRetentionPeriodSQL:  time.Duration(c.Traces.RetentionPeriod),
+		// These need to be sent as string because the SQL does `$1::text` making
+		// PGX require a string, []byte or a TextValuer.
+		// https://github.com/jackc/pgx/blob/74f9b9f0a483f95513c621364f2c3912181ee360/pgtype/text.go#L92-L106
+		setDefaultMetricHAReleaseRefreshSQL: time.Duration(c.Metrics.HALeaseRefresh).String(),
+		setDefaultMetricHAReleaseTimeoutSQL: time.Duration(c.Metrics.HALeaseTimeout).String(),
 	}
 
 	for sql, param := range queries {

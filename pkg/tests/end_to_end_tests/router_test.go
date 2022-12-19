@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/grafana/regexp"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/timescale/promscale/pkg/api"
 	"github.com/timescale/promscale/pkg/auth"

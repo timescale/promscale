@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jaegertracing/jaeger/model"
 	jaeger_integration_tests "github.com/jaegertracing/jaeger/plugin/storage/integration"
 	"github.com/jaegertracing/jaeger/storage/spanstore"

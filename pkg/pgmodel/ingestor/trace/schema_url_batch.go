@@ -8,8 +8,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgtype"
-	pgx "github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
@@ -61,7 +61,7 @@ func (s schemaURLBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (er
 
 func (s schemaURLBatch) GetID(url string) (pgtype.Int8, error) {
 	if url == "" {
-		return pgtype.Int8{Status: pgtype.Null}, nil
+		return pgtype.Int8{Valid: false}, nil
 	}
 	id, err := s.b.GetID(schemaURL(url))
 	if err != nil {

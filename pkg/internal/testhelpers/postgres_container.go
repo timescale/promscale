@@ -15,13 +15,15 @@ import (
 	"time"
 
 	"github.com/blang/semver/v4"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 
 	"github.com/docker/go-connections/nat"
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -174,14 +176,24 @@ func MakePromUserPromAdmin(t testing.TB, dbName string) {
 func PgxPoolWithRole(t testing.TB, dbName string, role string) *pgxpool.Pool {
 	user := getRoleUser(role)
 	setupRole(t, dbName, role)
-	pool, err := pgxpool.Connect(context.Background(), PgConnectURLUser(dbName, user))
-	assert.NoError(t, err)
+	pool, err := PgxPoolWithRegisteredTypes(PgConnectURLUser(dbName, user))
+	require.NoError(t, err)
 	return pool
+}
+
+func PgxPoolWithRegisteredTypes(connectURL string) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(connectURL)
+	if err != nil {
+		return nil, err
+	}
+	config.AfterConnect = model.RegisterCustomPgTypes
+	return pgxpool.NewWithConfig(context.Background(), config)
 }
 
 // WithDB establishes a database for testing and calls the callback
 func WithDB(t testing.TB, DBName string, superuser SuperuserStatus, deferNode2Setup bool, extensionState TestOptions, f func(db *pgxpool.Pool, t testing.TB, connectString string)) {
 	db, err := DbSetup(DBName, superuser, deferNode2Setup, extensionState)
+	defer model.UnRegisterCustomPgTypes(db.Config().ConnConfig.Config)
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -199,11 +211,14 @@ func GetReadOnlyConnection(t testing.TB, DBName string) *pgxpool.Pool {
 	assert.NoError(t, err)
 
 	pgConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		_, err := conn.Exec(context.Background(), "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
-		return err
+		_, err := conn.Exec(ctx, "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
+		if err != nil {
+			return err
+		}
+		return model.RegisterCustomPgTypes(ctx, conn)
 	}
 
-	dbPool, err := pgxpool.ConnectConfig(context.Background(), pgConfig)
+	dbPool, err := pgxpool.NewWithConfig(context.Background(), pgConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,6 +267,7 @@ func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool, ext
 	if err != nil {
 		return nil, err
 	}
+	model.UnRegisterCustomPgTypes(ourDb.Config().Config)
 
 	if extensionState.UsesMultinode() {
 		// Multinode requires the administrator to set up data nodes, so in
@@ -287,7 +303,7 @@ func DbSetup(DBName string, superuser SuperuserStatus, deferNode2Setup bool, ext
 		return nil, err
 	}
 
-	dbPool, err := pgxpool.Connect(context.Background(), PgConnectURL(DBName, superuser))
+	dbPool, err := pgxpool.New(context.Background(), PgConnectURL(DBName, superuser))
 	if err != nil {
 		return nil, err
 	}
