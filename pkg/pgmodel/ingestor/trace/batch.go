@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -133,18 +133,18 @@ func (b batcher) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (err error
 func (b batcher) GetID(i batchItem) (pgtype.Int8, error) {
 	entry, ok := b.batch[i]
 	if !ok {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("error getting ID from batch")
+		return pgtype.Int8{Valid: false}, fmt.Errorf("error getting ID from batch")
 	}
 
 	id, ok := entry.(pgtype.Int8)
 	if !ok {
-		return pgtype.Int8{Status: pgtype.Null}, errors.ErrInvalidCacheEntryType
+		return pgtype.Int8{Valid: false}, errors.ErrInvalidCacheEntryType
 	}
-	if id.Status != pgtype.Present {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("ID is null")
+	if !id.Valid {
+		return id, fmt.Errorf("ID is null")
 	}
-	if id.Int == 0 {
-		return pgtype.Int8{Status: pgtype.Null}, fmt.Errorf("ID is 0")
+	if id.Int64 == 0 {
+		return pgtype.Int8{Valid: false}, fmt.Errorf("ID is 0")
 	}
 	return id, nil
 }

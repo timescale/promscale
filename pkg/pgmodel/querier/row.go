@@ -1,10 +1,9 @@
 package querier
 
 import (
-	"encoding/binary"
 	"sync"
 
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
@@ -12,137 +11,30 @@ import (
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
+// QUESTION(adn) should we cache only the underlying array like it was before?
 var fPool = sync.Pool{
 	New: func() interface{} {
-		return new(pgtype.Float8Array)
+		return new(model.ReusableArray[pgtype.Float8])
 	},
 }
 
 var tPool = sync.Pool{
 	New: func() interface{} {
-		return new(pgtype.TimestamptzArray)
+		return new(model.ReusableArray[pgtype.Timestamptz])
 	},
 }
 
-// wrapper to allow DecodeBinary to reuse the existing array so that a pool is effective
-type timestamptzArrayWrapper struct {
-	*pgtype.TimestamptzArray
-}
-
-func (dstwrapper *timestamptzArrayWrapper) DecodeBinary(ci *pgtype.ConnInfo, src []byte) error {
-	dst := dstwrapper.TimestamptzArray
-	if src == nil {
-		*dst = pgtype.TimestamptzArray{Status: pgtype.Null}
-		return nil
-	}
-
-	var arrayHeader pgtype.ArrayHeader
-	rp, err := arrayHeader.DecodeBinary(ci, src)
-	if err != nil {
-		return err
-	}
-
-	if len(arrayHeader.Dimensions) == 0 {
-		*dst = pgtype.TimestamptzArray{Dimensions: arrayHeader.Dimensions, Status: pgtype.Present}
-		return nil
-	}
-
-	elementCount := arrayHeader.Dimensions[0].Length
-	for _, d := range arrayHeader.Dimensions[1:] {
-		elementCount *= d.Length
-	}
-
-	//reuse logic
-	elements := dst.Elements
-	if cap(dst.Elements) < int(elementCount) {
-		elements = make([]pgtype.Timestamptz, elementCount)
-	} else {
-		elements = elements[:elementCount]
-	}
-
-	for i := range elements {
-		elemLen := int(int32(binary.BigEndian.Uint32(src[rp:])))
-		rp += 4
-		var elemSrc []byte
-		if elemLen >= 0 {
-			elemSrc = src[rp : rp+elemLen]
-			rp += elemLen
-		}
-		err = elements[i].DecodeBinary(ci, elemSrc)
-		if err != nil {
-			return err
-		}
-	}
-
-	*dst = pgtype.TimestamptzArray{Elements: elements, Dimensions: arrayHeader.Dimensions, Status: pgtype.Present}
-	return nil
-}
-
-// wrapper to to allow DecodeBinary to reuse existing array so that a pool is effective
-type float8ArrayWrapper struct {
-	*pgtype.Float8Array
-}
-
-func (dstwrapper *float8ArrayWrapper) DecodeBinary(ci *pgtype.ConnInfo, src []byte) error {
-	dst := dstwrapper.Float8Array
-	if src == nil {
-		*dst = pgtype.Float8Array{Status: pgtype.Null}
-		return nil
-	}
-
-	var arrayHeader pgtype.ArrayHeader
-	rp, err := arrayHeader.DecodeBinary(ci, src)
-	if err != nil {
-		return err
-	}
-
-	if len(arrayHeader.Dimensions) == 0 {
-		*dst = pgtype.Float8Array{Dimensions: arrayHeader.Dimensions, Status: pgtype.Present}
-		return nil
-	}
-
-	elementCount := arrayHeader.Dimensions[0].Length
-	for _, d := range arrayHeader.Dimensions[1:] {
-		elementCount *= d.Length
-	}
-
-	//reuse logic
-	elements := dst.Elements
-	if cap(dst.Elements) < int(elementCount) {
-		elements = make([]pgtype.Float8, elementCount)
-	} else {
-		elements = elements[:elementCount]
-	}
-
-	for i := range elements {
-		elemLen := int(int32(binary.BigEndian.Uint32(src[rp:])))
-		rp += 4
-		var elemSrc []byte
-		if elemLen >= 0 {
-			elemSrc = src[rp : rp+elemLen]
-			rp += elemLen
-		}
-		err = elements[i].DecodeBinary(ci, elemSrc)
-		if err != nil {
-			return err
-		}
-	}
-
-	*dst = pgtype.Float8Array{Elements: elements, Dimensions: arrayHeader.Dimensions, Status: pgtype.Present}
-	return nil
-}
-
 type sampleRow struct {
-	labelIds       []int64
+	labelIds       []*int64
 	times          TimestampSeries
-	values         *pgtype.Float8Array
+	values         *model.ReusableArray[pgtype.Float8]
 	err            error
 	metricOverride string
 	schema         string
 	column         string
 
 	//only used to hold ownership for releasing to pool
-	timeArrayOwnership *pgtype.TimestamptzArray
+	timeArrayOwnership *model.ReusableArray[pgtype.Timestamptz]
 }
 
 func (r *sampleRow) Close() {
@@ -170,23 +62,28 @@ func appendSampleRows(out []sampleRow, in pgxconn.PgxRows, tsSeries TimestampSer
 	}
 	for in.Next() {
 		var row sampleRow
-		values := fPool.Get().(*pgtype.Float8Array)
-		values.Elements = values.Elements[:0]
-		valuesWrapper := float8ArrayWrapper{values}
+		values := fPool.Get().(*model.ReusableArray[pgtype.Float8])
+		if values.FlatArray != nil {
+			values.FlatArray = values.FlatArray[:0]
+		}
 
+		var labelIds []*int64
 		//if a timeseries isn't provided it will be fetched from the database
 		if tsSeries == nil {
-			times := tPool.Get().(*pgtype.TimestamptzArray)
-			times.Elements = times.Elements[:0]
-			timesWrapper := timestamptzArrayWrapper{times}
-			row.err = in.Scan(&row.labelIds, &timesWrapper, &valuesWrapper)
+			times := tPool.Get().(*model.ReusableArray[pgtype.Timestamptz])
+			if times.FlatArray != nil {
+				times.FlatArray = times.FlatArray[:0]
+			}
+			row.err = in.Scan(&labelIds, times, values)
 			row.timeArrayOwnership = times
 			row.times = newRowTimestampSeries(times)
 		} else {
-			row.err = in.Scan(&row.labelIds, &valuesWrapper)
+			row.err = in.Scan(&labelIds, values)
 			row.times = tsSeries
 		}
 
+		// TODO
+		row.labelIds = labelIds
 		row.values = values
 		row.metricOverride = metric
 		row.schema = schema

@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgtype"
-
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
@@ -171,10 +171,10 @@ func (t *engineImpl) syncDynamicMetadata() error {
 func (t *engineImpl) syncWithMetadataTable(queryFormat string, m Metadata) error {
 	batch := t.conn.NewBatch()
 	for key, metadata := range m {
-		safe := pgutf8str.Text{}
-		if err := safe.Set(metadata); err != nil {
-			return fmt.Errorf("setting in pgutf8 safe string: %w", err)
-		}
+		safe := pgutf8str.Text{Text: pgtype.Text{
+			String: metadata,
+			Valid:  true,
+		}}
 		query := queryFormat
 		batch.Queue(query, key, safe, true)
 	}
@@ -310,8 +310,10 @@ func isGauge(metric prometheus.Metric) bool {
 
 // syncInfoTable stats with promscale_instance_information table.
 func (t *engineImpl) syncInfoTable(stats map[string]float64) error {
+
 	pgUUID := new(pgtype.UUID)
-	if err := pgUUID.Set(t.uuid); err != nil {
+	err := pgtype.UUIDCodec{}.PlanScan(nil, 0, pgx.BinaryFormatCode, pgUUID).Scan(t.uuid[:], pgUUID)
+	if err != nil {
 		return fmt.Errorf("setting pg-uuid: %w", err)
 	}
 	lastUpdated := time.Now()
@@ -349,7 +351,7 @@ func (t *engineImpl) syncInfoTable(stats map[string]float64) error {
 		strings.Join(indexes, ", "),
 		strings.Join(updateStatements, ", "),
 	)
-	_, err := t.conn.Exec(context.Background(), query, columnValues...)
+	_, err = t.conn.Exec(context.Background(), query, columnValues...)
 	if err != nil {
 		return fmt.Errorf("executing telemetry sync query: %w", err)
 	}

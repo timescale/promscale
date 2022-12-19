@@ -71,13 +71,7 @@ func newPgxDispatcher(conn pgxconn.PgxConn, mCache cache.MetricCache, scache cac
 		handleDecompression = skipDecompression
 	}
 
-	if err := model.RegisterCustomPgTypes(conn); err != nil {
-		return nil, fmt.Errorf("registering custom pg types: %w", err)
-	}
-
-	labelArrayOID := model.GetCustomTypeOID(model.LabelArray)
-
-	sw := NewSeriesWriter(conn, labelArrayOID, lCache)
+	sw := NewSeriesWriter(conn, lCache)
 	elf := NewExamplarLabelFormatter(conn, eCache)
 
 	for i := 0; i < numCopiers; i++ {

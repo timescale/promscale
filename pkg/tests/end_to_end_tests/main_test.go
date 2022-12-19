@@ -18,8 +18,8 @@ import (
 	constants "github.com/timescale/promscale/pkg/tests"
 
 	"github.com/docker/go-connections/nat"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
@@ -29,8 +29,6 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
-
-	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
 var (
@@ -202,7 +200,7 @@ func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAd
 				t.Fatal("Shouldn't be using beforeAddNode unless testing multinode")
 			}
 			func() {
-				pool, err := pgxpool.Connect(context.Background(), connectURL)
+				pool, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -218,8 +216,10 @@ func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAd
 			attachDataNode2(t, DBName, connectURL)
 		}
 
-		// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
-		pool, err := pgxpool.Connect(context.Background(), connectURL)
+		// need to get a new pool after the Migrate to catch any GUC changes made
+		// during Migrate and to set the afterConnect that registers the custom
+		// PG types.
+		pool, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -243,7 +243,7 @@ func performMigrate(t testing.TB, connectURL string) {
 		t.Fatal(err)
 	}
 
-	migratePool, err := pgxpool.Connect(context.Background(), connectURL)
+	migratePool, err := pgxpool.New(context.Background(), connectURL)
 	if err != nil {
 		t.Fatal(err)
 	}

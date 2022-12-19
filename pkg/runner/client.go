@@ -10,7 +10,7 @@ import (
 	"strconv"
 
 	"github.com/grafana/regexp"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/timescale/promscale/pkg/dataset"

@@ -14,13 +14,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgproto3/v2"
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/prometheus/prometheus/model/labels"
 	pgmodelErrs "github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
+	"github.com/timescale/promscale/pkg/util"
 )
 
 //nolint:all
@@ -74,7 +75,7 @@ func (m *mockPgxRows) Next() bool {
 }
 
 // Scan reads the values from the current row into dest values positionally.
-// dest can include pointers to core types, values implementing the Scanner
+// dest can include pointers to core model, values implementing the Scanner
 // interface, []byte, and nil. []byte will skip the decoding process and directly
 // copy the raw bytes received from PostgreSQL. nil will skip the value entirely.
 //
@@ -87,22 +88,22 @@ func (m *mockPgxRows) Scan(dest ...interface{}) error {
 		return fmt.Errorf("incorrect number of destinations to scan in the results")
 	}
 
-	ln, ok := dest[0].(*[]int64)
+	ln, ok := dest[0].(*[]*int64)
 	if !ok {
 		panic("label names incorrect type, expected int64")
 	}
 	*ln = m.results[m.idx].labels
-	ts, ok := dest[1].(*pgtype.TimestamptzArray)
+	ts, ok := dest[1].(*model.ReusableArray[pgtype.Timestamptz])
 	if !ok {
 		panic("sample timestamps incorrect type")
 	}
-	ts.Elements = m.results[m.idx].timestamps
+	ts.FlatArray = m.results[m.idx].timestamps
 	//TODO dims?
-	vs, ok := dest[2].(*pgtype.Float8Array)
+	vs, ok := dest[2].(*model.ReusableArray[pgtype.Float8])
 	if !ok {
 		return fmt.Errorf("sample values incorrect type")
 	}
-	vs.Elements = m.results[m.idx].values
+	vs.FlatArray = m.results[m.idx].values
 	//TODO dims?
 
 	return nil
@@ -137,7 +138,7 @@ func generateArrayHeader(numDim, containsNull, elemOID, arrayLength uint32, addD
 }
 
 type seriesSetRow struct {
-	labels     []int64
+	labels     []*int64
 	timestamps []pgtype.Timestamptz
 	values     []pgtype.Float8
 	schema     string
@@ -150,7 +151,7 @@ func TestPgxSeriesSet(t *testing.T) {
 	testCases := []struct {
 		name         string
 		input        [][]seriesSetRow
-		labels       []int64
+		labels       []*int64
 		ts           []pgtype.Timestamptz
 		vs           []pgtype.Float8
 		metricSchema string
@@ -174,9 +175,9 @@ func TestPgxSeriesSet(t *testing.T) {
 			name: "timestamp/value count mismatch",
 			input: [][]seriesSetRow{{
 				genSeries(
-					[]int64{1},
+					[]*int64{util.Pointer(int64(1))},
 					[]pgtype.Timestamptz{},
-					[]pgtype.Float8{{Float: 1.0}},
+					[]pgtype.Float8{{Float64: 1.0, Valid: true}},
 					"",
 					""),
 			}},
@@ -185,105 +186,105 @@ func TestPgxSeriesSet(t *testing.T) {
 		},
 		{
 			name:     "happy path 1",
-			labels:   []int64{1},
-			ts:       []pgtype.Timestamptz{{Time: time.Now()}},
-			vs:       []pgtype.Float8{{Float: 1}},
+			labels:   []*int64{util.Pointer(int64(1))},
+			ts:       []pgtype.Timestamptz{{Time: time.Now(), Valid: true}},
+			vs:       []pgtype.Float8{{Float64: 1, Valid: true}},
 			rowCount: 1,
 		},
 		{
 			name:   "happy path 2",
-			labels: []int64{2, 3},
+			labels: []*int64{util.Pointer(int64(2)), util.Pointer(int64(3))},
 			ts: []pgtype.Timestamptz{
-				{Time: time.Unix(0, 500000)},
-				{Time: time.Unix(0, 6000000)},
+				{Time: time.Unix(0, 500000), Valid: true},
+				{Time: time.Unix(0, 6000000), Valid: true},
 			},
 			vs: []pgtype.Float8{
-				{Float: 30000},
-				{Float: 40000},
+				{Float64: 30000, Valid: true},
+				{Float64: 40000, Valid: true},
 			},
 			rowCount: 1,
 		},
 		{
 			name:   "check nulls (ts and vs negative values are encoded as null)",
-			labels: []int64{2, 3},
+			labels: []*int64{util.Pointer(int64(2)), util.Pointer(int64(3))},
 			ts: []pgtype.Timestamptz{
-				{Status: pgtype.Null},
-				{Time: time.Unix(0, 0)},
-				{Time: time.Unix(0, 6000000)},
+				{Valid: false},
+				{Time: time.Unix(0, 0), Valid: true},
+				{Time: time.Unix(0, 6000000), Valid: true},
 			},
 			vs: []pgtype.Float8{
-				{Float: 30000},
-				{Float: 40000},
-				{Status: pgtype.Null},
+				{Float64: 30000, Valid: true},
+				{Float64: 40000, Valid: true},
+				{Valid: false},
 			},
 			rowCount: 1,
 		},
 		{
 			name:   "check all nulls",
-			labels: []int64{2, 3},
+			labels: []*int64{util.Pointer(int64(2)), util.Pointer(int64(3))},
 			ts: []pgtype.Timestamptz{
-				{Status: pgtype.Null},
-				{Time: time.Unix(0, 0)},
-				{Time: time.Unix(0, 6000000)},
+				{Valid: false},
+				{Time: time.Unix(0, 0), Valid: true},
+				{Time: time.Unix(0, 6000000), Valid: true},
 			},
 			vs: []pgtype.Float8{
-				{Float: 30000},
-				{Status: pgtype.Null},
-				{Status: pgtype.Null},
+				{Float64: 30000, Valid: true},
+				{Valid: false},
+				{Valid: false},
 			},
 			rowCount: 1,
 		},
 		{
 			name:   "check infinity",
-			labels: []int64{2, 3},
+			labels: []*int64{util.Pointer(int64(2)), util.Pointer(int64(3))},
 			ts: []pgtype.Timestamptz{
 				{InfinityModifier: pgtype.NegativeInfinity},
 				{InfinityModifier: pgtype.Infinity},
 			},
 			vs: []pgtype.Float8{
-				{Float: 30000},
-				{Float: 100},
+				{Float64: 30000, Valid: true},
+				{Float64: 100, Valid: true},
 			},
 			rowCount: 1,
 		},
 		{
 			name:   "check default metric schema",
-			labels: []int64{2, 3},
+			labels: []*int64{util.Pointer(int64(2)), util.Pointer(int64(3))},
 			ts: []pgtype.Timestamptz{
-				{Time: time.Unix(0, 500000)},
-				{Time: time.Unix(0, 6000000)},
+				{Time: time.Unix(0, 500000), Valid: true},
+				{Time: time.Unix(0, 6000000), Valid: true},
 			},
 			vs: []pgtype.Float8{
-				{Float: 30000},
-				{Float: 100},
+				{Float64: 30000, Valid: true},
+				{Float64: 100, Valid: true},
 			},
 			metricSchema: schema.PromData,
 			rowCount:     1,
 		},
 		{
 			name:   "check custom metric schema",
-			labels: []int64{2, 3},
+			labels: []*int64{util.Pointer(int64(2)), util.Pointer(int64(3))},
 			ts: []pgtype.Timestamptz{
-				{Time: time.Unix(0, 500000)},
-				{Time: time.Unix(0, 6000000)},
+				{Time: time.Unix(0, 500000), Valid: true},
+				{Time: time.Unix(0, 6000000), Valid: true},
 			},
 			vs: []pgtype.Float8{
-				{Float: 30000},
-				{Float: 100},
+				{Float64: 30000, Valid: true},
+				{Float64: 100, Valid: true},
 			},
 			metricSchema: "customSchema",
 			rowCount:     1,
 		},
 		{
 			name:   "check custom column name",
-			labels: []int64{2, 3},
+			labels: []*int64{util.Pointer(int64(2)), util.Pointer(int64(3))},
 			ts: []pgtype.Timestamptz{
-				{Time: time.Unix(0, 500000)},
-				{Time: time.Unix(0, 6000000)},
+				{Time: time.Unix(0, 500000), Valid: true},
+				{Time: time.Unix(0, 6000000), Valid: true},
 			},
 			vs: []pgtype.Float8{
-				{Float: 30000},
-				{Float: 100},
+				{Float64: 30000, Valid: true},
+				{Float64: 100, Valid: true},
 			},
 			columnName: "max",
 			rowCount:   1,
@@ -309,7 +310,7 @@ func TestPgxSeriesSet(t *testing.T) {
 				if c.columnName == "" {
 					c.columnName = defaultColumnName
 				}
-				labels := make([]int64, len(c.labels))
+				labels := make([]*int64, len(c.labels))
 				copy(labels, c.labels)
 				c.input = [][]seriesSetRow{{
 					genSeries(labels, c.ts, c.vs, c.metricSchema, c.columnName)}}
@@ -344,7 +345,7 @@ func TestPgxSeriesSet(t *testing.T) {
 
 				expectedLabels := make([]labels.Label, 0, len(c.labels))
 				for _, v := range c.labels {
-					expectedLabels = append(expectedLabels, labels.Label{Name: labelMapping[v].k, Value: labelMapping[v].v})
+					expectedLabels = append(expectedLabels, labels.Label{Name: labelMapping[*v].k, Value: labelMapping[*v].v})
 				}
 
 				if c.metricSchema != "" && c.metricSchema != schema.PromData {
@@ -369,7 +370,7 @@ func TestPgxSeriesSet(t *testing.T) {
 
 				for i, ts = range c.ts {
 					// Skipping 0/NULL values for ts and vs.
-					if ts.Status == pgtype.Null || c.vs[i].Status == pgtype.Null {
+					if !ts.Valid || !c.vs[i].Valid {
 						continue
 					}
 					if !iter.Next() {
@@ -389,8 +390,8 @@ func TestPgxSeriesSet(t *testing.T) {
 						t.Errorf("unexpected time value: got %d, wanted %d", gotTs, wanted)
 					}
 
-					if gotVs != c.vs[i].Float {
-						t.Errorf("unexpected value: got %f, wanted %f", gotVs, c.vs[i].Float)
+					if gotVs != c.vs[i].Float64 {
+						t.Errorf("unexpected value: got %f, wanted %f", gotVs, c.vs[i].Float64)
 					}
 
 					lastTs = gotTs
@@ -501,35 +502,15 @@ func genPgxRows(m [][]seriesSetRow, err error) []sampleRow {
 	return result
 }
 
-func toTimestampTzArray(times []pgtype.Timestamptz) *pgtype.TimestamptzArray {
-	return &pgtype.TimestamptzArray{
-		Elements:   times,
-		Dimensions: nil,
-		Status:     pgtype.Present,
-	}
+func toTimestampTzArray(times []pgtype.Timestamptz) *model.ReusableArray[pgtype.Timestamptz] {
+	return &model.ReusableArray[pgtype.Timestamptz]{FlatArray: times}
 }
 
-func toFloat8Array(values []pgtype.Float8) *pgtype.Float8Array {
-	return &pgtype.Float8Array{
-		Elements:   values,
-		Dimensions: nil,
-		Status:     pgtype.Present,
-	}
+func toFloat8Array(values []pgtype.Float8) *model.ReusableArray[pgtype.Float8] {
+	return &model.ReusableArray[pgtype.Float8]{FlatArray: values}
 }
 
-func genSeries(labels []int64, ts []pgtype.Timestamptz, vs []pgtype.Float8, schema, column string) seriesSetRow {
-
-	for i := range ts {
-		if ts[i].Status == pgtype.Undefined {
-			ts[i].Status = pgtype.Present
-		}
-	}
-
-	for i := range vs {
-		if vs[i].Status == pgtype.Undefined {
-			vs[i].Status = pgtype.Present
-		}
-	}
+func genSeries(labels []*int64, ts []pgtype.Timestamptz, vs []pgtype.Float8, schema, column string) seriesSetRow {
 
 	return seriesSetRow{
 		labels:     labels,

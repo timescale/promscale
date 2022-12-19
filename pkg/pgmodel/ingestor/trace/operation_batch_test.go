@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -20,7 +20,7 @@ func TestOperationBatch(t *testing.T) {
 	cache := newOperationCache()
 	incache := operation{"", "incache", ""}
 	invalid := operation{"", "invalid", ""}
-	cache.Insert(incache, pgtype.Int8{Int: 1337, Status: pgtype.Present}, incache.SizeInCache())
+	cache.Insert(incache, pgtype.Int8{Int64: 1337, Valid: true}, incache.SizeInCache())
 	cache.Insert(invalid, "foo", 0)
 
 	testCases := []struct {
@@ -79,19 +79,19 @@ func TestOperationBatch(t *testing.T) {
 			getIDCheck: func(t *testing.T, batch operationBatch) {
 				id, err := batch.GetID("first", "test", "")
 				require.Nil(t, err)
-				require.Equal(t, pgtype.Int8{Int: 5, Status: pgtype.Present}, id)
+				require.Equal(t, pgtype.Int8{Int64: 5, Valid: true}, id)
 
 				id, err = batch.GetID("", "nonexistant", "")
 				require.EqualError(t, err, "error getting ID for operation { nonexistant }: error getting ID from batch")
-				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
+				require.Equal(t, pgtype.Int8{Valid: false}, id)
 
 				id, err = batch.GetID("", "zero", "")
 				require.EqualError(t, err, "error getting ID for operation { zero }: ID is 0")
-				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
+				require.Equal(t, pgtype.Int8{Valid: false}, id)
 
 				id, err = batch.GetID("", "null", "")
 				require.EqualError(t, err, "error getting ID for operation { null }: ID is null")
-				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
+				require.Equal(t, pgtype.Int8{Valid: false}, id)
 			},
 		},
 		{
@@ -101,7 +101,7 @@ func TestOperationBatch(t *testing.T) {
 			getIDCheck: func(t *testing.T, batch operationBatch) {
 				id, err := batch.GetID("", "incache", "")
 				require.Nil(t, err)
-				require.Equal(t, pgtype.Int8{Int: 1337, Status: pgtype.Present}, id)
+				require.Equal(t, pgtype.Int8{Int64: 1337, Valid: true}, id)
 			},
 		},
 		{

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/timescale/promscale/pkg/log"
 	"gopkg.in/yaml.v2"
 )
@@ -72,12 +72,12 @@ func (c *Config) Apply(conn *pgx.Conn) error {
 	log.Info("msg", fmt.Sprintf("Setting trace dataset default retention period to %s", c.Traces.RetentionPeriod))
 
 	queries := map[string]interface{}{
-		setDefaultMetricChunkIntervalSQL:    time.Duration(c.Metrics.ChunkInterval),
+		setDefaultMetricChunkIntervalSQL:    time.Duration(c.Metrics.ChunkInterval).String(),
 		setDefaultMetricCompressionSQL:      c.Metrics.Compression,
-		setDefaultMetricHAReleaseRefreshSQL: time.Duration(c.Metrics.HALeaseRefresh),
-		setDefaultMetricHAReleaseTimeoutSQL: time.Duration(c.Metrics.HALeaseTimeout),
-		setDefaultMetricRetentionPeriodSQL:  time.Duration(c.Metrics.RetentionPeriod),
-		setDefaultTraceRetentionPeriodSQL:   time.Duration(c.Traces.RetentionPeriod),
+		setDefaultMetricHAReleaseRefreshSQL: time.Duration(c.Metrics.HALeaseRefresh).String(),
+		setDefaultMetricHAReleaseTimeoutSQL: time.Duration(c.Metrics.HALeaseTimeout).String(),
+		setDefaultMetricRetentionPeriodSQL:  time.Duration(c.Metrics.RetentionPeriod).String(),
+		setDefaultTraceRetentionPeriodSQL:   time.Duration(c.Traces.RetentionPeriod).String(),
 	}
 
 	for sql, param := range queries {

@@ -8,31 +8,27 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pkg/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
 
 const getServicesSQL = `
 SELECT
- 	array_agg(value#>>'{}' ORDER BY value)
+  array_agg(value#>>'{}' ORDER BY value)
 FROM
 	_ps_trace.tag
 WHERE
          key='service.name' and value IS NOT NULL`
 
 func getServices(ctx context.Context, conn pgxconn.PgxConn) ([]string, error) {
-	var pgServices pgtype.TextArray
+	var pgServices pgtype.FlatArray[pgtype.Text]
 	if err := conn.QueryRow(ctx, getServicesSQL).Scan(&pgServices); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return []string{}, nil
 		}
 		return nil, fmt.Errorf("fetching services: %w", err)
 	}
-	s, err := textArraytoStringArr(pgServices)
-	if err != nil {
-		return nil, fmt.Errorf("services: converting text-array-to-string-arr: %w", err)
-	}
-	return s, nil
+	return textArraytoStringArr(pgServices)
 }

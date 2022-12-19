@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -14,7 +14,7 @@ import (
 func TestSchemaURLBatch(t *testing.T) {
 	cache := newSchemaCache()
 	incache := schemaURL("incache")
-	cache.Insert(incache, pgtype.Int8{Int: 1337, Status: pgtype.Present}, incache.SizeInCache())
+	cache.Insert(incache, pgtype.Int8{Int64: 1337, Valid: true}, incache.SizeInCache())
 	cache.Insert(batchItem(schemaURL("invalid")), "foo", 0)
 
 	testCases := []struct {
@@ -55,23 +55,23 @@ func TestSchemaURLBatch(t *testing.T) {
 			getIDCheck: func(t *testing.T, batch schemaURLBatch) {
 				id, err := batch.GetID("test")
 				require.Nil(t, err)
-				require.Equal(t, pgtype.Int8{Int: 6, Status: pgtype.Present}, id)
+				require.Equal(t, pgtype.Int8{Int64: 6, Valid: true}, id)
 
 				id, err = batch.GetID("")
 				require.Nil(t, err)
-				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
+				require.Equal(t, pgtype.Int8{}, id)
 
 				id, err = batch.GetID("nonexistant")
 				require.EqualError(t, err, "error getting ID for schema url nonexistant: error getting ID from batch")
-				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
+				require.Equal(t, pgtype.Int8{}, id)
 
 				id, err = batch.GetID("zero")
 				require.EqualError(t, err, "error getting ID for schema url zero: ID is 0")
-				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
+				require.Equal(t, pgtype.Int8{}, id)
 
 				id, err = batch.GetID("null")
 				require.EqualError(t, err, "error getting ID for schema url null: ID is null")
-				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
+				require.Equal(t, pgtype.Int8{}, id)
 			},
 		},
 		{
@@ -81,7 +81,7 @@ func TestSchemaURLBatch(t *testing.T) {
 			getIDCheck: func(t *testing.T, batch schemaURLBatch) {
 				id, err := batch.GetID("incache")
 				require.Nil(t, err)
-				require.Equal(t, pgtype.Int8{Int: 1337, Status: pgtype.Present}, id)
+				require.Equal(t, pgtype.Int8{Int64: 1337, Valid: true}, id)
 			},
 		},
 		{

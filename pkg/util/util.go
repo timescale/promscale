@@ -97,3 +97,9 @@ func IsTimescaleDBInstalled(conn pgxconn.PgxConn) bool {
 	}
 	return installed
 }
+
+// Pointer returns a pointer to the given variabel. Useful in tests for
+// primitive value pointer arguments.
+func Pointer[T any](x T) *T {
+	return &x
+}

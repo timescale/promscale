@@ -6,6 +6,8 @@ package model
 
 import (
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -14,13 +16,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgproto3/v2"
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model/pgutf8str"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -77,17 +79,17 @@ func (r *SqlRecorder) Exec(ctx context.Context, sql string, arguments ...interfa
 	results, err := r.checkQuery(sql, arguments...)
 
 	if len(results) == 0 {
-		return nil, err
+		return pgconn.NewCommandTag(""), err
 	}
 	if len(results) != 1 {
 		r.t.Errorf("mock exec: too many return rows %v\n in Exec\n %v\n args %v",
 			results, sql, arguments)
-		return nil, err
+		return pgconn.NewCommandTag(""), err
 	}
 	if len(results[0]) != 1 {
 		r.t.Errorf("mock exec: too many return values %v\n in Exec\n %v\n args %v",
 			results, sql, arguments)
-		return nil, err
+		return pgconn.NewCommandTag(""), err
 	}
 
 	return results[0][0].(pgconn.CommandTag), err
@@ -153,14 +155,19 @@ func (r *SqlRecorder) checkQuery(sql string, args ...interface{}) (RowResults, e
 	}
 
 	assert.Equal(r.t, len(row.Args), len(args), "Args of different lengths @ %d %s", idx, sql)
+
 	for i := range row.Args {
 		switch row.Args[i].(type) {
-		case pgtype.TextEncoder:
-			ci := pgtype.NewConnInfo()
-			got, err := args[i].(pgtype.TextEncoder).EncodeText(ci, nil)
-			assert.NoError(r.t, err)
-			expected, err := row.Args[i].(pgtype.TextEncoder).EncodeText(ci, nil)
-			assert.NoError(r.t, err)
+		case driver.Valuer, pgtype.ArraySetter:
+			typeMap := pgtype.NewMap()
+			t, ok := typeMap.TypeForValue(row.Args[i])
+			require.True(r.t, ok)
+			plan := t.Codec.PlanEncode(typeMap, t.OID, pgtype.TextFormatCode, row.Args[i])
+
+			got, err := plan.Encode(args[i], nil)
+			require.NoError(r.t, err)
+			expected, err := plan.Encode(row.Args[i], nil)
+			require.NoError(r.t, err)
 			assert.Equal(r.t, string(expected), string(got), "sql args aren't equal for query # %v: %v", idx, sql)
 		default:
 			if !row.ArgsUnordered {
@@ -217,11 +224,12 @@ type MockBatch struct {
 	items []batchItem
 }
 
-func (b *MockBatch) Queue(query string, arguments ...interface{}) {
+func (b *MockBatch) Queue(query string, arguments ...any) *pgx.QueuedQuery {
 	b.items = append(b.items, batchItem{
 		query:     query,
 		arguments: arguments,
 	})
+	return nil
 }
 
 func (b *MockBatch) Len() int {
@@ -234,11 +242,6 @@ type MockBatchResult struct {
 	t       *testing.T
 }
 
-// QueryFunc reads the results from the next query in the batch as if the query has been sent with Conn.QueryFunc.
-func (m *MockBatchResult) QueryFunc(scans []interface{}, f func(pgx.QueryFuncRow) error) (pgconn.CommandTag, error) {
-	panic("not implemented")
-}
-
 // Exec reads the results from the next query in the batch as if the query has been sent with Conn.Exec.
 func (m *MockBatchResult) Exec() (pgconn.CommandTag, error) {
 	defer func() { m.idx++ }()
@@ -246,15 +249,15 @@ func (m *MockBatchResult) Exec() (pgconn.CommandTag, error) {
 	q := m.queries[m.idx]
 
 	if len(q.Results) == 0 {
-		return nil, q.Err
+		return pgconn.NewCommandTag(""), q.Err
 	}
 	if len(q.Results) != 1 {
 		m.t.Errorf("mock exec: too many return rows %v\n in batch Exec\n %+v", q.Results, q)
-		return nil, q.Err
+		return pgconn.NewCommandTag(""), q.Err
 	}
 	if len(q.Results[0]) != 1 {
 		m.t.Errorf("mock exec: too many return values %v\n in batch Exec\n %+v", q.Results, q)
-		return nil, q.Err
+		return pgconn.NewCommandTag(""), q.Err
 	}
 
 	return q.Results[0][0].(pgconn.CommandTag), q.Err
@@ -294,6 +297,12 @@ type MockRows struct {
 func (m *MockRows) Close() {
 }
 
+// Conn returns the underlying *Conn on which the query was executed. This may return nil if Rows did not come from a
+// *Conn (e.g. if it was created by RowsFromResultReader)
+func (m *MockRows) Conn() *pgx.Conn {
+	return nil
+}
+
 // Err returns any error that occurred while reading.
 func (m *MockRows) Err() error {
 	return m.err
@@ -304,7 +313,7 @@ func (m *MockRows) CommandTag() pgconn.CommandTag {
 	panic("not implemented")
 }
 
-func (m *MockRows) FieldDescriptions() []pgproto3.FieldDescription {
+func (m *MockRows) FieldDescriptions() []pgconn.FieldDescription {
 	panic("not implemented")
 }
 
@@ -337,16 +346,25 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			len(dest),
 		)
 	}
-
 	for i := range dest {
 		switch s := m.results[m.idx][i].(type) {
 		case []time.Time:
 			if d, ok := dest[i].(*[]time.Time); ok {
 				*d = s
-			} else if d, ok := dest[i].(pgtype.Value); ok {
-				err := d.Set(s)
+			} else if d, ok := dest[i].(pgtype.ArraySetter); ok {
+				err := d.SetDimensions([]pgtype.ArrayDimension{{Length: int32(len(s))}})
 				if err != nil {
 					return err
+				}
+				for i, r := range s {
+					v, ok := d.ScanIndex(i).(*pgtype.Timestamptz)
+					if !ok {
+						return fmt.Errorf("expected array of timestamptz as target")
+					}
+					*v = pgtype.Timestamptz{
+						Time:  r,
+						Valid: true,
+					}
 				}
 			} else {
 				return fmt.Errorf("wrong value type []time.Time")
@@ -354,10 +372,20 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 		case []float64:
 			if d, ok := dest[i].(*[]float64); ok {
 				*d = s
-			} else if d, ok := dest[i].(pgtype.Value); ok {
-				err := d.Set(s)
+			} else if d, ok := dest[i].(pgtype.ArraySetter); ok {
+				err := d.SetDimensions([]pgtype.ArrayDimension{{Length: int32(len(s))}})
 				if err != nil {
 					return err
+				}
+				for i, r := range s {
+					v, ok := d.ScanIndex(i).(*pgtype.Float8)
+					if !ok {
+						return fmt.Errorf("expected array of float8 as target")
+					}
+					*v = pgtype.Float8{
+						Float64: r,
+						Valid:   true,
+					}
 				}
 			} else {
 				return fmt.Errorf("wrong value type []float64")
@@ -374,6 +402,12 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 				continue
 			}
 			return fmt.Errorf("wrong value type []int64")
+		case []*int64:
+			if d, ok := dest[i].(*[]*int64); ok {
+				*d = s
+				continue
+			}
+			return fmt.Errorf("wrong value type []*int64")
 		case []int32:
 			if d, ok := dest[i].(*[]int32); ok {
 				*d = s
@@ -391,6 +425,8 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 				*d = s
 				continue
 			}
+			// TODO review this explanation
+			//
 			// Ideally, we should be doing pgtype.BinaryDecoder. but doing that here will allow using only
 			// a single function that the interface pgtype.BinaryDecoder allows, i.e, DecodeBinary(). DecodeBinary() takes
 			// a pgtype.ConnInfo and []byte, which is the main problem. The ConnInfo can be nil, but []byte needs to be set
@@ -399,11 +435,14 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			// existing test setup to have the [][]byte (particularly the expected results part), which is lengthy.
 			// Plus, not all types convert to [][]byte. types like int will require binary.Little.Endian conversion
 			// which can be a overdo for just writing the results of the tests. So, we do a short-cut to directly
-			// leverage the .Set() of our custom type and quick the process.
-			if d, ok := dest[i].(*pgutf8str.TextArray); ok {
-				pgta := pgutf8str.TextArray{}
-				if err := pgta.Set(s); err != nil {
-					panic(err)
+			if d, ok := dest[i].(*pgtype.FlatArray[pgutf8str.Text]); ok {
+				pgta := make(pgtype.FlatArray[pgutf8str.Text], 0, len(s))
+				for _, v := range s {
+					t := pgutf8str.Text{}
+					if err := t.Scan(v); err != nil {
+						panic(err)
+					}
+					pgta = append(pgta, t)
 				}
 				*d = pgta
 				continue
@@ -463,8 +502,8 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			dvp := reflect.Indirect(dv)
 			dvp.SetUint(m.results[m.idx][i].(uint64))
 		case int64:
-			if d, ok := dest[i].(pgtype.Value); ok {
-				if err := d.Set(m.results[m.idx][i]); err != nil {
+			if d, ok := dest[i].(*pgtype.Int8); ok {
+				if err := d.Scan(m.results[m.idx][i]); err != nil {
 					return err
 				}
 				continue
@@ -479,8 +518,8 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 			dvp := reflect.Indirect(dv)
 			dvp.SetInt(m.results[m.idx][i].(int64))
 		case string:
-			if d, ok := dest[i].(pgtype.Value); ok {
-				if err := d.Set(m.results[m.idx][i]); err != nil {
+			if d, ok := dest[i].(sql.Scanner); ok {
+				if err := d.Scan(m.results[m.idx][i]); err != nil {
 					return err
 				}
 				continue
@@ -491,18 +530,24 @@ func (m *MockRows) Scan(dest ...interface{}) error {
 				dvp.SetString(m.results[m.idx][i].(string))
 				continue
 			}
-			if d, ok := dest[i].(*pgutf8str.Text); ok {
-				pgt := pgutf8str.Text{}
-				if err := pgt.Set(s); err != nil {
-					panic(err)
+
+			if d, ok := dest[i].(*pgtype.FlatArray[pgutf8str.Text]); ok {
+				// TODO try to use scan on the array
+				pgt := make(pgtype.FlatArray[pgutf8str.Text], 0, len(s))
+				for _, v := range s {
+					t := pgutf8str.Text{}
+					if err := t.Scan(v); err != nil {
+						panic(err)
+					}
+					pgt = append(pgt, t)
 				}
 				*d = pgt
 				continue
 			}
 			return fmt.Errorf("wrong value type: neither 'string' or 'pgutf8str'")
 		case nil:
-			if d, ok := dest[i].(pgtype.Value); ok {
-				if err := d.Set(m.results[m.idx][i]); err != nil {
+			if d, ok := dest[i].(sql.Scanner); ok {
+				if err := d.Scan(m.results[m.idx][i]); err != nil {
 					return err
 				}
 				continue
@@ -675,9 +720,6 @@ func (t *MockTx) QueryRow(ctx context.Context, sql string, args ...interface{}) 
 	return &MockRows{results: rows, err: err}
 }
 
-func (t *MockTx) QueryFunc(ctx context.Context, sql string, args []interface{}, scans []interface{}, f func(pgx.QueryFuncRow) error) (pgconn.CommandTag, error) {
-	return pgconn.CommandTag{}, nil
-}
 func (t *MockTx) Conn() *pgx.Conn {
 	return nil
 }

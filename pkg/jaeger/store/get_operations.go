@@ -6,9 +6,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -34,7 +35,7 @@ WHERE
 
 func getOperations(ctx context.Context, conn pgxconn.PgxConn, query spanstore.OperationQueryParameters) ([]spanstore.Operation, error) {
 	var (
-		pgOperationNames, pgSpanKinds pgtype.TextArray
+		pgOperationNames, pgSpanKinds pgtype.FlatArray[pgtype.Text]
 		operationsResp                []spanstore.Operation
 	)
 
@@ -59,6 +60,7 @@ func getOperations(ctx context.Context, conn pgxconn.PgxConn, query spanstore.Op
 	if err != nil {
 		return operationsResp, fmt.Errorf("operation names: text-array-to-string-array: %w", err)
 	}
+
 	spanKinds, err := textArraytoStringArr(pgSpanKinds)
 	if err != nil {
 		return operationsResp, fmt.Errorf("span kinds: text-array-to-string-array: %w", err)
@@ -76,10 +78,13 @@ func getOperations(ctx context.Context, conn pgxconn.PgxConn, query spanstore.Op
 	return operationsResp, nil
 }
 
-func textArraytoStringArr(s pgtype.TextArray) ([]string, error) {
-	var d []string
-	if err := s.AssignTo(&d); err != nil {
-		return []string{}, fmt.Errorf("assign to: %w", err)
+func textArraytoStringArr(s pgtype.FlatArray[pgtype.Text]) ([]string, error) {
+	d := make([]string, len(s))
+	for i, v := range s {
+		if !v.Valid {
+			return nil, errors.New("can't assign NULL to string")
+		}
+		d[i] = v.String
 	}
 	return d, nil
 }

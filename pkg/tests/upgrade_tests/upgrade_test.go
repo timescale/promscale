@@ -24,9 +24,9 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
@@ -181,7 +181,7 @@ func TestUpgradeFromEarliestNoData(t *testing.T) {
 }
 
 func turnOffCompressionOnMetric(t *testing.T) {
-	db, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser))
+	db, err := pgxpool.New(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool, prevVersionStr string, extensi
 				func() {
 					connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
 
-					db, err := pgxpool.Connect(context.Background(), connectURL)
+					db, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -235,7 +235,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool, prevVersionStr string, extensi
 			}
 
 			connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
-			db, err := pgxpool.Connect(context.Background(), connectURL)
+			db, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -265,7 +265,7 @@ func getPristineDbInfo(t *testing.T, noData bool, extensionState testhelpers.Tes
 			if !noData {
 				func() {
 					connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
-					db, err := pgxpool.Connect(context.Background(), connectURL)
+					db, err := pgxpool.New(context.Background(), connectURL)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -507,7 +507,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 			testhelpers.MakePromUserPromAdmin(t, DBName)
 
 			// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
-			db, err := pgxpool.Connect(context.Background(), connectURL)
+			db, err := pgxpool.New(context.Background(), connectURL)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -526,7 +526,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 	}
 	defer func() { _ = closer.Close() }()
 	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
-	db, err := pgxpool.Connect(context.Background(), connectURL)
+	db, err := pgxpool.New(context.Background(), connectURL)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
@@ -13,9 +13,9 @@ import (
 
 func TestInstrumentationLibraryBatch(t *testing.T) {
 	cache := newInstrumentationLibraryCache()
-	incache := instrumentationLibrary{"incache", "", pgtype.Int8{Int: 99, Status: pgtype.Present}}
-	invalid := instrumentationLibrary{"invalid", "", pgtype.Int8{Int: 10, Status: pgtype.Present}}
-	cache.Insert(incache, pgtype.Int8{Int: 1337, Status: pgtype.Present}, incache.SizeInCache())
+	incache := instrumentationLibrary{"incache", "", pgtype.Int8{Int64: 99, Valid: true}}
+	invalid := instrumentationLibrary{"invalid", "", pgtype.Int8{Int64: 10, Valid: true}}
+	cache.Insert(incache, pgtype.Int8{Int64: 1337, Valid: true}, incache.SizeInCache())
 	cache.Insert(invalid, "foo", 0)
 
 	testCases := []struct {
@@ -30,101 +30,101 @@ func TestInstrumentationLibraryBatch(t *testing.T) {
 		{
 			name: "happy path",
 			instLibs: []instrumentationLibrary{
-				{"", "ignored empty name lib", pgtype.Int8{Int: 1, Status: pgtype.Present}},
-				{"test", "first", pgtype.Int8{Int: 2, Status: pgtype.Present}},
-				{"test", "first", pgtype.Int8{Int: 1, Status: pgtype.Present}},
-				{"test", "first", pgtype.Int8{Int: 1, Status: pgtype.Null}},
-				{"anotherTest", "second", pgtype.Int8{Int: 1, Status: pgtype.Present}},
-				{"anotherTest", "first", pgtype.Int8{Int: 1, Status: pgtype.Null}},
-				{"null", "", pgtype.Int8{Int: 1, Status: pgtype.Present}},
-				{"zero", "", pgtype.Int8{Int: 1, Status: pgtype.Present}},
-				{"incache", "", pgtype.Int8{Int: 99, Status: pgtype.Present}},
+				{"", "ignored empty name lib", pgtype.Int8{Int64: 1, Valid: true}},
+				{"test", "first", pgtype.Int8{Int64: 2, Valid: true}},
+				{"test", "first", pgtype.Int8{Int64: 1, Valid: true}},
+				{"test", "first", pgtype.Int8{Int64: 1, Valid: false}},
+				{"anotherTest", "second", pgtype.Int8{Int64: 1, Valid: true}},
+				{"anotherTest", "first", pgtype.Int8{Int64: 1, Valid: false}},
+				{"null", "", pgtype.Int8{Int64: 1, Valid: true}},
+				{"zero", "", pgtype.Int8{Int64: 1, Valid: true}},
+				{"incache", "", pgtype.Int8{Int64: 99, Valid: true}},
 			},
 			expectedBatchQueue: 8,
 			queries: []model.SqlQuery{
 				{
 					Sql:     insertInstrumentationLibSQL,
-					Args:    []interface{}{"anotherTest", "first", pgtype.Int8{Int: 1, Status: pgtype.Null}},
+					Args:    []interface{}{"anotherTest", "first", pgtype.Int8{Int64: 1, Valid: false}},
 					Results: [][]interface{}{{int64(7)}},
 				},
 				{
 					Sql:     insertInstrumentationLibSQL,
-					Args:    []interface{}{"anotherTest", "second", pgtype.Int8{Int: 1, Status: pgtype.Present}},
+					Args:    []interface{}{"anotherTest", "second", pgtype.Int8{Int64: 1, Valid: true}},
 					Results: [][]interface{}{{int64(8)}},
 				},
 				{
 					Sql:     insertInstrumentationLibSQL,
-					Args:    []interface{}{"null", "", pgtype.Int8{Int: 1, Status: pgtype.Present}},
+					Args:    []interface{}{"null", "", pgtype.Int8{Int64: 1, Valid: true}},
 					Results: [][]interface{}{{nil}},
 				},
 				{
 					Sql:     insertInstrumentationLibSQL,
-					Args:    []interface{}{"test", "first", pgtype.Int8{Int: 1, Status: pgtype.Null}},
+					Args:    []interface{}{"test", "first", pgtype.Int8{Int64: 1, Valid: false}},
 					Results: [][]interface{}{{int64(5)}},
 				},
 				{
 					Sql:     insertInstrumentationLibSQL,
-					Args:    []interface{}{"test", "first", pgtype.Int8{Int: 1, Status: pgtype.Present}},
+					Args:    []interface{}{"test", "first", pgtype.Int8{Int64: 1, Valid: true}},
 					Results: [][]interface{}{{int64(6)}},
 				},
 				{
 					Sql:     insertInstrumentationLibSQL,
-					Args:    []interface{}{"test", "first", pgtype.Int8{Int: 2, Status: pgtype.Present}},
+					Args:    []interface{}{"test", "first", pgtype.Int8{Int64: 2, Valid: true}},
 					Results: [][]interface{}{{int64(6)}},
 				},
 				{
 					Sql:     insertInstrumentationLibSQL,
-					Args:    []interface{}{"zero", "", pgtype.Int8{Int: 1, Status: pgtype.Present}},
+					Args:    []interface{}{"zero", "", pgtype.Int8{Int64: 1, Valid: true}},
 					Results: [][]interface{}{{int64(0)}},
 				},
 			},
 			getIDCheck: func(t *testing.T, batch instrumentationLibraryBatch) {
-				id, err := batch.GetID("test", "first", pgtype.Int8{Int: 1, Status: pgtype.Present})
+				id, err := batch.GetID("test", "first", pgtype.Int8{Int64: 1, Valid: true})
 				require.Nil(t, err)
-				require.Equal(t, pgtype.Int8{Int: 6, Status: pgtype.Present}, id)
+				require.Equal(t, pgtype.Int8{Int64: 6, Valid: true}, id)
 
 				id, err = batch.GetID("", "missing name", pgtype.Int8{})
 				require.NoError(t, err)
-				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
+				require.Equal(t, pgtype.Int8{Valid: false}, id)
 
 				id, err = batch.GetID("nonexistant", "", pgtype.Int8{})
-				require.EqualError(t, err, "error getting ID for instrumentation library {nonexistant  {0 0}}: error getting ID from batch")
-				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
+				require.EqualError(t, err, "error getting ID for instrumentation library {nonexistant  {0 false}}: error getting ID from batch")
+				require.Equal(t, pgtype.Int8{Valid: false}, id)
 
-				id, err = batch.GetID("zero", "", pgtype.Int8{Int: 1, Status: pgtype.Present})
-				require.EqualError(t, err, "error getting ID for instrumentation library {zero  {1 2}}: ID is 0")
-				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
+				id, err = batch.GetID("zero", "", pgtype.Int8{Int64: 1, Valid: true})
+				require.EqualError(t, err, "error getting ID for instrumentation library {zero  {1 true}}: ID is 0")
+				require.Equal(t, pgtype.Int8{Valid: false}, id)
 
-				id, err = batch.GetID("null", "", pgtype.Int8{Int: 1, Status: pgtype.Present})
-				require.EqualError(t, err, "error getting ID for instrumentation library {null  {1 2}}: ID is null")
-				require.Equal(t, pgtype.Int8{Status: pgtype.Null}, id)
+				id, err = batch.GetID("null", "", pgtype.Int8{Int64: 1, Valid: true})
+				require.EqualError(t, err, "error getting ID for instrumentation library {null  {1 true}}: ID is null")
+				require.Equal(t, pgtype.Int8{Valid: false}, id)
 			},
 		},
 		{
 			name:               "all urls in cache",
-			instLibs:           []instrumentationLibrary{{"incache", "", pgtype.Int8{Int: 99, Status: pgtype.Present}}},
+			instLibs:           []instrumentationLibrary{{"incache", "", pgtype.Int8{Int64: 99, Valid: true}}},
 			expectedBatchQueue: 1,
 			getIDCheck: func(t *testing.T, batch instrumentationLibraryBatch) {
-				id, err := batch.GetID("incache", "", pgtype.Int8{Int: 99, Status: pgtype.Present})
+				id, err := batch.GetID("incache", "", pgtype.Int8{Int64: 99, Valid: true})
 				require.Nil(t, err)
-				require.Equal(t, pgtype.Int8{Int: 1337, Status: pgtype.Present}, id)
+				require.Equal(t, pgtype.Int8{Int64: 1337, Valid: true}, id)
 			},
 		},
 		{
 			name:               "send batch error",
-			instLibs:           []instrumentationLibrary{{"non-cached url", "", pgtype.Int8{Int: 0, Status: pgtype.Null}}},
+			instLibs:           []instrumentationLibrary{{"non-cached url", "", pgtype.Int8{Int64: 0, Valid: false}}},
 			expectedBatchQueue: 1,
 			sendBatchError:     fmt.Errorf("some error"),
 			expectedError:      "some error",
 		},
 		{
 			name:               "scan error",
-			instLibs:           []instrumentationLibrary{{"non-cached", "", pgtype.Int8{Int: 0, Status: pgtype.Null}}},
+			instLibs:           []instrumentationLibrary{{"non-cached", "", pgtype.Int8{Int64: 0, Valid: false}}},
 			expectedBatchQueue: 1,
 			queries: []model.SqlQuery{
 				{
 					Sql:     insertInstrumentationLibSQL,
-					Args:    []interface{}{"non-cached", "", pgtype.Int8{Int: 0, Status: pgtype.Null}},
+					Args:    []interface{}{"non-cached", "", pgtype.Int8{Int64: 0, Valid: false}},
 					Results: [][]interface{}{{"wrong type"}},
 				},
 			},
@@ -132,7 +132,7 @@ func TestInstrumentationLibraryBatch(t *testing.T) {
 		},
 		{
 			name:               "cache error",
-			instLibs:           []instrumentationLibrary{{"invalid", "", pgtype.Int8{Int: 10, Status: pgtype.Present}}},
+			instLibs:           []instrumentationLibrary{{"invalid", "", pgtype.Int8{Int64: 10, Valid: true}}},
 			expectedBatchQueue: 1,
 			getIDCheck: func(t *testing.T, batch instrumentationLibraryBatch) {
 				_, err := batch.GetID(invalid.name, invalid.version, invalid.schemaURLID)

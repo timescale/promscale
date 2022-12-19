@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
@@ -20,6 +20,7 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel/health"
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/pgmodel/querier"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -87,7 +88,7 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 	if err != nil {
 		return nil, fmt.Errorf("get maint pg-config: %w", err)
 	}
-	maintPool, err = pgxpool.ConnectConfig(context.Background(), maintPgConfig)
+	maintPool, err = pgxpool.NewWithConfig(context.Background(), maintPgConfig)
 	if err != nil {
 		return nil, fmt.Errorf("err creating maintenance connection pool: %w", err)
 	}
@@ -107,8 +108,8 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 		if err != nil {
 			return nil, fmt.Errorf("get writer pg-config: %w", err)
 		}
-		SetWriterPoolAfterConnect(writerPgConfig, schemaLocker, cfg.WriterSynchronousCommit)
-		writerPool, err = pgxpool.ConnectConfig(context.Background(), writerPgConfig)
+		writerPgConfig.AfterConnect = WriterPoolAfterConnect(schemaLocker, cfg.WriterSynchronousCommit)
+		writerPool, err = pgxpool.NewWithConfig(context.Background(), writerPgConfig)
 		if err != nil {
 			return nil, fmt.Errorf("err creating writer connection pool: %w", err)
 		}
@@ -132,8 +133,8 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 		"num-copiers", numCopiers,
 		"statement-cache", statementCacheLog)
 
-	readerPgConfig.AfterConnect = schemaLocker
-	readerPool, err := pgxpool.ConnectConfig(context.Background(), readerPgConfig)
+	readerPgConfig.AfterConnect = ReaderPoolAfterConnect(schemaLocker)
+	readerPool, err := pgxpool.NewWithConfig(context.Background(), readerPgConfig)
 	if err != nil {
 		return nil, fmt.Errorf("err creating reader connection pool: %w", err)
 	}
@@ -145,19 +146,35 @@ func NewClient(r prometheus.Registerer, cfg *Config, mt tenancy.Authorizer, sche
 	return client, err
 }
 
-func SetWriterPoolAfterConnect(writerPgConfig *pgxpool.Config, schemaLocker LockFunc, synchronousCommit bool) {
-	if !synchronousCommit {
-		// if synchronous_commit should be disabled, we use the AfterConnect hook so that we can set it to 'off'
-		// for the session before the connection is added to the pool for use
-		writerPgConfig.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+func ReaderPoolAfterConnect(schemaLocker LockFunc) func(context.Context, *pgx.Conn) error {
+	return func(ctx context.Context, c *pgx.Conn) error {
+		if schemaLocker != nil {
+			err := schemaLocker(ctx, c)
+			if err != nil {
+				return err
+			}
+		}
+		return model.RegisterCustomPgTypes(ctx, c)
+	}
+}
+
+func WriterPoolAfterConnect(schemaLocker LockFunc, synchronousCommit bool) func(context.Context, *pgx.Conn) error {
+	return func(ctx context.Context, conn *pgx.Conn) error {
+		if !synchronousCommit {
 			_, err := conn.Exec(ctx, "SET SESSION synchronous_commit to 'off'")
 			if err != nil {
 				return err
 			}
-			return schemaLocker(ctx, conn)
 		}
-	} else {
-		writerPgConfig.AfterConnect = schemaLocker
+
+		if schemaLocker != nil {
+			err := schemaLocker(ctx, conn)
+			if err != nil {
+				return err
+			}
+		}
+
+		return model.RegisterCustomPgTypes(ctx, conn)
 	}
 }
 
@@ -175,7 +192,8 @@ func (cfg *Config) getPgConfig(poolSize int) (*pgxpool.Config, error) {
 	pgConfig.MinConns = int32(min)
 
 	if !cfg.EnableStatementsCache {
-		pgConfig.ConnConfig.PreferSimpleProtocol = true
+		// TODO use QueryExecModeExec
+		pgConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	}
 	return pgConfig, nil
 }
