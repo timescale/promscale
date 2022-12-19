@@ -36,22 +36,22 @@ var (
 
 // Config represents a dataset config.
 type Config struct {
-	Metrics
-	Traces
+	Metrics Metrics
+	Traces  Traces
 }
 
 // Metrics contains dataset configuration options for metrics data.
 type Metrics struct {
-	ChunkInterval   DayDuration `mapstructure:"default_chunk_interval" yaml:"default_chunk_interval"`
-	Compression     *bool       `mapstructure:"compress_data" yaml:"compress_data"` // Using pointer to check if the the value was set.
-	HALeaseRefresh  DayDuration `mapstructure:"ha_lease_refresh" yaml:"ha_lease_refresh"`
-	HALeaseTimeout  DayDuration `mapstructure:"ha_lease_timeout" yaml:"ha_lease_timeout"`
-	RetentionPeriod DayDuration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
+	ChunkInterval   DayDuration `mapstructure:"default_chunk_interval" yaml:"default_chunk_interval" json:"default_chunk_interval"`
+	Compression     *bool       `mapstructure:"compress_data" yaml:"compress_data" json:"compress_data"` // Using pointer to check if the the value was set.
+	HALeaseRefresh  DayDuration `mapstructure:"ha_lease_refresh" yaml:"ha_lease_refresh" json:"ha_lease_refresh"`
+	HALeaseTimeout  DayDuration `mapstructure:"ha_lease_timeout" yaml:"ha_lease_timeout" json:"ha_lease_timeout"`
+	RetentionPeriod DayDuration `mapstructure:"default_retention_period" yaml:"default_retention_period" json:"default_retention_period"`
 }
 
 // Traces contains dataset configuration options for traces data.
 type Traces struct {
-	RetentionPeriod DayDuration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
+	RetentionPeriod DayDuration `mapstructure:"default_retention_period" yaml:"default_retention_period" json:"default_retention_period"`
 }
 
 // NewConfig creates a new dataset config based on the configuration YAML contents.
