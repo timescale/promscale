@@ -15,7 +15,7 @@ import (
 const (
 	sqlChunksToFreeze = `
 	SELECT %s 
-	FROM _ps_catalog.chunks_to_freeze
+	FROM _ps_catalog.compressed_chunks_to_freeze
 	WHERE coalesce(last_vacuum, '-infinity'::timestamptz) < now() - interval '15 minutes' 
 	AND pg_catalog.age(relfrozenxid) > current_setting('vacuum_freeze_min_age')::bigint
 	`
@@ -192,7 +192,7 @@ func compressChunks(t *testing.T, ctx context.Context, db *pgxpool.Pool, chunks 
 func view(t *testing.T, ctx context.Context, db *pgxpool.Pool) []compressedChunk {
 	rows, err := db.Query(ctx, fmt.Sprintf(sqlChunksToFreeze, "id"))
 	if err != nil {
-		t.Fatalf("Failed to select from _ps_catalog.chunks_to_freeze: %v", err)
+		t.Fatalf("Failed to select from _ps_catalog.compressed_chunks_to_freeze: %v", err)
 	}
 	defer rows.Close()
 	chunks := make([]compressedChunk, 0)
