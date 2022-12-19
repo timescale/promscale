@@ -34,6 +34,14 @@
 // vacuuming a chunk, we check the autovacuum count again to see if it
 // has increased. If it has, the autovacuum engine beat us to the
 // chunk, and we skip it.
+//
+// Additionally, we have seen instances in which compresses chunks are
+// missing statistics. Autovacuum ignores tables that are missing
+// statistics. Analyzing these tables does not help since we rarely
+// modify chunks after they are compressed. Therefore, these chunks are
+// ignored until they pass the vacuum_freeze_max_age. This can be bad
+// for performance. So, the vacuum engine makes a second pass looking
+// for these chunks and vacuums them. We only use one worker for these.
 package vacuum
 
 import (
@@ -99,16 +107,27 @@ const (
 		current_setting('vacuum_freeze_min_age')::bigint as vacuum_freeze_min_age,
 		current_setting('autovacuum_freeze_max_age')::bigint as autovacuum_freeze_max_age
 	`
-	sqlListChunks = `
+	sqlListChunksToFreeze = `
 	SELECT 
 		format('%I.%I', schema_name, table_name) AS schema_table,
 		pg_stat_get_autovacuum_count(format('%I.%I', schema_name, table_name)::regclass::oid) AS autovacuum_count,
 		pg_catalog.age(relfrozenxid) as age
-	FROM _ps_catalog.chunks_to_freeze 
+	FROM _ps_catalog.compressed_chunks_to_freeze 
 	WHERE coalesce(last_vacuum, '-infinity'::timestamptz) < now() - interval '15 minutes' 
 	AND pg_catalog.age(relfrozenxid) > current_setting('vacuum_freeze_min_age')::bigint
 	ORDER BY pg_catalog.age(relfrozenxid) DESC --oldest first
 	LIMIT 1000`
+	sqlListChunksMissingStats = `
+	SELECT 
+		format('%I.%I', schema_name, table_name) AS schema_table,
+		0 AS autovacuum_count,
+		pg_catalog.age(relfrozenxid) as age
+	FROM _ps_catalog.compressed_chunks_missing_stats
+	-- older than 20% of vacuum_freeze_min_age 
+	WHERE pg_catalog.age(relfrozenxid) > (current_setting('vacuum_freeze_min_age')::bigint / 5)
+	ORDER BY pg_catalog.age(relfrozenxid) DESC --oldest first
+	LIMIT 1000
+	`
 	// finds out how many times the autovacuum engine has vacuumed a chunk
 	sqlGetAutovacuumCount = "SELECT pg_catalog.pg_stat_get_autovacuum_count($1::regclass::oid)"
 	// delay - on each iteration of the engine, we will sleep a bit before querying
@@ -275,24 +294,50 @@ func (e *Engine) Run(ctx context.Context) {
 		}
 		numberVacuumConnections.Set(0)
 	}()
+
+	for {
+		// vacuumChunksToFreeze should run to completion
+		// if an error is encountered, give vacuumChunksMissingStats a chance before bailing
+		err = e.vacuumChunksToFreeze(ctx, con)
+		// vacuumChunkMissingStats will only run up to a limited number of times
+		// if it is finished, it's okay to break the loop and exit this run (both are finished)
+		// it if didn't finish, loop again and give vacuumChunksToFreeze a turn before continuing
+		finished, err2 := e.vacuumChunksMissingStats(ctx, con)
+		if finished {
+			break
+		}
+		// don't keep trying forever if we hit errors
+		if err != nil {
+			log.Error("msg", "vacuum engine failed in vacuuming chunks to freeze", "error", err)
+			break
+		}
+		if err2 != nil {
+			log.Error("msg", "vacuum engine failed in vacuuming chunks missing stats", "error", err2)
+			break
+		}
+	}
+}
+
+func (e *Engine) vacuumChunksToFreeze(ctx context.Context, con *pgxpool.Conn) error {
+	// we look for chunks past vacuum_freeze_min_age that probably should be frozen
 	// we limit ourselves to batches of 1000 chunks
 	// since we already have the advisory lock, continue to vacuum batches as needed until none left
 	for {
-		chunks, err := e.listChunks(ctx, con)
+		chunks, err := e.listChunks(ctx, con, sqlListChunksToFreeze)
 		if err != nil {
-			log.Error("msg", "failed to list chunks for vacuuming", "error", err)
-			return
+			log.Error("msg", "failed to list compressed chunks needing to be frozen", "error", err)
+			return err
 		}
 		tablesNeedingVacuum.Set(float64(len(chunks)))
 		if len(chunks) == 0 {
-			log.Info("msg", "zero compressed chunks need to be vacuumed")
-			return
+			log.Info("msg", "zero compressed chunks needing to be frozen")
+			return nil
 		}
-		log.Info("msg", "compressed chunks need to be vacuumed", "count", len(chunks))
+		log.Info("msg", "compressed chunks needing to be frozen", "count", len(chunks))
 		numWorkers, err := e.calcNumWorkers(ctx, con, chunks)
 		if err != nil {
 			log.Error("msg", "failed to calc num workers", "error", err)
-			return
+			return err
 		}
 		runWorkers(ctx, numWorkers, chunks, e.worker)
 		log.Debug("msg", "vacuum workers finished. delaying before next iteration...")
@@ -301,9 +346,35 @@ func (e *Engine) Run(ctx context.Context) {
 	}
 }
 
+func (e *Engine) vacuumChunksMissingStats(ctx context.Context, con *pgxpool.Conn) (finished bool, err error) {
+	// we look for compressed chunks that have never been vacuum and seem to be missing
+	// statistics. autovacuum will ignore these until they hit vacuum_freeze_min_age, so let's
+	// catch these early
+	// we only do a max of 3000 before we give vacuumChunksToFreeze another turn
+	for i := 0; i <= 3; i++ {
+		chunks, err := e.listChunks(ctx, con, sqlListChunksMissingStats)
+		if err != nil {
+			log.Error("msg", "failed to list compressed chunks missing stats", "error", err)
+			return false, err
+		}
+		tablesNeedingVacuum.Set(float64(len(chunks)))
+		if len(chunks) == 0 {
+			log.Info("msg", "zero compressed chunks missing stats")
+			return true, nil
+		}
+		log.Info("msg", "compressed chunks missing stats", "count", len(chunks))
+
+		runWorkers(ctx, 1, chunks, e.worker)
+		log.Debug("msg", "vacuum workers finished. delaying before next iteration...")
+		// in some cases, have seen it take up to 10 seconds for the stats to be updated post vacuum
+		time.Sleep(delay)
+	}
+	return false, nil
+}
+
 // listChunks identifies chunks which need to be vacuumed
-func (e *Engine) listChunks(ctx context.Context, con *pgxpool.Conn) ([]*chunk, error) {
-	rows, err := con.Query(ctx, sqlListChunks)
+func (e *Engine) listChunks(ctx context.Context, con *pgxpool.Conn, sql string) ([]*chunk, error) {
+	rows, err := con.Query(ctx, sql)
 	if err != nil {
 		return nil, err
 	}

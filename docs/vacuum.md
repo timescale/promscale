@@ -35,3 +35,11 @@ We get the autovacuum count when we produce the list. Just before
 vacuuming a chunk, we check the autovacuum count again to see if it
 has increased. If it has, the autovacuum engine beat us to the
 chunk, and we skip it.
+
+Additionally, we have seen instances in which compresses chunks are
+missing statistics. Autovacuum ignores tables that are missing
+statistics. Analyzing these tables does not help since we rarely
+modify chunks after they are compressed. Therefore, these chunks are
+ignored until they pass the vacuum_freeze_max_age. This can be bad
+for performance. So, the vacuum engine makes a second pass looking
+for these chunks and vacuums them. We only use one worker for these.
