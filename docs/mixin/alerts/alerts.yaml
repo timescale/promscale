@@ -91,13 +91,13 @@ groups:
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighLatency.md
   - alert: PromscaleIngestHighDataDuplication
     expr: |
-      rate(promscale_ingest_duplicates_total{kind="sample"}[5m]) > 0
-    for: 5m
+      sum by (job, namespace) (rate(promscale_ingest_duplicates_total{kind="sample"}[15m])) > 0
+    for: 30m
     labels:
       severity: warning
     annotations:
       summary: Duplicate data being inserted.
-      description: "More than {{ $value }} samples/sec are rejected as duplicates by promscale."
+      description: "More than {{ $value | humanize }} samples/sec are rejected as duplicates by promscale."
       runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighDataDuplication.md
 - name: promscale-query
   rules:
