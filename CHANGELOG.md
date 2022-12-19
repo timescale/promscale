@@ -33,6 +33,7 @@ We use the following categories for changes:
   metrics won't be collected as often as they used to. None of the affected 
   metrics is expected to change faster than its new collection interval [#1793]
 - Aggregate metrics at global level to avoid legend pollution in dashboards [#1800]
+- The vacuum engine now looks for compressed chunks missing stats and vacuums these too [#1804]
 
 ### Fixed
 - Fixing the query behind chunks_uncompressed. The new definition should
