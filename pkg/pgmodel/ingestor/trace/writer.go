@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
@@ -81,13 +81,13 @@ func RegisterTelemetryMetrics(t telemetry.Engine) error {
 }
 
 func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagBatch, links ptrace.SpanLinkSlice, traceID pgtype.UUID, spanID pgtype.Int8, spanStartTime time.Time) error {
-	if spanID.Status != pgtype.Present {
+	if !spanID.Valid {
 		return fmt.Errorf("spanID must be set")
 	}
 	for i := 0; i < links.Len(); i++ {
 		link := links.At(i)
 		linkedSpanID := getSpanID(link.SpanID())
-		if linkedSpanID.Status != pgtype.Present {
+		if !linkedSpanID.Valid {
 			return fmt.Errorf("linkedSpanID must be set")
 		}
 
@@ -103,7 +103,7 @@ func (t *traceWriterImpl) addSpanLinks(linkRows *[][]interface{}, tagsBatch tagB
 }
 
 func (t *traceWriterImpl) addSpanEvents(eventRows *[][]interface{}, tagsBatch tagBatch, events ptrace.SpanEventSlice, traceID pgtype.UUID, spanID pgtype.Int8) error {
-	if spanID.Status != pgtype.Present {
+	if !spanID.Valid {
 		return fmt.Errorf("spanID must be set")
 	}
 	for i := 0; i < events.Len(); i++ {
@@ -269,7 +269,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces ptrace.Traces
 				span := spans.At(k)
 				traceID := TraceIDToUUID(span.TraceID())
 				spanID := getSpanID(span.SpanID())
-				if spanID.Status != pgtype.Present {
+				if !spanID.Valid {
 					return fmt.Errorf("spanID must be set")
 				}
 				parentSpanID := getSpanID(span.ParentSpanID())
@@ -422,8 +422,8 @@ func Int64ToByteArray(x int64) [8]byte {
 
 func TraceIDToUUID(buf [16]byte) pgtype.UUID {
 	return pgtype.UUID{
-		Bytes:  buf,
-		Status: pgtype.Present,
+		Bytes: buf,
+		Valid: true,
 	}
 }
 
@@ -432,19 +432,19 @@ func getSpanID(buf [8]byte) pgtype.Int8 {
 
 	if i != 0 {
 		return pgtype.Int8{
-			Int:    i,
-			Status: pgtype.Present,
+			Int64: i,
+			Valid: true,
 		}
 	}
 
 	return pgtype.Int8{
-		Status: pgtype.Null,
+		Valid: false,
 	}
 }
 
-func getEventTimeRange(events ptrace.SpanEventSlice) (result pgtype.Tstzrange) {
+func getEventTimeRange(events ptrace.SpanEventSlice) (result pgtype.Range[pgtype.Timestamptz]) {
 	if events.Len() == 0 {
-		result.Status = pgtype.Null
+		result.Valid = false
 		return result
 	}
 
@@ -461,12 +461,12 @@ func getEventTimeRange(events ptrace.SpanEventSlice) (result pgtype.Tstzrange) {
 		}
 	}
 
-	result = pgtype.Tstzrange{
-		Lower:     pgtype.Timestamptz{Time: lowerTime, Status: pgtype.Present},
-		Upper:     pgtype.Timestamptz{Time: upperTime, Status: pgtype.Present},
+	result = pgtype.Range[pgtype.Timestamptz]{
+		Lower:     pgtype.Timestamptz{Time: lowerTime, Valid: true},
+		Upper:     pgtype.Timestamptz{Time: upperTime, Valid: true},
 		LowerType: pgtype.Inclusive,
 		UpperType: pgtype.Exclusive,
-		Status:    pgtype.Present,
+		Valid:     true,
 	}
 
 	return result
@@ -475,10 +475,10 @@ func getEventTimeRange(events ptrace.SpanEventSlice) (result pgtype.Tstzrange) {
 func getTraceStateValue(ts pcommon.TraceState) (result pgtype.Text) {
 	tsRaw := ts.AsRaw()
 	if tsRaw == "" {
-		result.Status = pgtype.Null
+		result.Valid = false
 	} else {
 		result.String = tsRaw
-		result.Status = pgtype.Present
+		result.Valid = true
 	}
 
 	return result

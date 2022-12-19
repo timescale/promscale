@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -134,7 +134,7 @@ func ignoreBlockedConnectionError(err error) error {
 
 func blockAllConnections(db *pgxpool.Pool, dbName string, user string) error {
 	// Connect using superuser since our previous user has revoked connect privilege.
-	dbPool, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(dbName, true))
+	dbPool, err := pgxpool.New(context.Background(), testhelpers.PgConnectURL(dbName, true))
 	if err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func blockAllConnections(db *pgxpool.Pool, dbName string, user string) error {
 
 func allowAllConnections(dbName string, user string) error {
 	// Connect using superuser since our previous user has revoked connect privilege.
-	dbPool, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(dbName, true))
+	dbPool, err := pgxpool.New(context.Background(), testhelpers.PgConnectURL(dbName, true))
 	if err != nil {
 		return err
 	}

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
 
 const (
@@ -458,11 +458,7 @@ func getSeriesIDForKeyValueArrayBatchUsingLabelArrays(db *pgxpool.Pool, metricID
 	count := 0
 
 	if true {
-		labelArrayArray := pgtype.NewArrayType("prom_api.label_array[]", labelArrayOID, func() pgtype.ValueTranscoder { return &pgtype.Int4Array{} })
-		err = labelArrayArray.Set(labelArraySet)
-		if err != nil {
-			panic(err)
-		}
+		labelArrayArray := model.SliceToArrayOfLabelArray(labelArraySet)
 		start = time.Now()
 		res, err := db.Query(
 			context.Background(),

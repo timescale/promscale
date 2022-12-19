@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/timescale/promscale/pkg/log"
@@ -262,8 +263,8 @@ func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int
 	defer rows.Close()
 
 	var (
-		keys pgutf8str.TextArray
-		vals pgutf8str.TextArray
+		keys pgtype.FlatArray[pgutf8str.Text]
+		vals pgtype.FlatArray[pgutf8str.Text]
 	)
 
 	for rows.Next() {
@@ -272,21 +273,21 @@ func (lr *labelsReader) fetchMissingLabels(misses []interface{}, missedIds []int
 		if err != nil {
 			return 0, err
 		}
-		if len(ids) != len(keys.Elements) {
-			return 0, fmt.Errorf("query returned a mismatch in ids and keys: %d, %d", len(ids), len(keys.Elements))
+		if len(ids) != len(keys) {
+			return 0, fmt.Errorf("query returned a mismatch in ids and keys: %d, %d", len(ids), len(keys))
 		}
-		if len(keys.Elements) != len(vals.Elements) {
-			return 0, fmt.Errorf("query returned a mismatch in timestamps and values: %d, %d", len(keys.Elements), len(vals.Elements))
+		if len(keys) != len(vals) {
+			return 0, fmt.Errorf("query returned a mismatch in timestamps and values: %d, %d", len(keys), len(vals))
 		}
-		if len(keys.Elements) > len(misses) {
-			return 0, fmt.Errorf("query returned wrong number of labels: %d, %d", len(misses), len(keys.Elements))
+		if len(keys) > len(misses) {
+			return 0, fmt.Errorf("query returned wrong number of labels: %d, %d", len(misses), len(keys))
 		}
 
-		numNewLabels = len(keys.Elements)
-		misses = misses[:len(keys.Elements)]
-		newLabels = newLabels[:len(keys.Elements)]
-		keyStrArr := keys.Get().([]string)
-		valStrArr := vals.Get().([]string)
+		numNewLabels = len(keys)
+		misses = misses[:len(keys)]
+		newLabels = newLabels[:len(keys)]
+		keyStrArr := pgutf8str.TextArrayToSlice(keys)
+		valStrArr := pgutf8str.TextArrayToSlice(vals)
 		sizes := make([]uint64, numNewLabels)
 		for i := range newLabels {
 			misses[i] = ids[i]

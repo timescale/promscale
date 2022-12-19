@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/blang/semver/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/timescale/promscale/pkg/internal/testhelpers"

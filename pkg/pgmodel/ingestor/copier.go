@@ -6,6 +6,7 @@ package ingestor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -13,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel/attribute"
@@ -227,8 +228,8 @@ func isPGUniqueViolation(err error) bool {
 	if err == nil {
 		return false
 	}
-	pgErr, ok := err.(*pgconn.PgError)
-	if ok && pgErr.Code == "23505" {
+	var e *pgconn.PgError
+	if errors.As(err, &e) && e.Code == "23505" {
 		return true
 	}
 	return false

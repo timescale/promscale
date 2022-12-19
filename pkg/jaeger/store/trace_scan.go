@@ -5,13 +5,14 @@
 package store
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/timescale/promscale/pkg/pgmodel/ingestor/trace"
 	"github.com/timescale/promscale/pkg/pgxconn"
@@ -24,23 +25,23 @@ type spanDBResult struct {
 	startTime           time.Time
 	endTime             time.Time
 	kind                pgtype.Text
-	droppedTagsCounts   int
-	droppedEventsCounts int
-	droppedLinkCounts   int
+	droppedTagsCounts   int32
+	droppedEventsCounts int32
+	droppedLinkCounts   int32
 	statusCode          string
 	statusMessage       pgtype.Text
 	traceState          pgtype.Text
 	schemaUrl           pgtype.Text
 	spanName            string
-	resourceTags        pgtype.JSONB
-	spanTags            pgtype.JSONB
+	resourceTags        []byte
+	spanTags            []byte
 
 	// From events table.
 	// for events, the entire slice can be nil but not any element within the slice
 	eventNames            *[]string
 	eventTimes            *[]time.Time
-	eventDroppedTagsCount *[]int
-	eventTags             pgtype.JSONBArray
+	eventDroppedTagsCount *[]int32
+	eventTags             pgtype.FlatArray[[]byte]
 
 	// From instrumentation lib table.
 	instLibName      *string
@@ -48,11 +49,11 @@ type spanDBResult struct {
 	instLibSchemaUrl *string
 
 	// From link table.
-	linksLinkedTraceIds   pgtype.UUIDArray
+	linksLinkedTraceIds   pgtype.FlatArray[pgtype.UUID]
 	linksLinkedSpanIds    *[]int64
-	linksTraceStates      *[]*string
-	linksDroppedTagsCount *[]int
-	linksTags             pgtype.JSONBArray
+	linksTraceStates      pgtype.FlatArray[*string]
+	linksDroppedTagsCount *[]int32
+	linksTags             pgtype.FlatArray[[]byte]
 }
 
 func ScanRow(row pgxconn.PgxRows, traces *ptrace.Traces) error {
@@ -140,10 +141,7 @@ func populateSpan(
 	ref := instrumentationLibSpan.Spans().AppendEmpty()
 
 	// Type preprocessing.
-	traceId, err := makeTraceId(dbResult.traceId)
-	if err != nil {
-		return fmt.Errorf("makeTraceId: %w", err)
-	}
+	traceId := makeTraceId(dbResult.traceId)
 	ref.SetTraceID(traceId)
 
 	id := makeSpanId(&dbResult.spanId)
@@ -151,25 +149,25 @@ func populateSpan(
 
 	// We use a pointer since parent id can be nil. If we use normal int64, we can get parsing errors.
 	var temp *int64
-	if err := dbResult.parentSpanId.AssignTo(&temp); err != nil {
-		return fmt.Errorf("assigning parent span id: %w", err)
+	if dbResult.parentSpanId.Valid {
+		temp = &dbResult.parentSpanId.Int64
 	}
 	parentId := makeSpanId(temp)
 	ref.SetParentSpanID(parentId)
 
-	if dbResult.traceState.Status == pgtype.Present {
+	if dbResult.traceState.Valid {
 		ts := pcommon.NewTraceState()
 		ts.FromRaw(dbResult.traceState.String)
 		ts.MoveTo(ref.TraceState())
 	}
 
-	if dbResult.schemaUrl.Status == pgtype.Present {
+	if dbResult.schemaUrl.Valid {
 		resourceSpan.SetSchemaUrl(dbResult.schemaUrl.String)
 	}
 
 	ref.SetName(dbResult.spanName)
 
-	if dbResult.kind.Status == pgtype.Present {
+	if dbResult.kind.Valid {
 		ref.SetKind(internalToSpanKind(dbResult.kind.String))
 	}
 
@@ -207,7 +205,7 @@ func setStatus(ref ptrace.Span, dbRes *spanDBResult) error {
 	if dbRes.statusCode != "" {
 		ref.Status().SetCode(internalToStatusCode(dbRes.statusCode))
 	}
-	if dbRes.statusMessage.Status != pgtype.Null {
+	if dbRes.statusMessage.Valid {
 		message := dbRes.statusMessage.String
 		ref.Status().SetMessage(message)
 	}
@@ -224,7 +222,7 @@ func populateEvents(
 		event.SetName((*dbResult.eventNames)[i])
 		event.SetTimestamp(pcommon.NewTimestampFromTime((*dbResult.eventTimes)[i]))
 		event.SetDroppedAttributesCount(uint32((*dbResult.eventDroppedTagsCount)[i]))
-		attr, err := makeAttributes(dbResult.eventTags.Elements[i])
+		attr, err := makeAttributes(dbResult.eventTags[i])
 		if err != nil {
 			return fmt.Errorf("making event tags: %w", err)
 		}
@@ -239,27 +237,22 @@ func populateLinks(
 
 	n := len(*dbResult.linksLinkedSpanIds)
 
-	var linkedTraceIds []pcommon.TraceID
-	if err := dbResult.linksLinkedTraceIds.AssignTo(&linkedTraceIds); err != nil {
-		return fmt.Errorf("linksLinkedTraceIds: AssignTo: %w", err)
-	}
-
 	for i := 0; i < n; i++ {
 		link := spanEventSlice.AppendEmpty()
 
-		link.SetTraceID(linkedTraceIds[i])
+		link.SetTraceID(dbResult.linksLinkedTraceIds[i].Bytes)
 
 		spanId := makeSpanId(&(*dbResult.linksLinkedSpanIds)[i])
 		link.SetSpanID(spanId)
 
-		if (*dbResult.linksTraceStates)[i] != nil {
-			traceState := *((*dbResult.linksTraceStates)[i])
+		if dbResult.linksTraceStates[i] != nil {
+			traceState := *(dbResult.linksTraceStates[i])
 			ts := pcommon.NewTraceState()
 			ts.FromRaw(traceState)
 			ts.MoveTo(link.TraceState())
 		}
 		link.SetDroppedAttributesCount(uint32((*dbResult.linksDroppedTagsCount)[i]))
-		attr, err := makeAttributes(dbResult.linksTags.Elements[i])
+		attr, err := makeAttributes(dbResult.linksTags[i])
 		if err != nil {
 			return fmt.Errorf("making link tags: %w", err)
 		}
@@ -269,9 +262,12 @@ func populateLinks(
 }
 
 // makeAttributes makes raw attribute map using tags.
-func makeAttributes(tagsJson pgtype.JSONB) (map[string]interface{}, error) {
+func makeAttributes(tagsJson []byte) (map[string]interface{}, error) {
+	if tagsJson == nil {
+		return nil, nil
+	}
 	var tags map[string]interface{}
-	if err := tagsJson.AssignTo(&tags); err != nil {
+	if err := json.Unmarshal(tagsJson, &tags); err != nil {
 		return map[string]interface{}{}, fmt.Errorf("tags assign to: %w", err)
 	}
 	tags = sanitizeInt(tags)
@@ -295,12 +291,11 @@ func isIntegral(val float64) bool {
 	return val == float64(int(val))
 }
 
-func makeTraceId(s pgtype.UUID) (pcommon.TraceID, error) {
-	var traceId pcommon.TraceID
-	if err := s.AssignTo(&traceId); err != nil {
-		return pcommon.TraceID{}, fmt.Errorf("trace id assign to: %w", err)
+func makeTraceId(s pgtype.UUID) pcommon.TraceID {
+	if !s.Valid {
+		return pcommon.TraceID{}
 	}
-	return traceId, nil
+	return pcommon.TraceID(s.Bytes)
 }
 
 func makeSpanId(s *int64) pcommon.SpanID {

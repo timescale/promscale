@@ -9,8 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/jackc/pgtype"
-	pgx "github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgxconn"
 )
@@ -94,34 +94,34 @@ func (t tagBatch) SendBatch(ctx context.Context, conn pgxconn.PgxConn) (err erro
 	return t.b.SendBatch(ctx, conn)
 }
 
-func (tb tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) (pgtype.JSONB, error) {
+func (tb tagBatch) GetTagMapJSON(tags map[string]interface{}, typ TagType) ([]byte, error) {
 	tagMap := make(map[int64]int64)
 	for k, v := range tags {
 		byteVal, err := json.Marshal(v)
 		if err != nil {
-			return pgtype.JSONB{}, err
+			return nil, err
 		}
 		t := tag{k, string(byteVal), typ}
 		ids, err := tb.b.Get(t)
 		if err != nil {
-			return pgtype.JSONB{}, fmt.Errorf("error getting tag from batch %v: %w", t, err)
+			return nil, fmt.Errorf("error getting tag from batch %v: %w", t, err)
 		}
 		tagIDs, ok := ids.(tagIDs)
 		if !ok {
-			return pgtype.JSONB{}, fmt.Errorf("error getting tag %v from batch: %w", t, errors.ErrInvalidCacheEntryType)
+			return nil, fmt.Errorf("error getting tag %v from batch: %w", t, errors.ErrInvalidCacheEntryType)
 		}
-		if tagIDs.keyID.Status != pgtype.Present || tagIDs.valueID.Status != pgtype.Present {
-			return pgtype.JSONB{}, fmt.Errorf("tag IDs have NULL values: %#v", tagIDs)
+		if !(tagIDs.keyID.Valid && tagIDs.valueID.Valid) {
+			return nil, fmt.Errorf("tag IDs have NULL values: %#v", tagIDs)
 		}
-		if tagIDs.keyID.Int == 0 || tagIDs.valueID.Int == 0 {
-			return pgtype.JSONB{}, fmt.Errorf("tag IDs have 0 values: %#v", tagIDs)
+		if tagIDs.keyID.Int64 == 0 || tagIDs.valueID.Int64 == 0 {
+			return nil, fmt.Errorf("tag IDs have 0 values: %#v", tagIDs)
 		}
-		tagMap[tagIDs.keyID.Int] = tagIDs.valueID.Int
+		tagMap[tagIDs.keyID.Int64] = tagIDs.valueID.Int64
 	}
 
 	jsonBytes, err := json.Marshal(tagMap)
 	if err != nil {
-		return pgtype.JSONB{}, err
+		return nil, err
 	}
-	return pgtype.JSONB{Bytes: jsonBytes, Status: pgtype.Present}, nil
+	return jsonBytes, nil
 }

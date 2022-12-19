@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
@@ -18,7 +18,7 @@ func TestTagBatch(t *testing.T) {
 	cache := newTagCache()
 	incache := tag{"incache", `""`, SpanTagType}
 	invalid := tag{"invalid", `""`, SpanTagType}
-	cache.Insert(incache, tagIDs{pgtype.Int8{Int: 1, Status: pgtype.Present}, pgtype.Int8{Int: 2, Status: pgtype.Present}}, incache.SizeInCache())
+	cache.Insert(incache, tagIDs{pgtype.Int8{Int64: 1, Valid: true}, pgtype.Int8{Int64: 2, Valid: true}}, incache.SizeInCache())
 	cache.Insert(invalid, "foo", 0)
 
 	testCases := []struct {
@@ -125,23 +125,23 @@ func TestTagBatch(t *testing.T) {
 			getTagMapJSONCheck: func(t *testing.T, batch tagBatch) {
 				tagMap, err := batch.GetTagMapJSON(map[string]interface{}{"test": ""}, SpanTagType)
 				require.Nil(t, err)
-				require.Equal(t, `{"7":8}`, string(tagMap.Bytes))
+				require.Equal(t, `{"7":8}`, string(tagMap))
 
 				tagMap, err = batch.GetTagMapJSON(map[string]interface{}{"nonexistant": ""}, SpanTagType)
 				require.EqualError(t, err, "error getting tag from batch {nonexistant \"\" 1}: error getting item from batch")
-				require.Equal(t, []byte(nil), tagMap.Bytes)
+				require.Equal(t, []byte(nil), tagMap)
 
 				tagMap, err = batch.GetTagMapJSON(map[string]interface{}{"zero": ""}, SpanTagType)
-				require.EqualError(t, err, "tag IDs have 0 values: trace.tagIDs{keyID:pgtype.Int8{Int:0, Status:0x2}, valueID:pgtype.Int8{Int:0, Status:0x2}}")
-				require.Equal(t, []byte(nil), tagMap.Bytes)
+				require.EqualError(t, err, "tag IDs have 0 values: trace.tagIDs{keyID:pgtype.Int8{Int64:0, Valid:true}, valueID:pgtype.Int8{Int64:0, Valid:true}}")
+				require.Equal(t, []byte(nil), tagMap)
 
 				tagMap, err = batch.GetTagMapJSON(map[string]interface{}{"null": ""}, SpanTagType)
-				require.EqualError(t, err, "tag IDs have NULL values: trace.tagIDs{keyID:pgtype.Int8{Int:0, Status:0x1}, valueID:pgtype.Int8{Int:0, Status:0x1}}")
-				require.Equal(t, []byte(nil), tagMap.Bytes)
+				require.EqualError(t, err, "tag IDs have NULL values: trace.tagIDs{keyID:pgtype.Int8{Int64:0, Valid:false}, valueID:pgtype.Int8{Int64:0, Valid:false}}")
+				require.Equal(t, []byte(nil), tagMap)
 
 				tagMap, err = batch.GetTagMapJSON(map[string]interface{}{"test": make(chan struct{})}, SpanTagType)
 				require.EqualError(t, err, "json: unsupported type: chan struct {}")
-				require.Equal(t, []byte(nil), tagMap.Bytes)
+				require.Equal(t, []byte(nil), tagMap)
 			},
 		},
 		{
@@ -151,7 +151,7 @@ func TestTagBatch(t *testing.T) {
 			getTagMapJSONCheck: func(t *testing.T, batch tagBatch) {
 				tagMap, err := batch.GetTagMapJSON(map[string]interface{}{"incache": ""}, SpanTagType)
 				require.Nil(t, err)
-				require.Equal(t, `{"1":2}`, string(tagMap.Bytes))
+				require.Equal(t, `{"1":2}`, string(tagMap))
 			},
 		},
 		{
