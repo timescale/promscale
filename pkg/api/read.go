@@ -19,12 +19,12 @@ import (
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
-func Read(config *Config, reader querier.Reader, metrics *Metrics, updateMetrics func(handler, code string, duration float64)) http.Handler {
+func Read(config *Config, reader querier.Reader, metrics *Metrics, updateMetrics updateMetricCallback) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		statusCode := "400"
 		begin := time.Now()
 		defer func() {
-			updateMetrics("/read", statusCode, time.Since(begin).Seconds())
+			updateMetrics("/read", statusCode, "", time.Since(begin).Seconds())
 		}()
 		if !validateReadHeaders(w, r) {
 			return

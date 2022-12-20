@@ -19,7 +19,7 @@ import (
 	"github.com/timescale/promscale/pkg/log"
 )
 
-func Rules(conf *Config, updateMetrics func(handler, code string, duration float64)) http.Handler {
+func Rules(conf *Config, updateMetrics updateMetricCallback) http.Handler {
 	hf := corsWrapper(conf, rulesHandler(conf, updateMetrics))
 	return gziphandler.GzipHandler(hf)
 }
@@ -96,12 +96,12 @@ type Alert struct {
 	Value       string        `json:"value"`
 }
 
-func rulesHandler(apiConf *Config, updateMetrics func(handler, code string, duration float64)) http.HandlerFunc {
+func rulesHandler(apiConf *Config, updateMetrics updateMetricCallback) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		statusCode := "400"
 		begin := time.Now()
 		defer func() {
-			updateMetrics("/api/v1/rules", statusCode, time.Since(begin).Seconds())
+			updateMetrics("/api/v1/rules", statusCode, "", time.Since(begin).Seconds())
 		}()
 
 		queryType := strings.ToLower(r.URL.Query().Get("type"))

@@ -366,8 +366,8 @@ func mockUpdaterForIngest(counter, histogram, numSamples, numMetadata *mockMetri
 	}
 }
 
-func mockUpdaterForQuery(counter, histogram *mockMetric) func(handler, code string, duration float64) {
-	return func(_, _ string, duration float64) {
+func mockUpdaterForQuery(counter, histogram *mockMetric) updateMetricCallback {
+	return func(_, _, _ string, duration float64) {
 		counter.value++
 		applyValueIfMetricNotNil(histogram, duration)
 	}

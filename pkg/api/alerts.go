@@ -11,17 +11,17 @@ import (
 	"github.com/NYTimes/gziphandler"
 )
 
-func Alerts(conf *Config, updateMetrics func(handler, code string, duration float64)) http.Handler {
+func Alerts(conf *Config, updateMetrics updateMetricCallback) http.Handler {
 	hf := corsWrapper(conf, alertsHandler(conf, updateMetrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func alertsHandler(apiConf *Config, updateMetrics func(handler, code string, duration float64)) http.HandlerFunc {
+func alertsHandler(apiConf *Config, updateMetrics updateMetricCallback) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		statusCode := "400"
 		begin := time.Now()
 		defer func() {
-			updateMetrics("/api/v1/alerts", statusCode, time.Since(begin).Seconds())
+			updateMetrics("/api/v1/alerts", statusCode, "", time.Since(begin).Seconds())
 		}()
 
 		if apiConf.Rules == nil {
