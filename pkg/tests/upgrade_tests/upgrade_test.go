@@ -216,7 +216,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool, prevVersionStr string, extensi
 			if !noData {
 				func() {
 					connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
-
+					model.UnRegisterAllCustomPgTypes()
 					db, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 					if err != nil {
 						t.Fatal(err)
@@ -265,7 +265,8 @@ func getPristineDbInfo(t *testing.T, noData bool, extensionState testhelpers.Tes
 			if !noData {
 				func() {
 					connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
-					db, err := pgxpool.New(context.Background(), connectURL)
+					model.UnRegisterAllCustomPgTypes()
+					db, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -507,7 +508,8 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 			testhelpers.MakePromUserPromAdmin(t, DBName)
 
 			// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
-			db, err := pgxpool.New(context.Background(), connectURL)
+			model.UnRegisterAllCustomPgTypes()
+			db, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 			if err != nil {
 				t.Fatal(err)
 			}

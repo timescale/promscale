@@ -170,6 +170,12 @@ func UnRegisterCustomPgTypes(cfg pgconn.Config) {
 	delete(registeredTypes, key(cfg))
 }
 
+func UnRegisterAllCustomPgTypes() {
+	registerTypesMux.Lock()
+	defer registerTypesMux.Unlock()
+	registeredTypes = make(map[string][]*pgtype.Type)
+}
+
 func registerCustomPgTypes(m *pgtype.Map, types []*pgtype.Type) {
 	for _, t := range types {
 		m.RegisterType(t)
