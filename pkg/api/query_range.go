@@ -18,17 +18,18 @@ import (
 	"github.com/timescale/promscale/pkg/query"
 )
 
-func QueryRange(conf *Config, promqlConf *query.Config, queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.Handler {
+func QueryRange(conf *Config, promqlConf *query.Config, queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics updateMetricCallback) http.Handler {
 	hf := corsWrapper(conf, queryRange(promqlConf, queryEngine, queryable, updateMetrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryRange(promqlConf *query.Config, queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.HandlerFunc {
+func queryRange(promqlConf *query.Config, queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics updateMetricCallback) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		statusCode := "400"
+		errReason := ""
 		begin := time.Now()
 		defer func() {
-			updateMetrics("/api/v1/query_range", statusCode, time.Since(begin).Seconds())
+			updateMetrics("/api/v1/query_range", statusCode, errReason, time.Since(begin).Seconds())
 		}()
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {
@@ -109,11 +110,13 @@ func queryRange(promqlConf *query.Config, queryEngine *promql.Engine, queryable 
 			switch res.Err.(type) {
 			case promql.ErrQueryCanceled:
 				statusCode = "503"
-				respondError(w, http.StatusServiceUnavailable, res.Err, "canceled")
+				errReason = errCanceled
+				respondError(w, http.StatusServiceUnavailable, res.Err, errCanceled)
 				return
 			case promql.ErrQueryTimeout:
 				statusCode = "503"
-				respondError(w, http.StatusServiceUnavailable, res.Err, "timeout")
+				errReason = errTimeout
+				respondError(w, http.StatusServiceUnavailable, res.Err, errTimeout)
 				return
 			case promql.ErrStorage:
 				statusCode = "500"

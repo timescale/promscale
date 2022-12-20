@@ -186,7 +186,7 @@ func TestQuery(t *testing.T) {
 		}, {
 			name:        "Timeout query",
 			expectCode:  http.StatusServiceUnavailable,
-			expectError: "timeout",
+			expectError: errTimeout,
 			timeout:     "1s",
 			metric:      "m",
 			querier: &mockQuerier{
@@ -195,7 +195,7 @@ func TestQuery(t *testing.T) {
 		}, {
 			name:        "Cancel query",
 			expectCode:  http.StatusServiceUnavailable,
-			expectError: "canceled",
+			expectError: errCanceled,
 			metric:      "m",
 			querier:     &mockQuerier{},
 			canceled:    true,

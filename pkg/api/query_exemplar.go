@@ -17,17 +17,17 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func QueryExemplar(conf *Config, queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.Handler {
+func QueryExemplar(conf *Config, queryable promql.Queryable, updateMetrics updateMetricCallback) http.Handler {
 	hf := corsWrapper(conf, queryExemplar(queryable, updateMetrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryExemplar(queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.HandlerFunc {
+func queryExemplar(queryable promql.Queryable, updateMetrics updateMetricCallback) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		statusCode := "400"
 		begin := time.Now()
 		defer func() {
-			updateMetrics("/api/v1/query_exemplars", statusCode, time.Since(begin).Seconds())
+			updateMetrics("/api/v1/query_exemplars", statusCode, "", time.Since(begin).Seconds())
 		}()
 		start, err := parseTime(r.FormValue("start"))
 		if err != nil {

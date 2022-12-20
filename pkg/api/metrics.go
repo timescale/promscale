@@ -30,8 +30,8 @@ func updateIngestMetrics(code string, duration, receivedSamples, receivedMetadat
 	pgMetrics.IngestorItemsReceived.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Observe(receivedMetadata)
 }
 
-func updateQueryMetrics(handler, code string, duration float64) {
-	pgMetrics.Query.With(prometheus.Labels{"type": "metric", "code": code, "handler": handler}).Inc()
+func updateQueryMetrics(handler, code, err string, duration float64) {
+	pgMetrics.Query.With(prometheus.Labels{"type": "metric", "code": code, "handler": handler, "err": err}).Inc()
 	pgMetrics.QueryDuration.With(prometheus.Labels{"type": "metric", "code": code, "handler": handler}).Observe(duration)
 }
 

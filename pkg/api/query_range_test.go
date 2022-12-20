@@ -113,7 +113,7 @@ func TestRangedQuery(t *testing.T) {
 			end:         "2",
 			step:        "1s",
 			expectCode:  http.StatusServiceUnavailable,
-			expectError: "timeout",
+			expectError: errTimeout,
 			timeout:     "1s",
 			metric:      "m",
 			querier: &mockQuerier{
@@ -125,7 +125,7 @@ func TestRangedQuery(t *testing.T) {
 			end:         "2",
 			step:        "1s",
 			expectCode:  http.StatusServiceUnavailable,
-			expectError: "canceled",
+			expectError: errCanceled,
 			metric:      "m",
 			querier:     &mockQuerier{},
 			canceled:    true,

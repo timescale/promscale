@@ -15,17 +15,18 @@ import (
 	"github.com/timescale/promscale/pkg/promql"
 )
 
-func Query(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.Handler {
+func Query(conf *Config, queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics updateMetricCallback) http.Handler {
 	hf := corsWrapper(conf, queryHandler(queryEngine, queryable, updateMetrics))
 	return gziphandler.GzipHandler(hf)
 }
 
-func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics func(handler, code string, duration float64)) http.HandlerFunc {
+func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, updateMetrics updateMetricCallback) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		statusCode := "400"
+		errReason := ""
 		begin := time.Now()
 		defer func() {
-			updateMetrics("/api/v1/query", statusCode, time.Since(begin).Seconds())
+			updateMetrics("/api/v1/query", statusCode, errReason, time.Since(begin).Seconds())
 		}()
 		var ts time.Time
 		var err error
@@ -63,11 +64,13 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, update
 			switch res.Err.(type) {
 			case promql.ErrQueryCanceled:
 				statusCode = "503"
-				respondError(w, http.StatusServiceUnavailable, res.Err, "canceled")
+				errReason = errCanceled
+				respondError(w, http.StatusServiceUnavailable, res.Err, errCanceled)
 				return
 			case promql.ErrQueryTimeout:
 				statusCode = "503"
-				respondError(w, http.StatusServiceUnavailable, res.Err, "timeout")
+				errReason = errTimeout
+				respondError(w, http.StatusServiceUnavailable, res.Err, errTimeout)
 				return
 			case promql.ErrStorage:
 				statusCode = "500"

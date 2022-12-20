@@ -28,6 +28,13 @@ import (
 	"github.com/timescale/promscale/pkg/telemetry"
 )
 
+type updateMetricCallback func(handler, code, err string, duration float64)
+
+const (
+	errTimeout  = "timeout"
+	errCanceled = "canceled"
+)
+
 // TODO: Refactor this function to reduce number of paramaters.
 func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.Client, store *jaegerStore.Store, authWrapper mux.MiddlewareFunc, reload func() error) (*mux.Router, error) {
 	var writePreprocessors []parser.Preprocessor
@@ -132,24 +139,24 @@ func RegisterTelemetryMetrics(t telemetry.Engine) error {
 	}
 	if err = t.RegisterMetric(
 		"promscale_metrics_queries_failed_total",
-		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "422"}),
-		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "422"}),
-		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "500"}),
-		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "500"}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "422", "err": ""}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "422", "err": ""}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "500", "err": ""}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "500", "err": ""}),
 	); err != nil {
 		return fmt.Errorf("register 'promscale_metrics_queries_failed_total' metric for telemetry: %w", err)
 	}
 	if err = t.RegisterMetric(
 		"promscale_metrics_queries_success_total",
-		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "2xx"}),
-		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "2xx"}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "2xx", "err": ""}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "2xx", "err": ""}),
 	); err != nil {
 		return fmt.Errorf("register 'promscale_metrics_queries_success_total' metric for telemetry: %w", err)
 	}
 	if err = t.RegisterMetric(
 		"promscale_metrics_queries_timedout_total",
-		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "503"}),
-		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "503"}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query", "code": "503", "err": ""}),
+		pgMetrics.Query.With(prometheus.Labels{"type": "metric", "handler": "/api/v1/query_range", "code": "503", "err": ""}),
 	); err != nil {
 		return fmt.Errorf("register 'promscale_metrics_queries_timedout_total' metric for telemetry: %w", err)
 	}
