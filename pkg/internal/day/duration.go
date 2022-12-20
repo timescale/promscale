@@ -20,7 +20,13 @@ const (
 
 // Duration acts like a time.Duration with support for "d" unit
 // which is used for specifying number of days in duration.
-type Duration time.Duration
+// It stores the text of duration while parsing, which can be retrieved via Text().
+// This can be useful when we need to know the num of days user wanted, since
+// this information is lost after parsing.
+type Duration struct {
+	text string // Holds the original duration text.
+	T    time.Duration
+}
 
 // UnmarshalText unmarshals strings into DayDuration values while
 // handling the day unit. It leans heavily into time.ParseDuration.
@@ -37,7 +43,8 @@ func (d *Duration) UnmarshalText(s []byte) error {
 			return err
 		}
 	}
-	*d = Duration(val)
+	d.T = val
+	d.text = string(s)
 	return nil
 }
 
@@ -68,8 +75,23 @@ func handleDays(s []byte) (time.Duration, error) {
 }
 
 // String returns a string value of DayDuration.
-func (d Duration) String() string {
-	return time.Duration(d).String()
+func (d *Duration) String() string {
+	return d.T.String()
+}
+
+// Text returns the original text received while parsing.
+func (d *Duration) Text() string {
+	return d.text
+}
+
+// Duration returns the parsed duration.
+func (d *Duration) Duration() time.Duration {
+	return d.T
+}
+
+// SetDuration returns the parsed duration.
+func (d *Duration) SetDuration(t time.Duration) {
+	d.T = t
 }
 
 // StringToDayDurationHookFunc returns a mapstructure.DecodeHookFunc that
@@ -93,6 +115,6 @@ func StringToDayDurationHookFunc() mapstructure.DecodeHookFunc {
 		if err != nil {
 			return nil, err
 		}
-		return Duration(d), nil
+		return d, nil
 	}
 }

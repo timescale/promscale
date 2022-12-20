@@ -19,7 +19,6 @@ import (
 	"github.com/timescale/promscale/pkg/pgmodel"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	"github.com/timescale/promscale/pkg/pgmodel/common/schema"
-	"github.com/timescale/promscale/pkg/rollup"
 	"github.com/timescale/promscale/pkg/tenancy"
 	"github.com/timescale/promscale/pkg/util"
 	"github.com/timescale/promscale/pkg/version"
@@ -173,13 +172,6 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 		err = cfg.DatasetCfg.Apply(context.Background(), conn)
 	} else if cfg.DatasetConfig != "" {
 		err = applyDatasetConfig(context.Background(), conn, cfg.DatasetConfig)
-	} else {
-		// We apply downsampling settings even when DatasetConfig is not given, which is the most common case.
-		rollupCfg := &rollup.Config{}
-		err = rollupCfg.Apply(context.Background(), conn)
-		if err != nil {
-			return nil, fmt.Errorf("error applying downsampling configuration: %w", err)
-		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("error applying dataset configuration: %w", err)

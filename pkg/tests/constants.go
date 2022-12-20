@@ -18,4 +18,5 @@ func init() {
 
 	PromscaleExtensionVersion = strings.TrimSpace(string(content))
 	PromscaleExtensionContainer = "ghcr.io/timescale/dev_promscale_extension:" + PromscaleExtensionVersion + "-ts2-pg14"
+	//PromscaleExtensionContainer = "local/dev_promscale_extension:head-ts2-pg14" // This will be removed once the PR against master is made.
 }
