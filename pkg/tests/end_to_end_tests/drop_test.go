@@ -409,6 +409,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 	}
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		scache := cache.NewSeriesCache(cache.DefaultConfig, nil)
+		lcache := cache.NewInvertedLabelsCache(cache.DefaultConfig, nil)
 		//this is the range_end of a chunk boundary (exclusive)
 		chunkEnds := time.Date(2009, time.November, 11, 0, 0, 0, 0, time.UTC)
 
@@ -459,7 +460,7 @@ func TestSQLDropMetricChunk(t *testing.T) {
 		}
 
 		c := cache.NewMetricCache(cache.DefaultConfig)
-		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, nil, &ingstr.Cfg{
+		ingestor, err := ingstr.NewPgxIngestor(pgxconn.NewPgxConn(db), c, scache, nil, lcache, &ingstr.Cfg{
 			DisableEpochSync:        true,
 			InvertedLabelsCacheSize: cache.DefaultConfig.InvertedLabelsCacheSize,
 			NumCopiers:              2,

@@ -23,14 +23,20 @@ We use the following categories for changes:
   configuration. Supersedes `startup.dataset.config` which accepts a string
   instead of a mapping [#1737]
 - Add alert to notify about duplicate sample/metric ingestion. [#1688]
+- Add histogram to track number samples/metadata/span sent per request [#1767]
 
 ### Changed
 - Reduced the verbosity of the logs emitted by the vacuum engine [#1715]
 - The vacuum engine now throttles the number of workers used based on the oldest txid from
   the chunks needing freezing [#1761]
+- In order to reduce the overall load on the system, some internal database
+  metrics won't be collected as often as they used to. None of the affected 
+  metrics is expected to change faster than its new collection interval [#1793]
+- Aggregate metrics at global level to avoid legend pollution in dashboards [#1800]
 
 ### Fixed
-
+- Fixing the query behind chunks_uncompressed. The new definition should
+  change the baseline value [#1794]
 
 ## [0.16.0] - 2022-10-20
 

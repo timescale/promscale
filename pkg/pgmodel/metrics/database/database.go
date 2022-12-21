@@ -114,10 +114,16 @@ func (e *metricsEngineImpl) Run() error {
 func (e *metricsEngineImpl) Update() error {
 	batch := e.conn.NewBatch()
 	batchMetrics := []metricQueryWrap{}
-	for _, m := range e.metrics {
+	for i, m := range e.metrics {
 		if m.isHealthCheck {
 			healthCheck(e.conn, m)
 			continue
+		}
+		now := time.Now()
+		if m.customPollConfig.enabled && now.Sub(m.customPollConfig.lastUpdate) < m.customPollConfig.interval {
+			continue
+		} else if m.customPollConfig.enabled {
+			e.metrics[i].customPollConfig.lastUpdate = now
 		}
 		batch.Queue(m.query)
 		batchMetrics = append(batchMetrics, m)

@@ -1,8 +1,6 @@
 package cache
 
 import (
-	"fmt"
-
 	"github.com/timescale/promscale/pkg/clockcache"
 )
 
@@ -38,20 +36,17 @@ func (li LabelInfo) len() int {
 // Each label position is unique for a specific metric, meaning that
 // one label can have different position for different metrics
 type InvertedLabelsCache struct {
-	cache *clockcache.Cache
+	*ResizableCache
 }
 
 // Cache is thread-safe
-func NewInvertedLabelsCache(size uint64) (*InvertedLabelsCache, error) {
-	if size <= 0 {
-		return nil, fmt.Errorf("labels cache size must be > 0")
-	}
-	cache := clockcache.WithMetrics("inverted_labels", "metric", size)
-	return &InvertedLabelsCache{cache}, nil
+func NewInvertedLabelsCache(config Config, sigClose chan struct{}) *InvertedLabelsCache {
+	cache := clockcache.WithMetrics("inverted_labels", "metric", config.InvertedLabelsCacheSize)
+	return &InvertedLabelsCache{NewResizableCache(cache, config.InvertedLabelsCacheMaxBytes, sigClose)}
 }
 
 func (c *InvertedLabelsCache) GetLabelsId(key LabelKey) (LabelInfo, bool) {
-	id, found := c.cache.Get(key)
+	id, found := c.Get(key)
 	if found {
 		return id.(LabelInfo), found
 	}
@@ -59,10 +54,6 @@ func (c *InvertedLabelsCache) GetLabelsId(key LabelKey) (LabelInfo, bool) {
 }
 
 func (c *InvertedLabelsCache) Put(key LabelKey, val LabelInfo) bool {
-	_, added := c.cache.Insert(key, val, uint64(key.len())+uint64(val.len())+17)
+	_, added := c.Insert(key, val, uint64(key.len())+uint64(val.len())+17)
 	return added
-}
-
-func (c *InvertedLabelsCache) Reset() {
-	c.cache.Reset()
 }

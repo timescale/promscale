@@ -6,8 +6,10 @@ package cache
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/timescale/promscale/pkg/clockcache"
+	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel/common/errors"
 	"github.com/timescale/promscale/pkg/pgmodel/model"
 )
@@ -15,7 +17,11 @@ import (
 const (
 	DefaultMetricCacheSize = 10000
 	DefaultLabelsCacheSize = 100000
+	growCheckDuration      = time.Second * 5 // check whether to grow the series cache this often
+	growFactor             = float64(2.0)    // multiply cache size by this factor when growing the cache
 )
+
+var evictionMaxAge = time.Minute * 5 // grow cache if we are evicting elements younger than `now - evictionMaxAge`
 
 type LabelsCache interface {
 	// GetValues tries to get a batch of keys and store the corresponding values is valuesOut
@@ -115,4 +121,65 @@ func (m *MetricNameCache) Evictions() uint64 {
 
 func NewLabelsCache(config Config) LabelsCache {
 	return clockcache.WithMetrics("label", "metric", config.LabelsCacheSize)
+}
+
+type ResizableCache struct {
+	*clockcache.Cache
+	maxSizeBytes uint64
+}
+
+func NewResizableCache(cache *clockcache.Cache, maxBytes uint64, sigClose <-chan struct{}) *ResizableCache {
+	rc := &ResizableCache{cache, maxBytes}
+	if sigClose != nil {
+		go rc.runSizeCheck(sigClose)
+	}
+	return rc
+}
+
+func (rc *ResizableCache) runSizeCheck(sigClose <-chan struct{}) {
+	ticker := time.NewTicker(growCheckDuration)
+	for {
+		select {
+		case <-ticker.C:
+			if rc.shouldGrow() {
+				rc.grow()
+			}
+		case <-sigClose:
+			return
+		}
+	}
+}
+
+// shouldGrow allows cache growth if we are evicting elements that were recently used or inserted
+// evictionMaxAge defines the interval
+func (rc *ResizableCache) shouldGrow() bool {
+	return rc.MaxEvictionTs()+int32(evictionMaxAge.Seconds()) > int32(time.Now().Unix())
+}
+
+func (rc *ResizableCache) grow() {
+	sizeBytes := rc.SizeBytes()
+	oldSize := rc.Cap()
+	if float64(sizeBytes)*1.2 >= float64(rc.maxSizeBytes) {
+		log.Warn("msg", "Cache is too small and cannot be grown",
+			"current_size_bytes", float64(sizeBytes), "max_size_bytes", float64(rc.maxSizeBytes),
+			"current_size_elements", oldSize, "check_interval", growCheckDuration,
+			"eviction_max_age", evictionMaxAge)
+		return
+	}
+
+	multiplier := growFactor
+	if float64(sizeBytes)*multiplier >= float64(rc.maxSizeBytes) {
+		multiplier = float64(rc.maxSizeBytes) / float64(sizeBytes)
+	}
+	if multiplier < 1.0 {
+		return
+	}
+
+	newNumElements := int(float64(oldSize) * multiplier)
+	log.Info("msg", "Growing the series cache",
+		"new_size_elements", newNumElements, "current_size_elements", oldSize,
+		"new_size_bytes", float64(sizeBytes)*multiplier, "max_size_bytes", float64(rc.maxSizeBytes),
+		"multiplier", multiplier,
+		"eviction_max_age", evictionMaxAge)
+	rc.ExpandTo(newNumElements)
 }

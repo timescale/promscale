@@ -440,7 +440,7 @@
           },
           "gridPos": {
             "h": 9,
-            "w": 8,
+            "w": 12,
             "x": 0,
             "y": 10
           },
@@ -474,6 +474,86 @@
           ],
           "title": "Requests",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "scaleDistribution": {
+                  "type": "linear"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 10
+          },
+          "id": 71,
+          "options": {
+            "calculate": false,
+            "cellGap": 1,
+            "color": {
+              "exponent": 0.5,
+              "fill": "dark-orange",
+              "mode": "scheme",
+              "reverse": false,
+              "scale": "exponential",
+              "scheme": "Oranges",
+              "steps": 64
+            },
+            "exemplars": {
+              "color": "rgba(255,0,255,0.7)"
+            },
+            "filterValues": {
+              "le": 1e-9
+            },
+            "legend": {
+              "show": true
+            },
+            "rowsFrame": {
+              "layout": "auto"
+            },
+            "tooltip": {
+              "show": true,
+              "yHistogram": false
+            },
+            "yAxis": {
+              "axisPlacement": "left",
+              "reverse": false,
+              "unit": "none"
+            }
+          },
+          "pluginVersion": "9.2.3",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(promscale_ingest_items_received_bucket{kind=\"sample\", namespace=~\"$namespace\"}[$__rate_interval])) by (le)",
+              "format": "heatmap",
+              "hide": false,
+              "legendFormat": "__auto",
+              "range": true,
+              "refId": "D"
+            }
+          ],
+          "title": "Samples per request",
+          "type": "heatmap"
         },
         {
           "datasource": {
@@ -535,9 +615,9 @@
           },
           "gridPos": {
             "h": 9,
-            "w": 8,
-            "x": 8,
-            "y": 10
+            "w": 12,
+            "x": 0,
+            "y": 19
           },
           "id": 10,
           "interval": "2m",
@@ -632,9 +712,9 @@
           },
           "gridPos": {
             "h": 9,
-            "w": 8,
-            "x": 16,
-            "y": 10
+            "w": 12,
+            "x": 12,
+            "y": 19
           },
           "id": 8,
           "interval": "2m",
@@ -657,7 +737,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.5, rate(promscale_ingest_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, sum(rate(promscale_ingest_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by(le))",
               "interval": "2m",
               "legendFormat": "p50",
               "range": true,
@@ -669,7 +749,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.90, rate(promscale_ingest_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.9, sum(rate(promscale_ingest_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by(le))",
               "hide": false,
               "interval": "2m",
               "legendFormat": "p90",
@@ -682,7 +762,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.95, rate(promscale_ingest_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, sum(rate(promscale_ingest_duration_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by(le))",
               "hide": false,
               "interval": "2m",
               "legendFormat": "p95",
@@ -768,9 +848,9 @@
           },
           "gridPos": {
             "h": 9,
-            "w": 8,
+            "w": 12,
             "x": 0,
-            "y": 11
+            "y": 29
           },
           "id": 9,
           "interval": "2m",
@@ -794,7 +874,7 @@
               },
               "editorMode": "code",
               "exemplar": true,
-              "expr": "rate(grpc_server_msg_received_total{grpc_method=~\"(WriteSpan|WriteSpanStream|Export)\",namespace=~\"$namespace\"}[$__rate_interval])",
+              "expr": "sum(rate(grpc_server_msg_received_total{grpc_method=~\"(WriteSpan|WriteSpanStream|Export)\",namespace=~\"$namespace\"}[$__rate_interval])) by(grpc_service)",
               "interval": "2m",
               "legendFormat": "{{ grpc_service }}",
               "range": true,
@@ -803,6 +883,86 @@
           ],
           "title": "Requests",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "scaleDistribution": {
+                  "type": "linear"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 29
+          },
+          "id": 73,
+          "options": {
+            "calculate": false,
+            "cellGap": 1,
+            "color": {
+              "exponent": 0.5,
+              "fill": "dark-orange",
+              "mode": "scheme",
+              "reverse": false,
+              "scale": "exponential",
+              "scheme": "Oranges",
+              "steps": 64
+            },
+            "exemplars": {
+              "color": "rgba(255,0,255,0.7)"
+            },
+            "filterValues": {
+              "le": 1e-9
+            },
+            "legend": {
+              "show": true
+            },
+            "rowsFrame": {
+              "layout": "auto"
+            },
+            "tooltip": {
+              "show": true,
+              "yHistogram": false
+            },
+            "yAxis": {
+              "axisPlacement": "left",
+              "reverse": false,
+              "unit": "none"
+            }
+          },
+          "pluginVersion": "9.2.3",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(promscale_ingest_items_received_bucket{kind=\"span\", namespace=~\"$namespace\"}[$__rate_interval])) by (le)",
+              "format": "heatmap",
+              "hide": false,
+              "legendFormat": "__auto",
+              "range": true,
+              "refId": "D"
+            }
+          ],
+          "title": "Spans per request",
+          "type": "heatmap"
         },
         {
           "datasource": {
@@ -865,9 +1025,9 @@
           },
           "gridPos": {
             "h": 9,
-            "w": 8,
-            "x": 8,
-            "y": 11
+            "w": 12,
+            "x": 0,
+            "y": 38
           },
           "id": 7,
           "interval": "2m",
@@ -890,7 +1050,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "rate(grpc_server_handled_total{grpc_service=~\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_code=~\"Aborted|Unavailable|Internal|Unknown|Unimplemented|DataLoss\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval])",
+              "expr": "sum(rate(grpc_server_handled_total{grpc_service=~\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_code=~\"Aborted|Unavailable|Internal|Unknown|Unimplemented|DataLoss\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval])) by(grpc_code)",
               "interval": "2m",
               "legendFormat": "{{ grpc_code }}",
               "range": true,
@@ -961,9 +1121,9 @@
           },
           "gridPos": {
             "h": 9,
-            "w": 8,
-            "x": 16,
-            "y": 11
+            "w": 12,
+            "x": 12,
+            "y": 38
           },
           "id": 11,
           "interval": "2m",
@@ -986,7 +1146,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.5, rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, sum(rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval])) by(le))",
               "interval": "2m",
               "legendFormat": "p50 {{ type }}",
               "range": true,
@@ -998,7 +1158,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.9, rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.9, sum(rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval])) by(le))",
               "hide": false,
               "interval": "2m",
               "legendFormat": "p90 {{ type }}",
@@ -1011,7 +1171,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.95, rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, sum(rate(grpc_server_handling_seconds_bucket{grpc_service=\"opentelemetry.proto.collector.trace.v1.TraceService\",grpc_method=~\"Export\",namespace=~\"$namespace\"}[$__rate_interval])) by(le))",
               "hide": false,
               "interval": "2m",
               "legendFormat": "p95 {{ type }}",
@@ -1640,7 +1800,7 @@
               },
               "editorMode": "code",
               "exemplar": true,
-              "expr": "max by (job, instance) (promscale_sql_database_chunks_metrics_expired_count{namespace=~\"$namespace\"})",
+              "expr": "max(promscale_sql_database_chunks_metrics_expired_count{namespace=~\"$namespace\"})",
               "interval": "",
               "legendFormat": "metrics-expired",
               "range": true,
@@ -1653,7 +1813,7 @@
               },
               "editorMode": "code",
               "exemplar": true,
-              "expr": "max by (job, instance) (promscale_sql_database_chunks_metrics_uncompressed_count{namespace=~\"$namespace\"})",
+              "expr": "max(promscale_sql_database_chunks_metrics_uncompressed_count{namespace=~\"$namespace\"})",
               "hide": false,
               "interval": "",
               "legendFormat": "metrics-uncompressed",
@@ -1667,7 +1827,7 @@
               },
               "editorMode": "code",
               "exemplar": true,
-              "expr": "max by (job, instance) (promscale_sql_database_chunks_traces_expired_count{namespace=~\"$namespace\"})",
+              "expr": "max(promscale_sql_database_chunks_traces_expired_count{namespace=~\"$namespace\"})",
               "hide": false,
               "interval": "",
               "legendFormat": "traces-expired",
@@ -1681,7 +1841,7 @@
               },
               "editorMode": "code",
               "exemplar": true,
-              "expr": "max by (job, instance) (promscale_sql_database_chunks_traces_uncompressed_count{namespace=~\"$namespace\"})",
+              "expr": "max(promscale_sql_database_chunks_traces_uncompressed_count{namespace=~\"$namespace\"})",
               "hide": false,
               "interval": "",
               "legendFormat": "traces-uncompressed",
@@ -1695,7 +1855,7 @@
               },
               "editorMode": "code",
               "exemplar": true,
-              "expr": "max by (job, instance) (promscale_sql_database_chunks_metrics_delayed_compression_count{namespace=~\"$namespace\"})",
+              "expr": "max(promscale_sql_database_chunks_metrics_delayed_compression_count{namespace=~\"$namespace\"})",
               "hide": false,
               "interval": "",
               "legendFormat": "metrics-compression-delayed",
@@ -1949,7 +2109,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.5, rate(promscale_database_requests_duration_seconds_bucket{method=~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, sum(rate(promscale_database_requests_duration_seconds_bucket{method=~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval])) by(le, method))",
               "interval": "2m",
               "legendFormat": "p50 - {{ method }}",
               "range": true,
@@ -1961,7 +2121,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.9, rate(promscale_database_requests_duration_seconds_bucket{method=~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.9, sum(rate(promscale_database_requests_duration_seconds_bucket{method=~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval])) by(le, method))",
               "hide": false,
               "interval": "2m",
               "legendFormat": "p90 - {{ method }}",
@@ -1974,7 +2134,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.95, rate(promscale_database_requests_duration_seconds_bucket{method=~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, sum(rate(promscale_database_requests_duration_seconds_bucket{method=~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval])) by(le, method))",
               "hide": false,
               "interval": "2m",
               "legendFormat": "p95 - {{ method }}",
@@ -2070,7 +2230,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.5, rate(promscale_database_requests_duration_seconds_bucket{method!~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, sum(rate(promscale_database_requests_duration_seconds_bucket{method!~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval])) by(le, method))",
               "interval": "",
               "legendFormat": "p50 - {{ method }}",
               "refId": "A"
@@ -2081,7 +2241,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.9, rate(promscale_database_requests_duration_seconds_bucket{method!~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.9, sum(rate(promscale_database_requests_duration_seconds_bucket{method!~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval])) by(le, method))",
               "hide": false,
               "interval": "",
               "legendFormat": "p90 - {{ method }}",
@@ -2093,7 +2253,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "histogram_quantile(0.95, rate(promscale_database_requests_duration_seconds_bucket{method!~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, sum(rate(promscale_database_requests_duration_seconds_bucket{method!~\"query.*\",namespace=~\"$namespace\"}[$__rate_interval])) by(le, method))",
               "hide": false,
               "interval": "",
               "legendFormat": "p95 - {{ method }}",
@@ -2188,7 +2348,7 @@
                 "uid": "${datasource}"
               },
               "exemplar": true,
-              "expr": "rate(promscale_database_requests_total{namespace=~\"$namespace\"}[$__rate_interval])",
+              "expr": "sum(rate(promscale_database_requests_total{namespace=~\"$namespace\"}[$__rate_interval])) by(method)",
               "interval": "2m",
               "legendFormat": "{{ method }}",
               "range": true,
@@ -2745,7 +2905,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_metrics_compression_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "expr": "max(rate(promscale_sql_database_worker_maintenance_job_metrics_compression_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
               "interval": "",
               "legendFormat": "metrics-compression-total",
               "range": true,
@@ -2758,7 +2918,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_metrics_retention_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "expr": "max(rate(promscale_sql_database_worker_maintenance_job_metrics_retention_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
               "hide": false,
               "interval": "",
               "legendFormat": "metrics-retention-total",
@@ -2772,7 +2932,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_traces_retention_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "expr": "max(rate(promscale_sql_database_worker_maintenance_job_traces_retention_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
               "hide": false,
               "interval": "",
               "legendFormat": "traces-retention-total",
@@ -2786,7 +2946,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_metrics_compression_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "expr": "max(rate(promscale_sql_database_worker_maintenance_job_metrics_compression_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
               "hide": false,
               "interval": "",
               "legendFormat": "metrics-compression-failures",
@@ -2800,7 +2960,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_metrics_retention_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "expr": "max(rate(promscale_sql_database_worker_maintenance_job_metrics_retention_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
               "hide": false,
               "interval": "",
               "legendFormat": "metrics-retention-failures",
@@ -2814,7 +2974,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_traces_retention_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "expr": "max(rate(promscale_sql_database_worker_maintenance_job_traces_retention_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
               "hide": false,
               "interval": "",
               "legendFormat": "traces-retention-failures",
@@ -2828,7 +2988,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_traces_compression_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "expr": "max(rate(promscale_sql_database_worker_maintenance_job_traces_compression_failures_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
               "hide": false,
               "interval": "",
               "legendFormat": "traces-compression-failures",
@@ -2842,7 +3002,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max by (job, instance)(rate(promscale_sql_database_worker_maintenance_job_traces_retention_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
+              "expr": "max(rate(promscale_sql_database_worker_maintenance_job_traces_retention_total_runs_count{namespace=~\"$namespace\"}[$__rate_interval])) * 60",
               "hide": false,
               "interval": "",
               "legendFormat": "traces-compression-total",
@@ -3337,7 +3497,7 @@
               },
               "editorMode": "code",
               "exemplar": true,
-              "expr": "rate(promscale_cache_query_hits_total{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval]) / rate(promscale_cache_queries_total{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval])",
+              "expr": "sum(rate(promscale_cache_query_hits_total{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval])) by(name) / sum(rate(promscale_cache_queries_total{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval])) by(name)",
               "interval": "2m",
               "legendFormat": "{{ name }}",
               "range": true,
@@ -3434,7 +3594,7 @@
               },
               "editorMode": "code",
               "exemplar": true,
-              "expr": "histogram_quantile(0.5, rate(promscale_cache_query_latency_microseconds_bucket{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, sum(rate(promscale_cache_query_latency_microseconds_bucket{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval])) by(le, name))",
               "interval": "2m",
               "legendFormat": "p50 - {{ name }}",
               "range": true,
@@ -3447,7 +3607,7 @@
               },
               "editorMode": "code",
               "exemplar": true,
-              "expr": "histogram_quantile(0.90, rate(promscale_cache_query_latency_microseconds_bucket{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.90, sum(rate(promscale_cache_query_latency_microseconds_bucket{type=~\"$datatype\",namespace=~\"$namespace\"}[$__rate_interval])) by(le, name))",
               "hide": false,
               "interval": "2m",
               "legendFormat": "p90 - {{ name }}",
@@ -3639,7 +3799,7 @@
               },
               "editorMode": "code",
               "exemplar": true,
-              "expr": "promscale_cache_elements{namespace=~\"$namespace\",type=~\"$datatype\"} / promscale_cache_capacity_elements{namespace=~\"$namespace\",type=~\"$datatype\"}",
+              "expr": "sum(promscale_cache_elements{namespace=~\"$namespace\",type=~\"$datatype\"}) by(name) / sum(promscale_cache_capacity_elements{namespace=~\"$namespace\",type=~\"$datatype\"}) by(name)",
               "interval": "",
               "legendFormat": "{{ name }}",
               "range": true,

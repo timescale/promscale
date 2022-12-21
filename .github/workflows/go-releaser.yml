@@ -41,7 +41,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       -
         name: Run GoReleaser Test
-        uses: goreleaser/goreleaser-action@v3
+        uses: goreleaser/goreleaser-action@v4
         # do not run test if actually releasing
         if: startsWith(github.ref, 'refs/tags/') != true
         with:
@@ -50,7 +50,7 @@ jobs:
           args: release --snapshot --skip-publish --rm-dist -f .goreleaser.yml
       -
         name: GoReleaser Release
-        uses: goreleaser/goreleaser-action@v3
+        uses: goreleaser/goreleaser-action@v4
         #release only on tags
         if: startsWith(github.ref, 'refs/tags/')
         with:
