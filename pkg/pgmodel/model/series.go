@@ -41,14 +41,12 @@ type Series struct {
 	epoch    SeriesEpoch
 
 	metricName string
-	str        string
 }
 
-func NewSeries(key string, labelPairs []prompb.Label) *Series {
+func NewSeries(labelPairs []prompb.Label) *Series {
 	series := &Series{
 		names:    make([]string, len(labelPairs)),
 		values:   make([]string, len(labelPairs)),
-		str:      key,
 		seriesID: invalidSeriesID,
 		epoch:    InvalidSeriesEpoch,
 	}
@@ -77,17 +75,11 @@ func (l *Series) MetricName() string {
 // This representation is guaranteed to uniquely represent the underlying label
 // set, though need not human-readable, or indeed, valid utf-8
 func (l *Series) String() string {
-	return l.str
-}
-
-// Compare returns a comparison int between two Labels
-func (l *Series) Compare(b *Series) int {
-	return strings.Compare(l.str, b.str)
-}
-
-// Equal returns true if two Labels are equal
-func (l *Series) Equal(b *Series) bool {
-	return l.str == b.str
+	s := strings.Builder{}
+	for i := range l.names {
+		s.WriteString(fmt.Sprintf("%s=%s,", l.names[i], l.values[i]))
+	}
+	return s.String()
 }
 
 func (l *Series) isSeriesIDSetNoLock() bool {
@@ -105,7 +97,7 @@ func (l *Series) IsSeriesIDSet() bool {
 func (l *Series) FinalSizeBytes() uint64 {
 	//size is the base size of the struct + the str and metricName strings
 	//names and values are not counted since they will be nilled out
-	return uint64(unsafe.Sizeof(*l)) + uint64(len(l.str)+len(l.metricName)) // #nosec
+	return uint64(unsafe.Sizeof(*l)) + uint64(len(l.metricName)) // #nosec
 }
 
 func (l *Series) GetSeriesID() (SeriesID, SeriesEpoch, error) {

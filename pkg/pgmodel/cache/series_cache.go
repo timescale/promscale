@@ -6,12 +6,11 @@ package cache
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
-	"fmt"
-	"math"
 	"sort"
 	"sync"
-	"unsafe"
+	"sync/atomic"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/timescale/promscale/pkg/clockcache"
@@ -26,7 +25,7 @@ const DefaultSeriesCacheSize = 1000000
 // SeriesCache is a cache of model.Series entries.
 type SeriesCache interface {
 	Reset()
-	GetSeriesFromProtos(labelPairs []prompb.Label) (series *model.Series, metricName string, err error)
+	GetSeriesFromProtos(labelPairs []prompb.Label) (series *model.Series, err error)
 	Len() int
 	Cap() int
 	Evictions() uint64
@@ -34,13 +33,16 @@ type SeriesCache interface {
 
 type SeriesCacheImpl struct {
 	*ResizableCache
+	labelsDict  sync.Map
+	dictCounter atomic.Uint32
+	dictLock    sync.Mutex
 }
 
 func NewSeriesCache(config Config, sigClose <-chan struct{}) *SeriesCacheImpl {
 	return &SeriesCacheImpl{NewResizableCache(
 		clockcache.WithMetrics("series", "metric", config.SeriesCacheInitialSize),
 		config.SeriesCacheMemoryMaxBytes,
-		sigClose)}
+		sigClose), sync.Map{}, atomic.Uint32{}, sync.Mutex{}}
 }
 
 // Get the canonical version of a series if one exists.
@@ -69,88 +71,6 @@ func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Serie
 	return val.(*model.Series)
 }
 
-// generateKey takes an array of Prometheus labels, and a byte buffer. It
-// stores a string representation (for hashing and comparison) of the labels
-// array in the byte buffer, and returns the metric name which it found in the
-// array of Prometheus labels.
-//
-// The string representation is guaranteed to uniquely represent the underlying
-// label set, though need not be human-readable, or indeed, valid utf-8.
-//
-// The `labels` parameter contains an array of (name, value) pairs.
-// The key which this function returns is the concatenation of sorted kv pairs
-// where each of the key and value is prefixed by the little-endian
-// representation of the two bytes of the uint16 length of the key/value string:
-//
-//	<key1-len>key1<val1-len>val1<key2-len>key2<val2-len>val2
-//
-// This formatting ensures isomorphism, hence preventing collisions.
-// An example for how this transform works is as follows:
-// label1 = ("hell", "oworld"), label2 = ("hello", "world").
-// => "\x04\x00hell\x06\x00oworld\x05\x00hello\x05\x00world"
-func generateKey(labels []prompb.Label, keyBuffer *bytes.Buffer) (metricName string, error error) {
-	if len(labels) == 0 {
-		return "", nil
-	}
-
-	comparator := func(i, j int) bool {
-		return labels[i].Name < labels[j].Name
-	}
-
-	//this is equivalent to sort.SliceIsSorted but avoids the interface conversion
-	//and resulting allocation.
-	//We really shouldn't find unsorted labels. This code is to be extra safe.
-	for i := len(labels) - 1; i > 0; i-- {
-		if labels[i].Name < labels[i-1].Name {
-			sort.Slice(labels, comparator)
-			break
-		}
-	}
-
-	expectedStrLen := len(labels) * 4 // 2 for the length of each key, and 2 for the length of each value
-	for i := range labels {
-		l := labels[i]
-		expectedStrLen += len(l.Name) + len(l.Value)
-	}
-
-	// BigCache cannot handle cases where the key string has a size greater than
-	// 16bits, so we error on such keys here. Since we are restricted to a 16bit
-	// total length anyway, we only use 16bits to store the length of each substring
-	// in our string encoding
-	if expectedStrLen > math.MaxUint16 {
-		return metricName, fmt.Errorf("series too long, combined series has length %d, max length %d", expectedStrLen, math.MaxUint16)
-	}
-
-	keyBuffer.Grow(expectedStrLen)
-
-	lengthBuf := make([]byte, 2)
-	for i := range labels {
-		l := labels[i]
-		key := l.Name
-
-		if l.Name == model.MetricNameLabelName {
-			metricName = l.Value
-		}
-		// this cast is safe since we check that the combined length of all the
-		// strings fit within a uint16, each string's length must also fit
-		binary.LittleEndian.PutUint16(lengthBuf, uint16(len(key)))
-		keyBuffer.WriteByte(lengthBuf[0])
-		keyBuffer.WriteByte(lengthBuf[1])
-		keyBuffer.WriteString(key)
-
-		val := l.Value
-
-		// this cast is safe since we check that the combined length of all the
-		// strings fit within a uint16, each string's length must also fit
-		binary.LittleEndian.PutUint16(lengthBuf, uint16(len(val)))
-		keyBuffer.WriteByte(lengthBuf[0])
-		keyBuffer.WriteByte(lengthBuf[1])
-		keyBuffer.WriteString(val)
-	}
-
-	return metricName, nil
-}
-
 var keyPool = sync.Pool{
 	New: func() interface{} {
 		return new(bytes.Buffer)
@@ -164,23 +84,8 @@ func (t *SeriesCacheImpl) GetSeriesFromLabels(ls labels.Labels) (*model.Series, 
 		ll[i].Name = ls[i].Name
 		ll[i].Value = ls[i].Value
 	}
-	l, _, err := t.GetSeriesFromProtos(ll)
+	l, err := t.GetSeriesFromProtos(ll)
 	return l, err
-}
-
-// useByteAsStringNoCopy uses a byte slice as a string in a function callback
-// without allocation of a copy. This is potentially unsafe and should only
-// be used for performance critical code. The string passed to the function is
-// only valid during the function call. Thus, you should make sure the callback
-// function does not save the string through closures or inside other datastructures.
-// the callback should not modify the byte slice.
-//
-// This usage convention guarantees the byte slice is valid during the callback
-// call but makes no other guarantees.
-func useByteAsStringNoCopy(b []byte, useAsStringFunc func(string)) {
-	//use a byte to String conversion directly without allocation
-	str := *(*string)(unsafe.Pointer(&b)) // #nosec
-	useAsStringFunc(str)
 }
 
 // GetSeriesFromProtos returns a model.Series entry given a list of Prometheus
@@ -188,24 +93,50 @@ func useByteAsStringNoCopy(b []byte, useAsStringFunc func(string)) {
 // If the desired entry is not in the cache, a "placeholder" model.Series entry
 // is constructed and put into the cache. It is not populated with database IDs
 // until a later phase, see model.Series.SetSeriesID.
-func (t *SeriesCacheImpl) GetSeriesFromProtos(labelPairs []prompb.Label) (*model.Series, string, error) {
-	builder := keyPool.Get().(*bytes.Buffer)
-	builder.Reset()
-	defer keyPool.Put(builder)
-	metricName, err := generateKey(labelPairs, builder)
-	if err != nil {
-		return nil, "", err
-	}
-	var series *model.Series
-	useByteAsStringNoCopy(builder.Bytes(), func(key string) {
-		series = t.loadSeries(key)
-	})
+func (t *SeriesCacheImpl) GetSeriesFromProtos(labelPairs []prompb.Label) (*model.Series, error) {
+	seriesKey := t.getSeriesKey(labelPairs)
+	series := t.loadSeries(seriesKey)
 	if series == nil {
-		//this will allocate the key
-		key := builder.String()
-		series = model.NewSeries(key, labelPairs)
-		series = t.setSeries(key, series)
+		series = model.NewSeries(labelPairs)
+		series = t.setSeries(seriesKey, series)
 	}
+	return series, nil
+}
 
-	return series, metricName, nil
+// We use dictionary encoding to generate series key.
+// Each labelPair is encoded to uint32
+// We perform variable encoding on uint32 to byte and append all to byte buffer
+// Bytes are then serialized to string using Base64 encoding
+func (s *SeriesCacheImpl) getSeriesKey(labelPairs []prompb.Label) string {
+	seriesKeyBytes := keyPool.Get().(*bytes.Buffer)
+	idEncodeBuf := make([]byte, binary.MaxVarintLen32)
+	ensureLabelsSorted(labelPairs)
+	for _, labelPair := range labelPairs {
+		l := labels.Label{Name: labelPair.Name, Value: labelPair.Value}
+		pairEnc, found := s.labelsDict.Load(l)
+		if !found {
+			s.dictLock.Lock()
+			pairEnc, _ = s.labelsDict.LoadOrStore(l, s.dictCounter.Add(1))
+			s.dictLock.Unlock()
+		}
+		encodedSize := binary.PutUvarint(idEncodeBuf, uint64(pairEnc.(uint32)))
+		tmp := idEncodeBuf[:encodedSize]
+		//since length can never exceed 4 bytes this is safe
+		seriesKeyBytes.WriteByte(byte(len(tmp)))
+		seriesKeyBytes.Write(tmp)
+	}
+	return base64.StdEncoding.EncodeToString(seriesKeyBytes.Bytes())
+}
+
+// We really shouldn't find unsorted labels. This code is to be extra safe.
+func ensureLabelsSorted(in []prompb.Label) {
+	comparator := func(i, j int) bool {
+		return in[i].Name < in[j].Name
+	}
+	for i := len(in) - 1; i > 0; i-- {
+		if in[i].Name < in[i-1].Name {
+			sort.Slice(in, comparator)
+			break
+		}
+	}
 }

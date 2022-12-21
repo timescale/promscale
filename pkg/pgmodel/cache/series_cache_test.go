@@ -5,54 +5,43 @@
 package cache
 
 import (
-	"bytes"
-	"math"
-	"strings"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/prompb"
-
-	promLabels "github.com/prometheus/prometheus/model/labels"
 )
 
-func TestBigLabels(t *testing.T) {
-	cache := NewSeriesCache(DefaultConfig, nil)
-	builder := strings.Builder{}
-	builder.Grow(int(^uint16(0)) + 1) // one greater than uint16 max
-
-	builder.WriteByte('a')
-	for len(builder.String()) < math.MaxUint16 {
-		builder.WriteString(builder.String())
-	}
-
-	l := promLabels.Labels{
-		promLabels.Label{
-			Name:  builder.String(),
-			Value: "",
-		},
-	}
-
-	_, err := cache.GetSeriesFromLabels(l)
-	if err == nil {
-		t.Errorf("expected error")
-	}
-}
-
 func TestGenerateKey(t *testing.T) {
+	require.NoError(t, os.Setenv("IS_TEST", "true"))
+	cache := NewSeriesCache(DefaultConfig, nil)
+
 	var labels = []prompb.Label{
 		{Name: "__name__", Value: "test"},
 		{Name: "hell", Value: "oworld"},
 		{Name: "hello", Value: "world"},
 	}
-	var keyBuffer = new(bytes.Buffer)
-	var metricName, err = generateKey(labels, keyBuffer)
 
-	require.Nil(t, err)
+	key := cache.getSeriesKey(labels)
+	require.True(t, len(key) > 0)
+	require.Equal(t, "AQEBAgED", key)
+}
 
-	require.Equal(t, "test", metricName)
-	require.Equal(t, []byte("\x08\x00__name__\x04\x00test\x04\x00hell\x06\x00oworld\x05\x00hello\x05\x00world"), keyBuffer.Bytes())
+func BenchmarkGetSeriesKey(b *testing.B) {
+	require.NoError(b, os.Setenv("IS_TEST", "true"))
+	cache := NewSeriesCache(DefaultConfig, nil)
+
+	var labels = []prompb.Label{
+		{Name: "__name__", Value: "test"},
+		{Name: "hell", Value: "oworld"},
+		{Name: "hello", Value: "world"},
+	}
+
+	for i := 0; i < b.N; i++ {
+		cache.getSeriesKey(labels)
+	}
+
 }
 
 func TestGrowSeriesCache(t *testing.T) {

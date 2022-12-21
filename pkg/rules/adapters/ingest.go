@@ -60,11 +60,11 @@ func (app *appenderAdapter) Append(_ storage.SeriesRef, l labels.Labels, t int64
 	if err != nil {
 		return 0, fmt.Errorf("get ingestor: %w", err)
 	}
-	series, metricName, err := dbIngestor.SeriesCache().GetSeriesFromProtos(util.LabelToPrompbLabels(l))
+	series, err := dbIngestor.SeriesCache().GetSeriesFromProtos(util.LabelToPrompbLabels(l))
 	if err != nil {
 		return 0, fmt.Errorf("get series from protos: %w", err)
 	}
-
+	metricName := series.MetricName()
 	samples := model.NewPromSamples(series, []prompb.Sample{{Timestamp: t, Value: v}})
 	if _, found := app.data[metricName]; !found {
 		app.data[metricName] = make([]model.Insertable, 0)

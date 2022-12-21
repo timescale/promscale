@@ -201,7 +201,7 @@ func TestOrderExemplarLabelValues(t *testing.T) {
 	}
 	exemplarSeriesLabels := []prompb.Label{{Name: "__name__", Value: "exemplar_test_metric"}, {Name: "component", Value: "test_infra"}}
 
-	series := model.NewSeries("hash_key", exemplarSeriesLabels)
+	series := model.NewSeries(exemplarSeriesLabels)
 	insertables := make([]model.Insertable, 3) // Since 3 exemplars.
 
 	for i, exemplar := range rawExemplars {
