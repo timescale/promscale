@@ -45,8 +45,8 @@ type DBIngestor struct {
 
 // NewPgxIngestor returns a new Ingestor that uses connection pool and a metrics cache
 // for caching metric table names.
-func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache cache.PositionCache, cfg *Cfg) (*DBIngestor, error) {
-	dispatcher, err := newPgxDispatcher(conn, cache, sCache, eCache, cfg)
+func NewPgxIngestor(conn pgxconn.PgxConn, cache cache.MetricCache, sCache cache.SeriesCache, eCache cache.PositionCache, lCache *cache.InvertedLabelsCache, cfg *Cfg) (*DBIngestor, error) {
+	dispatcher, err := newPgxDispatcher(conn, cache, sCache, eCache, lCache, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,8 @@ func NewPgxIngestorForTests(conn pgxconn.PgxConn, cfg *Cfg) (*DBIngestor, error)
 	c := cache.NewMetricCache(cacheConfig)
 	s := cache.NewSeriesCache(cacheConfig, nil)
 	e := cache.NewExemplarLabelsPosCache(cacheConfig)
-	return NewPgxIngestor(conn, c, s, e, cfg)
+	l := cache.NewInvertedLabelsCache(cacheConfig, nil)
+	return NewPgxIngestor(conn, c, s, e, l, cfg)
 }
 
 const (

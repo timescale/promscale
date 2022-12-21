@@ -11,7 +11,6 @@ import (
 	"math"
 	"sort"
 	"sync"
-	"time"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -24,10 +23,6 @@ import (
 // this seems like a good default size for /active/ series. This results in Promscale using around 360MB on start.
 const DefaultSeriesCacheSize = 1000000
 
-const growCheckDuration = time.Second * 5 // check whether to grow the series cache this often
-const growFactor = float64(2.0)           // multiply cache size by this factor when growing the cache
-var evictionMaxAge = time.Minute * 2      // grow cache if we are evicting elements younger than `now - evictionMaxAge`
-
 // SeriesCache is a cache of model.Series entries.
 type SeriesCache interface {
 	Reset()
@@ -38,91 +33,20 @@ type SeriesCache interface {
 }
 
 type SeriesCacheImpl struct {
-	cache        *clockcache.Cache
-	maxSizeBytes uint64
+	*ResizableCache
 }
 
 func NewSeriesCache(config Config, sigClose <-chan struct{}) *SeriesCacheImpl {
-	cache := &SeriesCacheImpl{
+	return &SeriesCacheImpl{NewResizableCache(
 		clockcache.WithMetrics("series", "metric", config.SeriesCacheInitialSize),
 		config.SeriesCacheMemoryMaxBytes,
-	}
-
-	if sigClose != nil {
-		go cache.runSizeCheck(sigClose)
-	}
-	return cache
-}
-
-func (t *SeriesCacheImpl) runSizeCheck(sigClose <-chan struct{}) {
-	ticker := time.NewTicker(growCheckDuration)
-	for {
-		select {
-		case <-ticker.C:
-			if t.shouldGrow() {
-				t.grow()
-			}
-		case <-sigClose:
-			return
-		}
-	}
-}
-
-// shouldGrow allows cache growth if we are evicting elements that were recently used or inserted
-// evictionMaxAge defines the interval
-func (t *SeriesCacheImpl) shouldGrow() bool {
-	return t.cache.MaxEvictionTs()+int32(evictionMaxAge.Seconds()) > int32(time.Now().Unix())
-}
-
-func (t *SeriesCacheImpl) grow() {
-	sizeBytes := t.cache.SizeBytes()
-	oldSize := t.cache.Cap()
-	if float64(sizeBytes)*1.2 >= float64(t.maxSizeBytes) {
-		log.Warn("msg", "Series cache is too small and cannot be grown",
-			"current_size_bytes", float64(sizeBytes), "max_size_bytes", float64(t.maxSizeBytes),
-			"current_size_elements", oldSize, "check_interval", growCheckDuration,
-			"eviction_max_age", evictionMaxAge)
-		return
-	}
-
-	multiplier := growFactor
-	if float64(sizeBytes)*multiplier >= float64(t.maxSizeBytes) {
-		multiplier = float64(t.maxSizeBytes) / float64(sizeBytes)
-	}
-	if multiplier < 1.0 {
-		return
-	}
-
-	newNumElements := int(float64(oldSize) * multiplier)
-	log.Info("msg", "Growing the series cache",
-		"new_size_elements", newNumElements, "current_size_elements", oldSize,
-		"new_size_bytes", float64(sizeBytes)*multiplier, "max_size_bytes", float64(t.maxSizeBytes),
-		"multiplier", multiplier,
-		"eviction_max_age", evictionMaxAge)
-	t.cache.ExpandTo(newNumElements)
-}
-
-func (t *SeriesCacheImpl) Len() int {
-	return t.cache.Len()
-}
-
-func (t *SeriesCacheImpl) Cap() int {
-	return t.cache.Cap()
-}
-
-func (t *SeriesCacheImpl) Evictions() uint64 {
-	return t.cache.Evictions()
-}
-
-// Reset should be concurrency-safe
-func (t *SeriesCacheImpl) Reset() {
-	t.cache.Reset()
+		sigClose)}
 }
 
 // Get the canonical version of a series if one exists.
 // input: the string representation of a Labels as defined by generateKey()
 func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
-	val, ok := t.cache.Get(str)
+	val, ok := t.Get(str)
 	if !ok {
 		return nil
 	}
@@ -134,7 +58,14 @@ func (t *SeriesCacheImpl) loadSeries(str string) (l *model.Series) {
 // the even of multiple goroutines setting labels concurrently).
 func (t *SeriesCacheImpl) setSeries(str string, lset *model.Series) *model.Series {
 	//str not counted twice in size since the key and lset.str will point to same thing.
-	val, _ := t.cache.Insert(str, lset, lset.FinalSizeBytes())
+	val, inCache := t.Insert(str, lset, lset.FinalSizeBytes())
+	if !inCache {
+		// It seems that cache was full and eviction failed to remove
+		// element due to starvation caused by a lot of concurrent gets
+		// This is a signal to grow our cache
+		log.Info("growing cache because of eviction starvation")
+		t.grow()
+	}
 	return val.(*model.Series)
 }
 
