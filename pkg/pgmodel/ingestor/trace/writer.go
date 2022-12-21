@@ -139,7 +139,7 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces ptrace.Traces
 	startIngest := time.Now() // Time taken for complete ingestion => Processing + DB insert.
 	code := "500"
 	metrics.IngestorActiveWriteRequests.With(traceSpanLabel).Inc()
-	metrics.IngestorItemsReceived.With(traceSpanLabel).Add(float64(traces.SpanCount()))
+	metrics.IngestorItemsReceived.With(traceSpanLabel).Observe(float64(traces.SpanCount()))
 	defer func() {
 		metrics.IngestorDuration.With(prometheus.Labels{"type": "trace", "code": code}).Observe(time.Since(startIngest).Seconds())
 		metrics.IngestorActiveWriteRequests.With(traceSpanLabel).Dec()

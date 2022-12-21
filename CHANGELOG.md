@@ -23,6 +23,7 @@ We use the following categories for changes:
   configuration. Supersedes `startup.dataset.config` which accepts a string
   instead of a mapping [#1737]
 - Add alert to notify about duplicate sample/metric ingestion. [#1688]
+- Add histogram to track number samples/metadata/span sent per request [#1767]
 
 ### Changed
 - Reduced the verbosity of the logs emitted by the vacuum engine [#1715]
@@ -34,7 +35,8 @@ We use the following categories for changes:
 - Aggregate metrics at global level to avoid legend pollution in dashboards [#1800]
 
 ### Fixed
-
+- Fixing the query behind chunks_uncompressed. The new definition should
+  change the baseline value [#1794]
 
 ## [0.16.0] - 2022-10-20
 

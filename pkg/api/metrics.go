@@ -26,8 +26,8 @@ type Metrics struct {
 func updateIngestMetrics(code string, duration, receivedSamples, receivedMetadata float64) {
 	pgMetrics.IngestorRequests.With(prometheus.Labels{"type": "metric", "code": code}).Inc()
 	pgMetrics.IngestorDuration.With(prometheus.Labels{"type": "metric", "code": code}).Observe(duration)
-	pgMetrics.IngestorItemsReceived.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Add(receivedSamples)
-	pgMetrics.IngestorItemsReceived.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Add(receivedMetadata)
+	pgMetrics.IngestorItemsReceived.With(prometheus.Labels{"type": "metric", "kind": "sample"}).Observe(receivedSamples)
+	pgMetrics.IngestorItemsReceived.With(prometheus.Labels{"type": "metric", "kind": "metadata"}).Observe(receivedMetadata)
 }
 
 func updateQueryMetrics(handler, code string, duration float64) {
