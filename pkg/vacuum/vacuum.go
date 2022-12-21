@@ -265,8 +265,21 @@ type chunk struct {
 	age             int64
 }
 
+type workload struct {
+	query        string
+	name         string
+	limitWorkers bool
+}
+
 // Run attempts vacuum a batch of compressed chunks
 func (e *Engine) Run(ctx context.Context) {
+	// we look for chunks past vacuum_freeze_min_age that probably should be frozen
+	vacuumToFreeze := workload{query: sqlListChunksToFreeze, limitWorkers: false, name: "chunks needing to be frozen"}
+	// we look for compressed chunks that have never been vacuum and seem to be missing
+	// statistics. autovacuum will ignore these until they hit vacuum_freeze_min_age, so let's
+	// catch these early
+	vacuumMissingStats := workload{query: sqlListChunksMissingStats, limitWorkers: true, name: "chunks missing stats"}
+
 	con, err := e.pool.Acquire(ctx)
 	if err != nil {
 		log.Error("msg", "failed to acquire a db connection", "error", err)
@@ -295,81 +308,38 @@ func (e *Engine) Run(ctx context.Context) {
 		numberVacuumConnections.Set(0)
 	}()
 
+	currentWorkloadIdx := 0
+	// we limit ourselves to batches of 1000 chunks on each iteration
+	// vacuumToFreeze needs to run more often, therefore it is present in the list twice
+	workloadsList := []workload{vacuumToFreeze, vacuumMissingStats, vacuumToFreeze}
 	for {
-		// vacuumChunksToFreeze should run to completion
-		// if an error is encountered, give vacuumChunksMissingStats a chance before bailing
-		err = e.vacuumChunksToFreeze(ctx, con)
-		// vacuumChunkMissingStats will only run up to a limited number of times
-		// if it is finished, it's okay to break the loop and exit this run (both are finished)
-		// it if didn't finish, loop again and give vacuumChunksToFreeze a turn before continuing
-		finished, err2 := e.vacuumChunksMissingStats(ctx, con)
-		if finished {
-			break
-		}
-		// don't keep trying forever if we hit errors
-		if err != nil {
-			log.Error("msg", "vacuum engine failed in vacuuming chunks to freeze", "error", err)
-			break
-		}
-		if err2 != nil {
-			log.Error("msg", "vacuum engine failed in vacuuming chunks missing stats", "error", err2)
-			break
-		}
-	}
-}
+		workload := workloadsList[currentWorkloadIdx]
+		currentWorkloadIdx = (currentWorkloadIdx + 1) % len(workloadsList)
 
-func (e *Engine) vacuumChunksToFreeze(ctx context.Context, con *pgxpool.Conn) error {
-	// we look for chunks past vacuum_freeze_min_age that probably should be frozen
-	// we limit ourselves to batches of 1000 chunks
-	// since we already have the advisory lock, continue to vacuum batches as needed until none left
-	for {
-		chunks, err := e.listChunks(ctx, con, sqlListChunksToFreeze)
+		chunks, err := e.listChunks(ctx, con, workload.query)
 		if err != nil {
-			log.Error("msg", "failed to list compressed chunks needing to be frozen", "error", err)
-			return err
+			log.Error("msg", "failed to list compressed "+workload.name, "error", err)
+			return
 		}
 		tablesNeedingVacuum.Set(float64(len(chunks)))
 		if len(chunks) == 0 {
-			log.Info("msg", "zero compressed chunks needing to be frozen")
-			return nil
+			log.Info("msg", "zero compressed "+workload.name)
+			continue
 		}
-		log.Info("msg", "compressed chunks needing to be frozen", "count", len(chunks))
-		numWorkers, err := e.calcNumWorkers(ctx, con, chunks)
-		if err != nil {
-			log.Error("msg", "failed to calc num workers", "error", err)
-			return err
+		log.Info("msg", "compressed "+workload.name, "count", len(chunks))
+		numWorkers := 1
+		if !workload.limitWorkers {
+			numWorkers, err = e.calcNumWorkers(ctx, con, chunks)
+			if err != nil {
+				log.Error("msg", "failed to calc num workers", "error", err)
+				continue
+			}
 		}
 		runWorkers(ctx, numWorkers, chunks, e.worker)
 		log.Debug("msg", "vacuum workers finished. delaying before next iteration...")
 		// in some cases, have seen it take up to 10 seconds for the stats to be updated post vacuum
 		time.Sleep(delay)
 	}
-}
-
-func (e *Engine) vacuumChunksMissingStats(ctx context.Context, con *pgxpool.Conn) (finished bool, err error) {
-	// we look for compressed chunks that have never been vacuum and seem to be missing
-	// statistics. autovacuum will ignore these until they hit vacuum_freeze_min_age, so let's
-	// catch these early
-	// we only do a max of 3000 before we give vacuumChunksToFreeze another turn
-	for i := 0; i <= 3; i++ {
-		chunks, err := e.listChunks(ctx, con, sqlListChunksMissingStats)
-		if err != nil {
-			log.Error("msg", "failed to list compressed chunks missing stats", "error", err)
-			return false, err
-		}
-		tablesNeedingVacuum.Set(float64(len(chunks)))
-		if len(chunks) == 0 {
-			log.Info("msg", "zero compressed chunks missing stats")
-			return true, nil
-		}
-		log.Info("msg", "compressed chunks missing stats", "count", len(chunks))
-
-		runWorkers(ctx, 1, chunks, e.worker)
-		log.Debug("msg", "vacuum workers finished. delaying before next iteration...")
-		// in some cases, have seen it take up to 10 seconds for the stats to be updated post vacuum
-		time.Sleep(delay)
-	}
-	return false, nil
 }
 
 // listChunks identifies chunks which need to be vacuumed
