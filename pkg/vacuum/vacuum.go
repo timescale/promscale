@@ -63,7 +63,7 @@ var (
 	numberVacuumConnections = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: util.PromNamespace,
 		Subsystem: "vacuum",
-		Name:      "number_vacuum_connections",
+		Name:      "num_connections",
 		Help:      "Number of database connections currently in use by the vacuum engine. One taken up by the advisory lock, the rest by vacuum commands.",
 	})
 	vacuumErrorsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
