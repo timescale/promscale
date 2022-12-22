@@ -42,7 +42,7 @@ func Test_runWorkers(t *testing.T) {
 			var mu sync.Mutex
 			// when we "work" on a chunk, append its name to actual
 			actual := make([]string, 0)
-			runWorkers(context.Background(), tt.numWorkers, tt.chunks, func(ctx context.Context, id int, todo <-chan *chunk) {
+			runWorkers(context.Background(), "test", tt.numWorkers, tt.chunks, func(ctx context.Context, workload string, id int, todo <-chan *chunk) {
 				for c := range todo {
 					func(ctx context.Context, id int, c *chunk) {
 						mu.Lock()
