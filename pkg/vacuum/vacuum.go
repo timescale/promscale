@@ -34,6 +34,14 @@
 // vacuuming a chunk, we check the autovacuum count again to see if it
 // has increased. If it has, the autovacuum engine beat us to the
 // chunk, and we skip it.
+//
+// Additionally, we have seen instances in which compresses chunks are
+// missing statistics. Autovacuum ignores tables that are missing
+// statistics. Analyzing these tables does not help since we rarely
+// modify chunks after they are compressed. Therefore, these chunks are
+// ignored until they pass the vacuum_freeze_max_age. This can be bad
+// for performance. So, the vacuum engine also looks for these chunks
+// and vacuums them. We only use one worker for these.
 package vacuum
 
 import (
@@ -52,40 +60,48 @@ import (
 )
 
 var (
-	tablesVacuumedTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: util.PromNamespace,
-		Subsystem: "vacuum",
-		Name:      "tables_vacuumed_total",
-		Help:      "Total number of tables vacuumed by the Promscale vacuum engine.",
-	})
-	vacuumErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: util.PromNamespace,
-		Subsystem: "vacuum",
-		Name:      "vacuum_errors_total",
-		Help:      "Total number of errors encountered by the Promscale vacuum engine while vacuuming tables.",
-	})
-	tablesNeedingVacuum = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: util.PromNamespace,
-		Subsystem: "vacuum",
-		Name:      "tables_needing_vacuum",
-		Help:      "Number of tables needing a vacuum detected on this iteration of the engine. This will never exceed 1000 even if there are more to vacuum.",
-	})
 	numberVacuumConnections = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: util.PromNamespace,
 		Subsystem: "vacuum",
-		Name:      "number_vacuum_connections",
+		Name:      "num_connections",
 		Help:      "Number of database connections currently in use by the vacuum engine. One taken up by the advisory lock, the rest by vacuum commands.",
 	})
-	vacuumDurationSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
+	vacuumErrorsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: util.PromNamespace,
+		Subsystem: "vacuum",
+		Name:      "errors_total",
+		Help:      "Total number of errors encountered by the Promscale vacuum engine while vacuuming tables.",
+	},
+		[]string{"workload"},
+	)
+	tablesVacuumedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: util.PromNamespace,
+		Subsystem: "vacuum",
+		Name:      "tables_vacuumed_total",
+		Help:      "Total number of compressed chunks vacuumed by the Promscale vacuum engine.",
+	},
+		[]string{"workload"},
+	)
+	tablesToVacuum = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: util.PromNamespace,
+		Subsystem: "vacuum",
+		Name:      "tables_to_vacuum_total",
+		Help:      "Number of compressed chunks needing a vacuum detected on this iteration of the engine. This will never exceed 1000 even if there are more to vacuum.",
+	},
+		[]string{"workload"},
+	)
+	vacuumDurationSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: util.PromNamespace,
 		Subsystem: "vacuum",
 		Name:      "vacuum_duration_seconds",
 		Help:      "Time spent vacuuming chunks.",
-	})
+	},
+		[]string{"workload"},
+	)
 )
 
 func init() {
-	prometheus.MustRegister(tablesVacuumedTotal, vacuumErrorsTotal, tablesNeedingVacuum, numberVacuumConnections, vacuumDurationSeconds)
+	prometheus.MustRegister(tablesVacuumedTotal, vacuumErrorsTotal, tablesToVacuum, numberVacuumConnections, vacuumDurationSeconds)
 }
 
 const (
@@ -99,16 +115,27 @@ const (
 		current_setting('vacuum_freeze_min_age')::bigint as vacuum_freeze_min_age,
 		current_setting('autovacuum_freeze_max_age')::bigint as autovacuum_freeze_max_age
 	`
-	sqlListChunks = `
+	sqlListChunksToFreeze = `
 	SELECT 
 		format('%I.%I', schema_name, table_name) AS schema_table,
 		pg_stat_get_autovacuum_count(format('%I.%I', schema_name, table_name)::regclass::oid) AS autovacuum_count,
-		pg_catalog.age(relfrozenxid) as age
-	FROM _ps_catalog.chunks_to_freeze 
+		pg_catalog.age(relfrozenxid) AS age
+	FROM _ps_catalog.compressed_chunks_to_freeze 
 	WHERE coalesce(last_vacuum, '-infinity'::timestamptz) < now() - interval '15 minutes' 
 	AND pg_catalog.age(relfrozenxid) > current_setting('vacuum_freeze_min_age')::bigint
 	ORDER BY pg_catalog.age(relfrozenxid) DESC --oldest first
 	LIMIT 1000`
+	sqlListChunksMissingStats = `
+	SELECT 
+		format('%I.%I', schema_name, table_name) AS schema_table,
+		0 AS autovacuum_count,
+		pg_catalog.age(relfrozenxid) AS age
+	FROM _ps_catalog.compressed_chunks_missing_stats
+	-- older than 20% of vacuum_freeze_min_age 
+	WHERE pg_catalog.age(relfrozenxid) > (current_setting('vacuum_freeze_min_age')::bigint / 5)
+	ORDER BY pg_catalog.age(relfrozenxid) DESC --oldest first
+	LIMIT 1000
+	`
 	// finds out how many times the autovacuum engine has vacuumed a chunk
 	sqlGetAutovacuumCount = "SELECT pg_catalog.pg_stat_get_autovacuum_count($1::regclass::oid)"
 	// delay - on each iteration of the engine, we will sleep a bit before querying
@@ -246,11 +273,24 @@ type chunk struct {
 	age             int64
 }
 
+type workload struct {
+	name         string
+	workload     string
+	query        string
+	scaleWorkers bool
+	stop         bool
+}
+
 // Run attempts vacuum a batch of compressed chunks
 func (e *Engine) Run(ctx context.Context) {
+	const locking = "locking"
+	// grab a database connection and attempt to acquire an advisory lock
+	// if we get the lock, we'll hold it on this connection while the vacuum
+	// work is done
 	con, err := e.pool.Acquire(ctx)
 	if err != nil {
 		log.Error("msg", "failed to acquire a db connection", "error", err)
+		vacuumErrorsTotal.WithLabelValues(locking).Inc()
 		return
 	}
 	defer con.Release() // return the connection to the pool when finished with it
@@ -258,6 +298,7 @@ func (e *Engine) Run(ctx context.Context) {
 	err = con.QueryRow(ctx, sqlAcquireLock).Scan(&acquired)
 	if err != nil {
 		log.Error("msg", "failed to attempt to acquire advisory lock", "error", err)
+		vacuumErrorsTotal.WithLabelValues(locking).Inc()
 		return
 	}
 	if !acquired {
@@ -272,29 +313,72 @@ func (e *Engine) Run(ctx context.Context) {
 		_, err := con.Exec(context.Background(), sqlReleaseLock)
 		if err != nil {
 			log.Error("msg", "vacuum engine failed to release advisory lock", "error", err)
+			vacuumErrorsTotal.WithLabelValues(locking).Inc()
 		}
 		numberVacuumConnections.Set(0)
 	}()
-	// we limit ourselves to batches of 1000 chunks
-	// since we already have the advisory lock, continue to vacuum batches as needed until none left
-	for {
-		chunks, err := e.listChunks(ctx, con)
-		if err != nil {
-			log.Error("msg", "failed to list chunks for vacuuming", "error", err)
-			return
+
+	// okay, we have the advisory lock, let's do some work...
+
+	chunksToFreeze := workload{
+		name:         "compressed chunks to freeze",
+		workload:     "compressed-chunks-to-freeze",
+		query:        sqlListChunksToFreeze,
+		scaleWorkers: true,
+		stop:         false,
+	}
+	chunksMissingStats := workload{
+		name:         "compressed chunks missing stats",
+		workload:     "compressed-chunks-missing-stats",
+		query:        sqlListChunksMissingStats,
+		scaleWorkers: false,
+		stop:         false,
+	}
+
+	for i := 0; true; i++ {
+		// continue looping until both workloads were ready
+		// to stop on their last iterations
+		if chunksToFreeze.stop && chunksMissingStats.stop {
+			break
 		}
-		tablesNeedingVacuum.Set(float64(len(chunks)))
+
+		// every 3rd iteration is chunksMissingStats
+		w := &chunksToFreeze
+		if i%3 == 0 {
+			w = &chunksMissingStats
+		}
+		w.stop = false
+
+		// find some chunks to vacuum
+		chunks, err := e.listChunks(ctx, con, w.query)
+		if err != nil {
+			log.Error("msg", fmt.Sprintf("failed to list %s", w.name), "error", err)
+			vacuumErrorsTotal.WithLabelValues(w.workload).Inc()
+			w.stop = true
+			continue
+		}
+		tablesToVacuum.WithLabelValues(w.workload).Set(float64(len(chunks)))
 		if len(chunks) == 0 {
-			log.Info("msg", "zero compressed chunks need to be vacuumed")
-			return
+			log.Debug("msg", fmt.Sprintf("zero %s", w.name))
+			w.stop = true
+			continue
 		}
-		log.Info("msg", "compressed chunks need to be vacuumed", "count", len(chunks))
-		numWorkers, err := e.calcNumWorkers(ctx, con, chunks)
-		if err != nil {
-			log.Error("msg", "failed to calc num workers", "error", err)
-			return
+		log.Debug("msg", w.name, "count", len(chunks))
+
+		// how many workers should we use?
+		numWorkers := 1
+		if w.scaleWorkers {
+			numWorkers, err = e.calcNumWorkers(ctx, con, chunks)
+			if err != nil {
+				log.Error("msg", "failed to calc num workers", "error", err)
+				vacuumErrorsTotal.WithLabelValues(w.workload).Inc()
+				w.stop = true
+				continue
+			}
 		}
-		runWorkers(ctx, numWorkers, chunks, e.worker)
+
+		// vacuum the chunks
+		runWorkers(ctx, w.workload, numWorkers, chunks, e.worker)
 		log.Debug("msg", "vacuum workers finished. delaying before next iteration...")
 		// in some cases, have seen it take up to 10 seconds for the stats to be updated post vacuum
 		time.Sleep(delay)
@@ -302,8 +386,8 @@ func (e *Engine) Run(ctx context.Context) {
 }
 
 // listChunks identifies chunks which need to be vacuumed
-func (e *Engine) listChunks(ctx context.Context, con *pgxpool.Conn) ([]*chunk, error) {
-	rows, err := con.Query(ctx, sqlListChunks)
+func (e *Engine) listChunks(ctx context.Context, con *pgxpool.Conn, sql string) ([]*chunk, error) {
+	rows, err := con.Query(ctx, sql)
 	if err != nil {
 		return nil, err
 	}
@@ -390,15 +474,15 @@ func (e *Engine) calcNumWorkers(ctx context.Context, con *pgxpool.Conn, chunks [
 
 // runWorkers kicks off a number of goroutines to work on the chunks in parallel
 // blocks until the workers complete
-func runWorkers(ctx context.Context, numWorkers int, chunks []*chunk, worker func(context.Context, int, <-chan *chunk)) {
+func runWorkers(ctx context.Context, workload string, numWorkers int, chunks []*chunk, worker func(context.Context, string, int, <-chan *chunk)) {
 	todo := make(chan *chunk, len(chunks))
 	var wg sync.WaitGroup
 	wg.Add(numWorkers)
 	for id := 0; id < numWorkers; id++ {
-		go func(ctx context.Context, id int, todo <-chan *chunk) {
+		go func(ctx context.Context, workload string, id int, todo <-chan *chunk) {
 			defer wg.Done()
-			worker(ctx, id, todo)
-		}(ctx, id, todo)
+			worker(ctx, workload, id, todo)
+		}(ctx, workload, id, todo)
 	}
 	for _, c := range chunks {
 		todo <- c
@@ -417,11 +501,11 @@ func (e *Engine) getAutovacuumCount(ctx context.Context, con *pgxpool.Conn, name
 }
 
 // worker pulls chunks from a channel and vacuums them
-func (e *Engine) worker(ctx context.Context, id int, todo <-chan *chunk) {
+func (e *Engine) worker(ctx context.Context, workload string, id int, todo <-chan *chunk) {
 	con, err := e.pool.Acquire(ctx)
 	if err != nil {
 		log.Error("msg", "failed to acquire a database connection", "worker", id, "error", err)
-		vacuumErrorsTotal.Inc()
+		vacuumErrorsTotal.WithLabelValues(workload).Inc()
 		return
 	}
 	numberVacuumConnections.Inc()
@@ -437,7 +521,7 @@ func (e *Engine) worker(ctx context.Context, id int, todo <-chan *chunk) {
 		autovacuumCount, err := e.getAutovacuumCount(ctx, con, c.name)
 		if err != nil {
 			log.Error("msg", "failed to get current autovacuum count", "chunk", c.name, "worker", id, "error", err)
-			vacuumErrorsTotal.Inc()
+			vacuumErrorsTotal.WithLabelValues(workload).Inc()
 			continue
 		}
 		if c.autovacuumCount < autovacuumCount {
@@ -452,10 +536,10 @@ func (e *Engine) worker(ctx context.Context, id int, todo <-chan *chunk) {
 		elapsed := time.Since(before).Seconds()
 		if err != nil {
 			log.Error("msg", "failed to vacuum chunk", "chunk", c.name, "worker", id, "error", err)
-			vacuumErrorsTotal.Inc()
+			vacuumErrorsTotal.WithLabelValues(workload).Inc()
 		} else {
-			vacuumDurationSeconds.Observe(elapsed)
-			tablesVacuumedTotal.Inc()
+			vacuumDurationSeconds.WithLabelValues(workload).Observe(elapsed)
+			tablesVacuumedTotal.WithLabelValues(workload).Inc()
 		}
 	}
 }

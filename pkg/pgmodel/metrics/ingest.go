@@ -141,13 +141,15 @@ var (
 			Help:      "Total number of items (sample/metadata/span) ingested",
 		}, []string{"type", "kind", "subsystem"},
 	)
-	IngestorItemsReceived = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
+	IngestorItemsReceived = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
 			Namespace: util.PromNamespace,
 			Subsystem: "ingest",
-			Name:      "items_received_total",
-			Help:      "Total items (samples/exemplars/spans) received.",
-		}, []string{"type", "kind"},
+			Name:      "items_received",
+			Help:      "Number of (samples/exemplars/spans) received",
+			Buckets:   []float64{10, 50, 100, 200, 500, 1000, 2000, 4000, 6000, 8000, 10000, 20000, 30000},
+		},
+		[]string{"type", "kind"},
 	)
 	IngestorBytes = prometheus.NewCounterVec(
 		prometheus.CounterOpts{

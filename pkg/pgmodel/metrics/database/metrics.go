@@ -1,7 +1,9 @@
 package database
 
 import (
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -47,10 +49,19 @@ type metricQueryPollConfig struct {
 }
 
 func updateAtMostEvery(interval time.Duration) metricQueryPollConfig {
+	// If we initialize lastUpdate as 0 or now - interval, then
+	// all the heavy queries that we aim to spread out by using this
+	// funciton will hammer the database simultaneously at the start.
+	// At the same time delaying them for the full duration of interval
+	// might be too much. Hence the jitter.
+	jitterDelta, err := rand.Int(rand.Reader, big.NewInt(int64(interval)/3))
+	if err != nil {
+		panic(err)
+	}
 	return metricQueryPollConfig{
 		enabled:    true,
 		interval:   interval,
-		lastUpdate: time.Now(),
+		lastUpdate: time.Now().Add(-interval + time.Duration(jitterDelta.Int64())),
 	}
 }
 
@@ -149,6 +160,12 @@ var metrics = []metricQueryWrap{
 				Name:      "chunks_metrics_uncompressed_count",
 				Help:      "The number of metrics chunks soon to be compressed by maintenance jobs.",
 			},
+		),
+		customPollConfig: updateAtMostEvery(9 * time.Minute),
+		query: `SELECT coalesce(sum(jsonb_array_length(chunks_to_compress)), 0)::BIGINT AS uncompressed
+			FROM _prom_catalog.metric_chunks_that_need_to_be_compressed(INTERVAL '1 hour');`,
+	}, {
+		metrics: gauges(
 			prometheus.GaugeOpts{
 				Namespace: util.PromNamespace,
 				Subsystem: "sql_database",
@@ -157,24 +174,16 @@ var metrics = []metricQueryWrap{
 			},
 		),
 		customPollConfig: updateAtMostEvery(9 * time.Minute),
-		query: `WITH chunk_candidates AS MATERIALIZED (
-				SELECT chcons.dimension_slice_id, h.table_name, h.schema_name
-				FROM _timescaledb_catalog.chunk_constraint chcons
-					INNER JOIN _timescaledb_catalog.chunk c ON c.id = chcons.chunk_id
-					INNER JOIN _timescaledb_catalog.hypertable h ON h.id = c.hypertable_id
-				WHERE c.dropped IS FALSE
-				AND h.compression_state = 1 -- compression_enabled = TRUE
-				AND (c.status & 1) != 1 -- only check for uncompressed chunks
-			)
-			SELECT
-				count(*) FILTER(WHERE m.delay_compression_until IS NULL OR m.delay_compression_until < now())::BIGINT AS uncompressed,
-				count(*) FILTER(WHERE m.delay_compression_until IS NOT NULL AND m.delay_compression_until >= now())::BIGINT AS delayed_compression
-			FROM chunk_candidates cc
+		query: `SELECT count(*)::BIGINT AS delayed_compression
+			FROM _prom_catalog.metric m
+				INNER JOIN _timescaledb_catalog.chunk c ON (c.schema_name = m.table_schema AND c.table_name = m.table_schema)
+				INNER JOIN _timescaledb_catalog.chunk_constraint cc ON (cc.chunk_id = c.id)
 				INNER JOIN _timescaledb_catalog.dimension_slice ds ON ds.id = cc.dimension_slice_id
-				INNER JOIN _prom_catalog.metric m ON (m.table_name = cc.table_name AND m.table_schema = cc.schema_name)
 			WHERE NOT m.is_view
-			AND ds.range_start <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')
-			AND ds.range_end <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')`,
+				AND m.delay_compression_until IS NOT NULL
+				AND m.delay_compression_until >= now()
+				AND ds.range_start <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')
+				AND ds.range_end <= _timescaledb_internal.time_to_internal(now() - interval '1 hour')`,
 	}, {
 		metrics: gauges(
 			prometheus.GaugeOpts{
@@ -577,6 +586,48 @@ var metrics = []metricQueryWrap{
 			},
 		),
 		query: `select count(*)::bigint from _prom_catalog.metric`,
+	},
+	{
+		metrics: gauges(
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "shared_buffers_size",
+				Help:      "Size of shared_buffers in bytes",
+			},
+		),
+		query: `SELECT (setting::BIGINT*pg_size_bytes(unit))::BIGINT FROM pg_settings WHERE name = 'shared_buffers'`,
+	},
+	{
+		metrics: gauges(
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "open_chunks_total_table_size",
+				Help:      "Total table size of currently open chunks in bytes",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "open_chunks_total_index_size",
+				Help:      "Total indexes size of currently open chunks in bytes",
+			},
+		),
+		query: `SELECT 
+					coalesce(sum(chunk_total_size)::BIGINT,0) as total_table_size, 
+					coalesce(sum(chunk_index_size)::BIGINT, 0) as total_index_size 
+				FROM (
+					SELECT DISTINCT ON (hypertable_id)
+					  pg_indexes_size(format('%I.%I', c.schema_name, c.table_name)) chunk_index_size,
+					  pg_total_relation_size(format('%I.%I', c.schema_name, c.table_name)) chunk_total_size
+					FROM _timescaledb_catalog.dimension_slice ds 
+					INNER JOIN _timescaledb_catalog.chunk_constraint cc on (cc.dimension_slice_id = ds.id)
+					INNER JOIN _timescaledb_catalog.chunk c on (c.id = cc.chunk_id) 
+					WHERE range_end > _timescaledb_internal.time_to_internal(now()- interval '30 minutes') 
+					and range_start < _timescaledb_internal.time_to_internal(now())
+					ORDER BY hypertable_id, range_end DESC
+					) AS info;`,
+		customPollConfig: updateAtMostEvery(6 * time.Minute),
 	},
 }
 
