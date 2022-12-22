@@ -69,7 +69,7 @@ var (
 	vacuumErrorsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: util.PromNamespace,
 		Subsystem: "vacuum",
-		Name:      "vacuum_errors_total",
+		Name:      "errors_total",
 		Help:      "Total number of errors encountered by the Promscale vacuum engine while vacuuming tables.",
 	},
 		[]string{"workload"},
