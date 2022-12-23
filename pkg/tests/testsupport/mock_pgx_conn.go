@@ -49,7 +49,14 @@ func (MockPgxConn) Query(ctx context.Context, sql string, args ...interface{}) (
 func (MockPgxConn) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
 	return MockRow{}
 }
-func (MockPgxConn) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+func (MockPgxConn) CopyFrom(
+	ctx context.Context,
+	tx pgx.Tx,
+	tableName pgx.Identifier,
+	columnNames []string,
+	rowSrc pgx.CopyFromSource,
+	oids []uint32,
+) (int64, error) {
 	return 0, nil
 }
 func (MockPgxConn) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource { return nil }

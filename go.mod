@@ -20,6 +20,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hashicorp/go-hclog v1.3.1
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
+	github.com/jackc/pgio v1.0.0
 	github.com/jackc/pgx/v5 v5.2.0
 	github.com/jaegertracing/jaeger v1.38.2-0.20221006002917-5bf8a28fe06d
 	github.com/mitchellh/mapstructure v1.5.0
