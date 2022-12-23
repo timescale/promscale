@@ -34,7 +34,7 @@ func TestSpanMultipleParentProtoFromTraces(t *testing.T) {
 	otherParentSpanID := pcommon.SpanID{'1', '2', '3', '4', '5', '6', '7', '9'}
 	childOfLink.SetSpanID(otherParentSpanID)
 	childOfLink.SetTraceID(traceID)
-	childOfLink.Attributes().PutString(
+	childOfLink.Attributes().PutStr(
 		conventions.AttributeOpentracingRefType,
 		conventions.AttributeOpentracingRefTypeChildOf,
 	)

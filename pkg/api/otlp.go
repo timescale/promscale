@@ -21,6 +21,6 @@ type tracesServer struct {
 	ingestor ingestor.DBInserter
 }
 
-func (t *tracesServer) Export(ctx context.Context, tr ptraceotlp.Request) (ptraceotlp.Response, error) {
-	return ptraceotlp.NewResponse(), t.ingestor.IngestTraces(ctx, tr.Traces())
+func (t *tracesServer) Export(ctx context.Context, tr ptraceotlp.ExportRequest) (ptraceotlp.ExportResponse, error) {
+	return ptraceotlp.NewExportResponse(), t.ingestor.IngestTraces(ctx, tr.Traces())
 }

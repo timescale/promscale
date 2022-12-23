@@ -265,7 +265,9 @@ func getTracesFixtures() (tracesFixtures, error) {
 
 	// We recreate the batches to have a unique copy that can be
 	// modified without altering trace1 and trace2
-	batches, err = tracesFixturesToBatches(traces.Clone())
+	newTraces := ptrace.NewTraces()
+	traces.CopyTo(newTraces)
+	batches, err = tracesFixturesToBatches(newTraces)
 	if err != nil {
 		return tracesFixtures{}, err
 	}

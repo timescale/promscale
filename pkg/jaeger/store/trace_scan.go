@@ -107,10 +107,10 @@ func ScanRow(row pgxconn.PgxRows, traces *ptrace.Traces) error {
 	return nil
 }
 
-func newMapFromRaw(m map[string]interface{}) pcommon.Map {
+func newMapFromRaw(m map[string]interface{}) (pcommon.Map, error) {
 	pm := pcommon.NewMap()
-	pm.FromRaw(m)
-	return pm
+	err := pm.FromRaw(m)
+	return pm, err
 }
 
 func populateSpan(
@@ -122,7 +122,12 @@ func populateSpan(
 	if err != nil {
 		return fmt.Errorf("making resource tags: %w", err)
 	}
-	newMapFromRaw(attr).CopyTo(resourceSpan.Resource().Attributes())
+
+	m, err := newMapFromRaw(attr)
+	if err != nil {
+		return fmt.Errorf("making resource tags map: %w", err)
+	}
+	m.CopyTo(resourceSpan.Resource().Attributes())
 
 	instrumentationLibSpan := resourceSpan.ScopeSpans().AppendEmpty()
 	if dbResult.instLibSchemaUrl != nil {
@@ -186,7 +191,12 @@ func populateSpan(
 	if err != nil {
 		return fmt.Errorf("making span tags: %w", err)
 	}
-	newMapFromRaw(attr).CopyTo(ref.Attributes())
+
+	m, err = newMapFromRaw(attr)
+	if err != nil {
+		return fmt.Errorf("making resource tags map: %w", err)
+	}
+	m.CopyTo(ref.Attributes())
 
 	if dbResult.eventNames != nil {
 		if err := populateEvents(ref.Events(), dbResult); err != nil {
@@ -226,7 +236,12 @@ func populateEvents(
 		if err != nil {
 			return fmt.Errorf("making event tags: %w", err)
 		}
-		newMapFromRaw(attr).CopyTo(event.Attributes())
+
+		m, err := newMapFromRaw(attr)
+		if err != nil {
+			return fmt.Errorf("making resource tags map: %w", err)
+		}
+		m.CopyTo(event.Attributes())
 	}
 	return nil
 }
@@ -256,7 +271,12 @@ func populateLinks(
 		if err != nil {
 			return fmt.Errorf("making link tags: %w", err)
 		}
-		newMapFromRaw(attr).CopyTo(link.Attributes())
+
+		m, err := newMapFromRaw(attr)
+		if err != nil {
+			return fmt.Errorf("making resource tags map: %w", err)
+		}
+		m.CopyTo(link.Attributes())
 	}
 	return nil
 }

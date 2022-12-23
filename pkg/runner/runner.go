@@ -242,7 +242,7 @@ func Run(cfg *Config) error {
 		options = append(options, grpc.Creds(creds))
 	}
 	grpcServer := grpc.NewServer(options...)
-	ptraceotlp.RegisterServer(grpcServer, api.NewTraceServer(client))
+	ptraceotlp.RegisterGRPCServer(grpcServer, api.NewTraceServer(client))
 
 	queryPlugin := shared.StorageGRPCPlugin{
 		Impl: jaegerStore,
