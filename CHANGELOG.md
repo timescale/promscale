@@ -13,6 +13,12 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## Unreleased
+
+### Changed
+
+- COPY commands are executed in a single DB roundtrip instead of two [#1814]
+
 ## [0.17.0] - 2023-09-01
 
 ### Added

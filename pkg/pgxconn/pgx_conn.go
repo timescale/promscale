@@ -65,7 +65,14 @@ type PgxConn interface {
 	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...interface{}) (PgxRows, error)
 	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
+	CopyFrom(
+		ctx context.Context,
+		tx pgx.Tx,
+		tableName pgx.Identifier,
+		columnNames []string,
+		rowSrc pgx.CopyFromSource,
+		oids []uint32,
+	) (int64, error)
 	CopyFromRows(rows [][]interface{}) pgx.CopyFromSource
 	NewBatch() PgxBatch
 	SendBatch(ctx context.Context, b PgxBatch) (pgx.BatchResults, error)
@@ -186,8 +193,22 @@ func (p *connImpl) QueryRow(ctx context.Context, sql string, args ...interface{}
 	return rowWithTelemetry{p.Conn.QueryRow(ctx, sql, args...)}
 }
 
-func (p *connImpl) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
-	return p.Conn.CopyFrom(ctx, tableName, columnNames, rowSrc)
+func (p *connImpl) CopyFrom(
+	ctx context.Context,
+	tx pgx.Tx,
+	tableName pgx.Identifier,
+	columnNames []string,
+	rowSrc pgx.CopyFromSource,
+	oids []uint32,
+) (int64, error) {
+	return doCopyFrom(
+		ctx,
+		tx.Conn(),
+		tableName,
+		columnNames,
+		rowSrc,
+		oids,
+	)
 }
 
 func (p *connImpl) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {

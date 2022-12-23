@@ -4,6 +4,10 @@
 
 package schema
 
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
 const (
 	PromData         = "prom_data"
 	PromDataExemplar = "prom_data_exemplar"
@@ -19,5 +23,23 @@ const (
 
 var (
 	PromDataColumns     = []string{"time", "value", "series_id"}
+	PromDataColumnsOIDs = []uint32{
+		pgtype.TimestamptzOID,
+		pgtype.Float8OID,
+		pgtype.Int8OID,
+	}
 	PromExemplarColumns = []string{"time", "series_id", "exemplar_label_values", "value"}
 )
+
+func PromExemplarColumnsOIDs(typeMap *pgtype.Map) ([]uint32, bool) {
+	labelValueArrayType, ok := typeMap.TypeForName("_prom_api.label_value_array")
+	if !ok {
+		return []uint32{}, ok
+	}
+	return []uint32{
+		pgtype.TimestamptzOID,
+		pgtype.Int8OID,
+		labelValueArrayType.OID,
+		pgtype.Float8OID,
+	}, ok
+}

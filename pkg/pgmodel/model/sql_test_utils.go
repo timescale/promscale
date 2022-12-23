@@ -109,8 +109,16 @@ func (r *SqlRecorder) QueryRow(ctx context.Context, sql string, args ...interfac
 	return &MockRows{results: rows, err: err}
 }
 
-func (r *SqlRecorder) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
-	panic("should never be called")
+func (r *SqlRecorder) CopyFrom(
+	ctx context.Context,
+	tx pgx.Tx,
+	tableName pgx.Identifier,
+	columnNames []string,
+	rowSrc pgx.CopyFromSource,
+	oids []uint32,
+) (int64, error) {
+	// Use the MockTx recorder logic
+	return tx.CopyFrom(ctx, tableName, columnNames, rowSrc)
 }
 
 func (r *SqlRecorder) CopyFromRows(rows [][]interface{}) pgx.CopyFromSource {
