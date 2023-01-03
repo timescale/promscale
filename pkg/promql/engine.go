@@ -19,7 +19,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"golang.org/x/exp/slices"
 	"math"
 	"reflect"
 	"runtime"
@@ -855,20 +854,6 @@ func (ng *Engine) getTimeRangesForSelector(s *parser.EvalStmt, n *parser.VectorS
 	return start, end
 }
 
-func (ng *Engine) getLastSubqueryInterval(path []parser.Node) time.Duration {
-	var interval time.Duration
-	for _, node := range path {
-		switch n := node.(type) {
-		case *parser.SubqueryExpr:
-			interval = n.Step
-			if n.Step == 0 {
-				interval = time.Duration(ng.noStepSubqueryIntervalFn(durationMilliseconds(n.Range))) * time.Millisecond
-			}
-		}
-	}
-	return interval
-}
-
 // populateSeries traverses the promQL AST of evalStmt and augments nodes of
 // type VectorSelector with the series data for that node. It uses the querier
 // to fetch the series data from the database.
@@ -895,14 +880,10 @@ func (ng *Engine) populateSeries(querier SamplesQuerier, s *parser.EvalStmt) map
 		case *parser.VectorSelector:
 			var qh *pgquerier.QueryHints
 			start, end := ng.getTimeRangesForSelector(s, n, path, evalRange)
-			interval := ng.getLastSubqueryInterval(path)
-			if interval == 0 {
-				interval = s.Interval
-			}
 			hints := &storage.SelectHints{
 				Start: start,
 				End:   end,
-				Step:  durationMilliseconds(interval),
+				Step:  durationMilliseconds(s.Interval),
 				Range: durationMilliseconds(evalRange),
 				Func:  extractFuncFromPath(path),
 			}
@@ -1382,7 +1363,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 	case *parser.AggregateExpr:
 		// Grouping labels must be sorted (expected both by generateGroupingKey() and aggregation()).
 		sortedGrouping := e.Grouping
-		slices.Sort(sortedGrouping)
+		sort.Strings(sortedGrouping)
 
 		// Prepare a function to initialise series helpers with the grouping key.
 		buf := make([]byte, 0, 1024)
@@ -2202,13 +2183,13 @@ func (ev *evaluator) VectorBinop(op parser.ItemType, lhs, rhs Vector, matching *
 // ignoring the provided labels. If on, then the given labels are only used instead.
 func signatureFunc(on bool, b []byte, names ...string) func(labels.Labels) string {
 	if on {
-		slices.Sort(names)
+		sort.Strings(names)
 		return func(lset labels.Labels) string {
 			return string(lset.BytesWithLabels(b, names...))
 		}
 	}
 	names = append([]string{labels.MetricName}, names...)
-	slices.Sort(names)
+	sort.Strings(names)
 	return func(lset labels.Labels) string {
 		return string(lset.BytesWithoutLabels(b, names...))
 	}
@@ -2410,7 +2391,7 @@ func (ev *evaluator) aggregation(op parser.ItemType, grouping []string, without 
 			// operator is less frequently used than other aggregations, we're fine having to
 			// re-compute the grouping key on each step for this case.
 			grouping = append(grouping, valueLabel)
-			slices.Sort(grouping)
+			sort.Strings(grouping)
 			recomputeGroupingKey = true
 		}
 	}
