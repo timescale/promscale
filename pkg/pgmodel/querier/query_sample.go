@@ -122,6 +122,14 @@ func fetchMultipleMetricsSamples(ctx context.Context, tools *queryTools, metadat
 		return nil, err
 	}
 
+	// We only support default data schema for multi-metric queries
+	// NOTE: this needs to be updated once we add support for storing
+	// non-view metrics into multiple schemas. This also applies to
+	// fetching downsampling data too.
+	if metadata.timeFilter.schema != schema.PromData {
+		return nil, fmt.Errorf("__schema__ not allowed when fetching multiple metrics in single PromQL expression")
+	}
+
 	// TODO this assume on average on row per-metric. Is this right?
 	results := make([]sampleRow, 0, len(metrics))
 	numQueries := 0
@@ -137,13 +145,6 @@ func fetchMultipleMetricsSamples(ctx context.Context, tools *queryTools, metadat
 				continue
 			}
 			return nil, err
-		}
-
-		// We only support default data schema for multi-metric queries
-		// NOTE: this needs to be updated once we add support for storing
-		// non-view metrics into multiple schemas
-		if metricInfo.TableSchema != schema.PromData {
-			return nil, fmt.Errorf("found unsupported metric schema in multi-metric matching query")
 		}
 
 		filter := timeFilter{

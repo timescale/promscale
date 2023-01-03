@@ -24,12 +24,13 @@ func GetPromQLMetadata(matchers []*labels.Matcher, hints *storage.SelectHints, q
 }
 
 type timeFilter struct {
-	metric      string
-	schema      string
-	column      string
-	seriesTable string
-	start       string
-	end         string
+	metric               string
+	schema               string
+	column               string
+	seriesTable          string
+	start                string
+	end                  string
+	useDownsamplingViews bool
 }
 
 type evalMetadata struct {
@@ -60,11 +61,12 @@ func getEvaluationMetadata(tools *queryTools, start, end int64, promMetadata *pr
 
 	metric := builder.GetMetricName()
 	timeFilter := timeFilter{
-		metric: metric,
-		schema: builder.GetSchemaName(),
-		column: builder.GetColumnName(),
-		start:  toRFC3339Nano(start),
-		end:    toRFC3339Nano(end),
+		metric:               metric,
+		schema:               builder.GetSchemaName(),
+		column:               builder.GetColumnName(),
+		start:                toRFC3339Nano(start),
+		end:                  toRFC3339Nano(end),
+		useDownsamplingViews: builder.DefaultDownsamplingView(),
 	}
 
 	// If all metric matchers match on a single metric (common case),

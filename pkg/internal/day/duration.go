@@ -24,8 +24,8 @@ const (
 // This can be useful when we need to know the num of days user wanted, since
 // this information is lost after parsing.
 type Duration struct {
-	text string // Holds the original duration text.
-	T    time.Duration
+	Txt string // Holds the original duration text.
+	T   time.Duration
 }
 
 // UnmarshalText unmarshals strings into DayDuration values while
@@ -44,7 +44,7 @@ func (d *Duration) UnmarshalText(s []byte) error {
 		}
 	}
 	d.T = val
-	d.text = string(s)
+	d.Txt = string(s)
 	return nil
 }
 
@@ -81,7 +81,7 @@ func (d *Duration) String() string {
 
 // Text returns the original text received while parsing.
 func (d *Duration) Text() string {
-	return d.text
+	return d.Txt
 }
 
 // Duration returns the parsed duration.
