@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/dataset"
-	"github.com/timescale/promscale/pkg/internal/day"
 )
 
 func TestDatasetConfigApply(t *testing.T) {
@@ -29,14 +28,14 @@ func TestDatasetConfigApply(t *testing.T) {
 
 		cfg := dataset.Config{
 			Metrics: dataset.Metrics{
-				ChunkInterval:   day.Duration(4 * time.Hour),
+				ChunkInterval:   dayDuration(4*time.Hour, "4h"),
 				Compression:     &disableCompression,
-				HALeaseRefresh:  day.Duration(15 * time.Second),
-				HALeaseTimeout:  day.Duration(2 * time.Minute),
-				RetentionPeriod: day.Duration(15 * 24 * time.Hour),
+				HALeaseRefresh:  dayDuration(15*time.Second, "15s"),
+				HALeaseTimeout:  dayDuration(2*time.Minute, "2m"),
+				RetentionPeriod: dayDuration(15*24*time.Hour, "15d"),
 			},
 			Traces: dataset.Traces{
-				RetentionPeriod: day.Duration(10 * 24 * time.Hour),
+				RetentionPeriod: dayDuration(10*24*time.Hour, "10d"),
 			},
 		}
 

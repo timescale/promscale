@@ -49,7 +49,7 @@ func TestNewConfig(t *testing.T) {
   default_retention_period: 3d2h`,
 			cfg: Config{
 				Metrics: Metrics{
-					RetentionPeriod: day.Duration(((3 * 24) + 2) * time.Hour),
+					RetentionPeriod: dayDuration(((3*24)+2)*time.Hour, "3d2h"),
 				},
 			},
 		},
@@ -65,14 +65,14 @@ traces:
   default_retention_period: 15d`,
 			cfg: Config{
 				Metrics: Metrics{
-					ChunkInterval:   day.Duration(3 * time.Hour),
+					ChunkInterval:   dayDuration(3*time.Hour, "3h"),
 					Compression:     &testCompressionSetting,
-					HALeaseRefresh:  day.Duration(2 * time.Minute),
-					HALeaseTimeout:  day.Duration(5 * time.Second),
-					RetentionPeriod: day.Duration(30 * 24 * time.Hour),
+					HALeaseRefresh:  dayDuration(2*time.Minute, "2m"),
+					HALeaseTimeout:  dayDuration(5*time.Second, "5s"),
+					RetentionPeriod: dayDuration(30*24*time.Hour, "30d"),
 				},
 				Traces: Traces{
-					RetentionPeriod: day.Duration(15 * 24 * time.Hour),
+					RetentionPeriod: dayDuration(15*24*time.Hour, "15d"),
 				},
 			},
 		},
@@ -101,14 +101,14 @@ func TestApplyDefaults(t *testing.T) {
 		t,
 		Config{
 			Metrics: Metrics{
-				ChunkInterval:   day.Duration(defaultMetricChunkInterval),
+				ChunkInterval:   dayDuration(defaultMetricChunkInterval, ""),
 				Compression:     &defaultMetricCompressionVar,
-				HALeaseRefresh:  day.Duration(defaultMetricHALeaseRefresh),
-				HALeaseTimeout:  day.Duration(defaultMetricHALeaseTimeout),
-				RetentionPeriod: day.Duration(defaultMetricRetentionPeriod),
+				HALeaseRefresh:  dayDuration(defaultMetricHALeaseRefresh, ""),
+				HALeaseTimeout:  dayDuration(defaultMetricHALeaseTimeout, ""),
+				RetentionPeriod: dayDuration(defaultMetricRetentionPeriod, ""),
 			},
 			Traces: Traces{
-				RetentionPeriod: day.Duration(defaultTraceRetentionPeriod),
+				RetentionPeriod: dayDuration(defaultTraceRetentionPeriod, ""),
 			},
 		},
 		c,
@@ -116,14 +116,14 @@ func TestApplyDefaults(t *testing.T) {
 
 	untouched := Config{
 		Metrics: Metrics{
-			ChunkInterval:   day.Duration(3 * time.Hour),
+			ChunkInterval:   dayDuration(3*time.Hour, "3h"),
 			Compression:     &testCompressionSetting,
-			HALeaseRefresh:  day.Duration(2 * time.Minute),
-			HALeaseTimeout:  day.Duration(5 * time.Second),
-			RetentionPeriod: day.Duration(30 * 24 * time.Hour),
+			HALeaseRefresh:  dayDuration(2*time.Minute, "2m"),
+			HALeaseTimeout:  dayDuration(5*time.Second, "5s"),
+			RetentionPeriod: dayDuration(30*24*time.Hour, "30d"),
 		},
 		Traces: Traces{
-			RetentionPeriod: day.Duration(15 * 24 * time.Hour),
+			RetentionPeriod: dayDuration(15*24*time.Hour, "15d"),
 		},
 	}
 
@@ -131,4 +131,8 @@ func TestApplyDefaults(t *testing.T) {
 	copyConfig.applyDefaults()
 
 	require.Equal(t, untouched, copyConfig)
+}
+
+func dayDuration(d time.Duration, txt string) day.Duration {
+	return day.Duration{T: d, Txt: txt}
 }

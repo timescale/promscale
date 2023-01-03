@@ -127,7 +127,7 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 	// When pushdowns are available, the <array_aggregator> is a pushdown
 	// function which the promscale extension provides.
 
-	qf, node := getAggregators(metadata.promqlMetadata)
+	qf, node := getAggregators(metadata)
 
 	var selectors, selectorClauses []string
 	values := metadata.values
@@ -211,6 +211,10 @@ func buildSingleMetricSamplesQuery(metadata *evalMetadata) (string, []interface{
 		start, end = toRFC3339Nano(sh.Start), toRFC3339Nano(sh.End)
 	} else {
 		start, end = metadata.timeFilter.start, metadata.timeFilter.end
+	}
+
+	if filter.useDownsamplingViews {
+		filter.metric = "q_" + filter.metric
 	}
 
 	finalSQL := fmt.Sprintf(template,
