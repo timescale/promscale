@@ -19,6 +19,7 @@ jobs:
     strategy:
       matrix:
         pg:
+          - 15
           - 14
           - 13
           # TODO (mat): re-enable the pg12 test

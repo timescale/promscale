@@ -2,6 +2,7 @@ version: '3.0'
 
 services:
   timescaledb:
+    # TODO change to 15 when the new HA image is available
     image: timescale/timescaledb-ha:pg14-latest
     restart: on-failure
     ports:
@@ -121,7 +122,7 @@ services:
       - 5052:5000/tcp
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=collector:4317
-  
+
   digit:
     image: timescale/promscale-demo-digit
     restart: on-failure
