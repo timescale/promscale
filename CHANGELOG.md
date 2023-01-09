@@ -13,7 +13,7 @@ We use the following categories for changes:
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
-## Unreleased
+## [0.17.0] - 2023-09-01
 
 ### Added
 - Add support for PostgreSQL 15
