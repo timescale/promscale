@@ -45,7 +45,7 @@ func TestString(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			var d Duration
 			require.NoError(t, d.UnmarshalText([]byte(tc.in)))
-			require.Equal(t, tc.out, String(d))
+			require.Equal(t, tc.out, d.String())
 		})
 	}
 }

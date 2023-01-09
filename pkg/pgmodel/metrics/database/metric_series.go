@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/timescale/promscale/pkg/internal/day"
 	"github.com/timescale/promscale/pkg/pgxconn"
 	"github.com/timescale/promscale/pkg/util"
 )
@@ -57,8 +59,9 @@ INNER JOIN timescaledb_information.job_stats js ON ( j.job_id = js.job_id AND j.
 				if err != nil {
 					return fmt.Errorf("error scanning values for execute_caggs_refresh_policy: %w", err)
 				}
-				caggsRefreshSuccess.With(prometheus.Labels{"refresh_interval": refreshInterval.String()}).Set(float64(success))
-				caggsRefreshTotal.With(prometheus.Labels{"refresh_interval": refreshInterval.String()}).Set(float64(total))
+				tmp := day.Duration(refreshInterval) // This allows label values to have 25h -> 1d1h, which is easier to understand and matches more to the user's original input.
+				caggsRefreshSuccess.With(prometheus.Labels{"refresh_interval": tmp.String()}).Set(float64(success))
+				caggsRefreshTotal.With(prometheus.Labels{"refresh_interval": tmp.String()}).Set(float64(total))
 			}
 			return nil
 		},

@@ -43,7 +43,7 @@ func TestContinuousAggDownsampling(t *testing.T) {
 	}{
 		{
 			name:    "Query non-existant column, empty result",
-			query:   `cagg{__column__="nonexistant"}`,
+			query:   `cagg{__schema__="cagg_schema",__column__="nonexistant"}`,
 			startMs: startTime,
 			endMs:   endTime,
 			stepMs:  360 * 1000,
@@ -78,7 +78,7 @@ func TestContinuousAggDownsampling(t *testing.T) {
 		},
 		{
 			name:    "Query max column",
-			query:   `cagg{__column__="max",instance="1"}`,
+			query:   `cagg{__schema__="cagg_schema",__column__="max",instance="1"}`,
 			startMs: startTime,
 			endMs:   startTime + 4*3600*1000 - 1, // -1ms to exclude fifth value
 			stepMs:  3600 * 1000,
@@ -104,7 +104,7 @@ func TestContinuousAggDownsampling(t *testing.T) {
 		},
 		{
 			name:    "Query min column",
-			query:   `cagg{__column__="min",instance="1"}`,
+			query:   `cagg{__schema__="cagg_schema",__column__="min",instance="1"}`,
 			startMs: startTime,
 			endMs:   startTime + 4*3600*1000 - 1, // -1ms to exclude fifth value
 			stepMs:  3600 * 1000,
@@ -130,7 +130,7 @@ func TestContinuousAggDownsampling(t *testing.T) {
 		},
 		{
 			name:    "Query avg column",
-			query:   `cagg{__column__="avg",instance="1"}`,
+			query:   `cagg{__schema__="cagg_schema",__column__="avg",instance="1"}`,
 			startMs: startTime,
 			endMs:   startTime + 4*3600*1000 - 1, // -1ms to exclude fifth value
 			stepMs:  3600 * 1000,

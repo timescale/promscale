@@ -16,6 +16,7 @@ import (
 const (
 	dayUnit                 = 'd'
 	unknownUnitDErrorPrefix = `time: unknown unit "d"`
+	day                     = int64(time.Hour * 24)
 )
 
 // Duration acts like a time.Duration with support for "d" unit
@@ -69,7 +70,29 @@ func handleDays(s []byte) (time.Duration, error) {
 
 // String returns a string value of DayDuration.
 func (d Duration) String() string {
-	return time.Duration(d).String()
+	remainder := int64(d)
+	days := remainder / day
+	remainder = remainder % day
+	hours := remainder / int64(time.Hour)
+	remainder = remainder % int64(time.Hour)
+	mins := remainder / int64(time.Minute)
+	remainder = remainder % int64(time.Minute)
+	secs := remainder / int64(time.Second)
+
+	display := ""
+	if days != 0 {
+		display = fmt.Sprintf("%dd", days)
+	}
+	if hours != 0 {
+		display = fmt.Sprintf("%s%dh", display, hours)
+	}
+	if mins != 0 {
+		display = fmt.Sprintf("%s%dm", display, mins)
+	}
+	if secs != 0 {
+		display = fmt.Sprintf("%s%ds", display, secs)
+	}
+	return display
 }
 
 // StringToDayDurationHookFunc returns a mapstructure.DecodeHookFunc that
@@ -95,33 +118,4 @@ func StringToDayDurationHookFunc() mapstructure.DecodeHookFunc {
 		}
 		return d, nil
 	}
-}
-
-// String returns the output in form of days:hours:mins:secs
-func String(d Duration) string {
-	const day = int64(time.Hour * 24)
-
-	remainder := int64(d)
-	days := remainder / day
-	remainder = remainder % day
-	hours := remainder / int64(time.Hour)
-	remainder = remainder % int64(time.Hour)
-	mins := remainder / int64(time.Minute)
-	remainder = remainder % int64(time.Minute)
-	secs := remainder / int64(time.Second)
-
-	display := ""
-	if days != 0 {
-		display = fmt.Sprintf("%dd", days)
-	}
-	if hours != 0 {
-		display = fmt.Sprintf("%s%dh", display, hours)
-	}
-	if mins != 0 {
-		display = fmt.Sprintf("%s%dm", display, mins)
-	}
-	if secs != 0 {
-		display = fmt.Sprintf("%s%ds", display, secs)
-	}
-	return display
 }
