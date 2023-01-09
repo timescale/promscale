@@ -2,6 +2,7 @@ version: '3.0'
 
 services:
   db:
+    # TODO change to 15 when the new HA image is available
     image: timescale/timescaledb-ha:pg14-latest
     ports:
       - 5432:5432/tcp

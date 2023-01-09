@@ -34,6 +34,7 @@ jobs:
       docker_image_12:  ${{ steps.metadata.outputs.docker_image_12 }}
       docker_image_13:  ${{ steps.metadata.outputs.docker_image_13 }}
       docker_image_14:  ${{ steps.metadata.outputs.docker_image_14 }}
+      docker_image_15:  ${{ steps.metadata.outputs.docker_image_15 }}
     steps:
     - name: Check out code into the Go module directory
       uses: actions/checkout@v3
@@ -55,6 +56,7 @@ jobs:
           docker_image_12=$(echo ${{inputs.docker_image_prefix}}-pg12)
           docker_image_13=$(echo ${{inputs.docker_image_prefix}}-pg13)
           docker_image_14=$(echo ${{inputs.docker_image_prefix}}-pg14)
+          docker_image_15=$(echo ${{inputs.docker_image_prefix}}-pg15)
         else
           branch_name=$(echo ${{github.head_ref || github.ref_name}} | sed 's#/#-#')
           possible_branch_tag=$(echo ${branch_name}-ts2)
@@ -64,10 +66,12 @@ jobs:
           docker_image_12=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg12 ${image_base}:${stable_branch_tag}-pg12)
           docker_image_13=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg13 ${image_base}:${stable_branch_tag}-pg13)
           docker_image_14=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg14 ${image_base}:${stable_branch_tag}-pg14)
+          docker_image_15=$(./scripts/fallback-docker.sh ${image_base}:${possible_branch_tag}-pg15 ${image_base}:${stable_branch_tag}-pg15)
         fi;
         echo "docker_image_12=${docker_image_12}" >> ${GITHUB_OUTPUT}
         echo "docker_image_13=${docker_image_13}" >> ${GITHUB_OUTPUT}
         echo "docker_image_14=${docker_image_14}" >> ${GITHUB_OUTPUT}
+        echo "docker_image_15=${docker_image_15}" >> ${GITHUB_OUTPUT}
 
   test-end-to-end:
     name: e2e
@@ -76,6 +80,7 @@ jobs:
     strategy:
       matrix:
         test-setups:
+        - {name: "Singlenode (15)", shortname: "singlenode-15", multi: false, pg: 15}
         - {name: "Singlenode (14)", shortname: "singlenode-14", multi: false, pg: 14}
         - {name: "Singlenode (13)", shortname: "singlenode-13", multi: false, pg: 13}
         - {name: "Singlenode (12)", shortname: "singlenode-12", multi: false, pg: 12}
@@ -126,6 +131,7 @@ jobs:
     strategy:
       matrix:
         test-setups:
+        - {name: "Singlenode (15)", shortname: "singlenode-15", multi: false, pg: 15}
         - {name: "Singlenode (14)", shortname: "singlenode-14", multi: false, pg: 14}
         - {name: "Singlenode (13)", shortname: "singlenode-13", multi: false, pg: 13}
         - {name: "Singlenode (12)", shortname: "singlenode-12", multi: false, pg: 12}

@@ -28,14 +28,14 @@ pkg/tests/testdata/traces-dataset.sz:
 	wget https://github.com/timescale/promscale-test-data/raw/main/traces-dataset.sz -O ./pkg/tests/testdata/traces-dataset.sz
 
 .PHONY: e2e
-e2e: DOCKER_IMAGE?=$(shell ./scripts/fallback-docker.sh $(LOCAL_DOCKER_BASE):head-ts2-pg14 $(GHCR_DOCKER_BASE):$(CURRENT_BRANCH)-ts2-pg14 $(GHCR_DOCKER_BASE):$(EXTENSION_VERSION)-ts2-pg14)
+e2e: DOCKER_IMAGE?=$(shell ./scripts/fallback-docker.sh $(LOCAL_DOCKER_BASE):head-ts2-pg15 $(GHCR_DOCKER_BASE):$(CURRENT_BRANCH)-ts2-pg15 $(GHCR_DOCKER_BASE):$(EXTENSION_VERSION)-ts2-pg15)
 e2e: pkg/tests/testdata/traces-dataset.sz generate
 	go test -v ./pkg/tests/end_to_end_tests/ -timescale-docker-image=$(DOCKER_IMAGE)
 	# TODO: Skipping multinode because tests are broken for now
 	# go test -v ./pkg/tests/end_to_end_tests/ -use-multinode -timescale-docker-image=$(DOCKER_IMAGE)
 
 .PHONY: jaeger-storage-test
-jaeger-storage-test: DOCKER_IMAGE?=$(shell ./scripts/fallback-docker.sh $(LOCAL_DOCKER_BASE):head-ts2-pg14 $(GHCR_DOCKER_BASE):$(CURRENT_BRANCH)-ts2-pg14 $(GHCR_DOCKER_BASE):$(EXTENSION_VERSION)-ts2-pg14)
+jaeger-storage-test: DOCKER_IMAGE?=$(shell ./scripts/fallback-docker.sh $(LOCAL_DOCKER_BASE):head-ts2-pg15 $(GHCR_DOCKER_BASE):$(CURRENT_BRANCH)-ts2-pg15 $(GHCR_DOCKER_BASE):$(EXTENSION_VERSION)-ts2-pg15)
 jaeger-storage-test:
 	go test -v ./pkg/tests/end_to_end_tests/ -timescale-docker-image=$(DOCKER_IMAGE) -tags=jaeger_storage_test -run="^TestJaegerStorageIntegration/"
 

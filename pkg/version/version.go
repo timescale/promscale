@@ -44,7 +44,7 @@ var (
 	Branch                     = ""      // Comes from -ldflags settings
 	EarliestUpgradeTestVersion = "0.3.0" // 0.3.0 earliest version an image with correct extension versions exists
 
-	PgVersionNumRange       = ">=12.x <15.x" // Corresponds to range within pg 12.0 to pg 14.99
+	PgVersionNumRange       = ">=12.x <16.x" // Corresponds to range within pg 12.0 to pg 14.99
 	pgAcceptedVersionsRange = semver.MustParseRange(PgVersionNumRange)
 
 	TimescaleVersionRangeString = ">=2.6.1 <2.99.0"
