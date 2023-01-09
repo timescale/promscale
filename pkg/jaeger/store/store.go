@@ -65,9 +65,9 @@ func (p *Store) GetTrace(ctx context.Context, traceID model.TraceID) (*model.Tra
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		labels := prometheus.Labels{"type": "trace", "handler": "Get_Trace", "code": code, "err": ""}
+		labels := prometheus.Labels{"type": "trace", "handler": "Get_Trace", "code": code, "reason": ""}
 		metrics.Query.With(labels).Inc()
-		delete(labels, "err")
+		delete(labels, "reason")
 		metrics.QueryDuration.With(labels).Observe(time.Since(start).Seconds())
 	}()
 	res, err := getTrace(ctx, p.builder, p.conn, traceID)
@@ -88,9 +88,9 @@ func (p *Store) GetServices(ctx context.Context) ([]string, error) {
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		labels := prometheus.Labels{"type": "trace", "handler": "Get_Services", "code": code, "err": ""}
+		labels := prometheus.Labels{"type": "trace", "handler": "Get_Services", "code": code, "reason": ""}
 		metrics.Query.With(labels).Inc()
-		delete(labels, "err")
+		delete(labels, "reason")
 		metrics.QueryDuration.With(labels).Observe(time.Since(start).Seconds())
 	}()
 	res, err := getServices(ctx, p.conn)
@@ -105,9 +105,9 @@ func (p *Store) GetOperations(ctx context.Context, query spanstore.OperationQuer
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		labels := prometheus.Labels{"type": "trace", "handler": "Get_Operations", "code": code, "err": ""}
+		labels := prometheus.Labels{"type": "trace", "handler": "Get_Operations", "code": code, "reason": ""}
 		metrics.Query.With(labels).Inc()
-		delete(labels, "err")
+		delete(labels, "reason")
 		metrics.QueryDuration.With(labels).Observe(time.Since(start).Seconds())
 	}()
 	res, err := getOperations(ctx, p.conn, query)
@@ -122,9 +122,9 @@ func (p *Store) FindTraces(ctx context.Context, query *spanstore.TraceQueryParam
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		labels := prometheus.Labels{"type": "trace", "handler": "Find_Traces", "code": code, "err": ""}
+		labels := prometheus.Labels{"type": "trace", "handler": "Find_Traces", "code": code, "reason": ""}
 		metrics.Query.With(labels).Inc()
-		delete(labels, "err")
+		delete(labels, "reason")
 		metrics.QueryDuration.With(labels).Observe(time.Since(start).Seconds())
 	}()
 	res, err := findTraces(ctx, p.builder, p.conn, query)
@@ -140,9 +140,9 @@ func (p *Store) FindTraceIDs(ctx context.Context, query *spanstore.TraceQueryPar
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		labels := prometheus.Labels{"type": "trace", "handler": "Find_Trace_IDs", "code": code, "err": ""}
+		labels := prometheus.Labels{"type": "trace", "handler": "Find_Trace_IDs", "code": code, "reason": ""}
 		metrics.Query.With(labels).Inc()
-		delete(labels, "err")
+		delete(labels, "reason")
 		metrics.QueryDuration.With(labels).Observe(time.Since(start).Seconds())
 	}()
 	res, err := findTraceIDs(ctx, p.builder, p.conn, query)
@@ -158,9 +158,9 @@ func (p *Store) GetDependencies(ctx context.Context, endTs time.Time, lookback t
 	code := "5xx"
 	start := time.Now()
 	defer func() {
-		labels := prometheus.Labels{"type": "trace", "handler": "Get_Dependencies", "code": code, "err": ""}
+		labels := prometheus.Labels{"type": "trace", "handler": "Get_Dependencies", "code": code, "reason": ""}
 		metrics.Query.With(labels).Inc()
-		delete(labels, "err")
+		delete(labels, "reason")
 		metrics.QueryDuration.With(labels).Observe(time.Since(start).Seconds())
 	}()
 
