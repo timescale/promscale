@@ -32,7 +32,7 @@ func queryHandler(queryEngine *promql.Engine, queryable promql.Queryable, update
 		var err error
 		ts, err = parseTimeParam(r, "time", time.Now())
 		if err != nil {
-			log.Error("msg", "Query error", "err", err.Error())
+			log.Error("msg", "Query error", "reason", err.Error())
 			respondError(w, http.StatusBadRequest, err, "bad_data")
 			return
 		}

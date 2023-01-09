@@ -21,7 +21,7 @@ var (
 			Subsystem: "query",
 			Name:      "requests_total",
 			Help:      "Number of query requests to Promscale.",
-		}, []string{"type", "handler", "code", "err"},
+		}, []string{"type", "handler", "code", "reason"},
 	)
 )
 
