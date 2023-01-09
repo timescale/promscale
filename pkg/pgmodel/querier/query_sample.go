@@ -126,7 +126,7 @@ func fetchMultipleMetricsSamples(ctx context.Context, tools *queryTools, metadat
 	// NOTE: this needs to be updated once we add support for storing
 	// non-view metrics into multiple schemas. This also applies to
 	// fetching downsampling data too.
-	if metadata.timeFilter.schema != schema.PromData {
+	if metadata.timeFilter.schema != schema.PromData && metadata.timeFilter.schema != "" {
 		return nil, fmt.Errorf("__schema__ not allowed when fetching multiple metrics in single PromQL expression")
 	}
 

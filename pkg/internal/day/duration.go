@@ -20,13 +20,7 @@ const (
 
 // Duration acts like a time.Duration with support for "d" unit
 // which is used for specifying number of days in duration.
-// It stores the text of duration while parsing, which can be retrieved via Text().
-// This can be useful when we need to know the num of days user wanted, since
-// this information is lost after parsing.
-type Duration struct {
-	Txt string // Holds the original duration text.
-	T   time.Duration
-}
+type Duration time.Duration
 
 // UnmarshalText unmarshals strings into DayDuration values while
 // handling the day unit. It leans heavily into time.ParseDuration.
@@ -43,8 +37,7 @@ func (d *Duration) UnmarshalText(s []byte) error {
 			return err
 		}
 	}
-	d.T = val
-	d.Txt = string(s)
+	*d = Duration(val)
 	return nil
 }
 
@@ -75,23 +68,8 @@ func handleDays(s []byte) (time.Duration, error) {
 }
 
 // String returns a string value of DayDuration.
-func (d *Duration) String() string {
-	return d.T.String()
-}
-
-// Text returns the original text received while parsing.
-func (d *Duration) Text() string {
-	return d.Txt
-}
-
-// Duration returns the parsed duration.
-func (d *Duration) Duration() time.Duration {
-	return d.T
-}
-
-// SetDuration returns the parsed duration.
-func (d *Duration) SetDuration(t time.Duration) {
-	d.T = t
+func (d Duration) String() string {
+	return time.Duration(d).String()
 }
 
 // StringToDayDurationHookFunc returns a mapstructure.DecodeHookFunc that
@@ -117,4 +95,33 @@ func StringToDayDurationHookFunc() mapstructure.DecodeHookFunc {
 		}
 		return d, nil
 	}
+}
+
+// String returns the output in form of days:hours:mins:secs
+func String(d Duration) string {
+	const day = int64(time.Hour * 24)
+
+	remainder := int64(d)
+	days := remainder / day
+	remainder = remainder % day
+	hours := remainder / int64(time.Hour)
+	remainder = remainder % int64(time.Hour)
+	mins := remainder / int64(time.Minute)
+	remainder = remainder % int64(time.Minute)
+	secs := remainder / int64(time.Second)
+
+	display := ""
+	if days != 0 {
+		display = fmt.Sprintf("%dd", days)
+	}
+	if hours != 0 {
+		display = fmt.Sprintf("%s%dh", display, hours)
+	}
+	if mins != 0 {
+		display = fmt.Sprintf("%s%dm", display, mins)
+	}
+	if secs != 0 {
+		display = fmt.Sprintf("%s%ds", display, secs)
+	}
+	return display
 }

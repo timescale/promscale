@@ -85,20 +85,20 @@ func (c *Config) Apply(ctx context.Context, conn *pgx.Conn) error {
 		log.Info("msg", "Metric downsampling configurations synced", "configuration", fmt.Sprint(*c.Metrics.Downsampling))
 	}
 
-	log.Info("msg", fmt.Sprintf("Setting metric dataset default chunk interval to %s", c.Metrics.ChunkInterval.Duration()))
+	log.Info("msg", fmt.Sprintf("Setting metric dataset default chunk interval to %s", c.Metrics.ChunkInterval))
 	log.Info("msg", fmt.Sprintf("Setting metric dataset default compression to %t", *c.Metrics.Compression))
-	log.Info("msg", fmt.Sprintf("Setting metric dataset default high availability lease refresh to %s", c.Metrics.HALeaseRefresh.Duration()))
-	log.Info("msg", fmt.Sprintf("Setting metric dataset default high availability lease timeout to %s", c.Metrics.HALeaseTimeout.Duration()))
-	log.Info("msg", fmt.Sprintf("Setting metric dataset default retention period to %s", c.Metrics.RetentionPeriod.Duration()))
-	log.Info("msg", fmt.Sprintf("Setting trace dataset default retention period to %s", c.Traces.RetentionPeriod.Duration()))
+	log.Info("msg", fmt.Sprintf("Setting metric dataset default high availability lease refresh to %s", c.Metrics.HALeaseRefresh))
+	log.Info("msg", fmt.Sprintf("Setting metric dataset default high availability lease timeout to %s", c.Metrics.HALeaseTimeout))
+	log.Info("msg", fmt.Sprintf("Setting metric dataset default retention period to %s", c.Metrics.RetentionPeriod))
+	log.Info("msg", fmt.Sprintf("Setting trace dataset default retention period to %s", c.Traces.RetentionPeriod))
 
 	queries := map[string]interface{}{
-		setDefaultMetricChunkIntervalSQL:    c.Metrics.ChunkInterval.Duration(),
+		setDefaultMetricChunkIntervalSQL:    time.Duration(c.Metrics.ChunkInterval),
 		setDefaultMetricCompressionSQL:      c.Metrics.Compression,
-		setDefaultMetricHAReleaseRefreshSQL: c.Metrics.HALeaseRefresh.Duration(),
-		setDefaultMetricHAReleaseTimeoutSQL: c.Metrics.HALeaseTimeout.Duration(),
-		setDefaultMetricRetentionPeriodSQL:  c.Metrics.RetentionPeriod.Duration(),
-		setDefaultTraceRetentionPeriodSQL:   c.Traces.RetentionPeriod.Duration(),
+		setDefaultMetricHAReleaseRefreshSQL: time.Duration(c.Metrics.HALeaseRefresh),
+		setDefaultMetricHAReleaseTimeoutSQL: time.Duration(c.Metrics.HALeaseTimeout),
+		setDefaultMetricRetentionPeriodSQL:  time.Duration(c.Metrics.RetentionPeriod),
+		setDefaultTraceRetentionPeriodSQL:   time.Duration(c.Traces.RetentionPeriod),
 	}
 
 	for sql, param := range queries {
@@ -111,22 +111,22 @@ func (c *Config) Apply(ctx context.Context, conn *pgx.Conn) error {
 }
 
 func (c *Config) applyDefaults() {
-	if c.Metrics.ChunkInterval.Duration() <= 0 {
-		c.Metrics.ChunkInterval.SetDuration(defaultMetricChunkInterval)
+	if c.Metrics.ChunkInterval <= 0 {
+		c.Metrics.ChunkInterval = day.Duration(defaultMetricChunkInterval)
 	}
 	if c.Metrics.Compression == nil {
 		c.Metrics.Compression = &defaultMetricCompressionVar
 	}
-	if c.Metrics.HALeaseRefresh.Duration() <= 0 {
-		c.Metrics.HALeaseRefresh.SetDuration(defaultMetricHALeaseRefresh)
+	if c.Metrics.HALeaseRefresh <= 0 {
+		c.Metrics.HALeaseRefresh = day.Duration(defaultMetricHALeaseRefresh)
 	}
-	if c.Metrics.HALeaseTimeout.Duration() <= 0 {
-		c.Metrics.HALeaseTimeout.SetDuration(defaultMetricHALeaseTimeout)
+	if c.Metrics.HALeaseTimeout <= 0 {
+		c.Metrics.HALeaseTimeout = day.Duration(defaultMetricHALeaseTimeout)
 	}
-	if c.Metrics.RetentionPeriod.Duration() <= 0 {
-		c.Metrics.RetentionPeriod.SetDuration(defaultMetricRetentionPeriod)
+	if c.Metrics.RetentionPeriod <= 0 {
+		c.Metrics.RetentionPeriod = day.Duration(defaultMetricRetentionPeriod)
 	}
-	if c.Traces.RetentionPeriod.Duration() <= 0 {
-		c.Traces.RetentionPeriod.SetDuration(defaultTraceRetentionPeriod)
+	if c.Traces.RetentionPeriod <= 0 {
+		c.Traces.RetentionPeriod = day.Duration(defaultTraceRetentionPeriod)
 	}
 }

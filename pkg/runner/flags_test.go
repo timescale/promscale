@@ -281,12 +281,12 @@ startup:
 				c.ListenAddr = "localhost:9201"
 				c.AuthConfig.BasicAuthUsername = "promscale"
 				c.AuthConfig.BasicAuthPassword = "my-password"
-				c.DatasetCfg.Metrics.ChunkInterval = day.Duration{T: 24 * time.Hour, Txt: "1d"}
+				c.DatasetCfg.Metrics.ChunkInterval = day.Duration(24 * time.Hour)
 				c.DatasetCfg.Metrics.Compression = func(b bool) *bool { return &b }(false)
-				c.DatasetCfg.Metrics.HALeaseRefresh = day.Duration{T: 24 * time.Hour * 2, Txt: "2d"}
-				c.DatasetCfg.Metrics.HALeaseTimeout = day.Duration{T: 24 * time.Hour * 3, Txt: "3d"}
-				c.DatasetCfg.Metrics.RetentionPeriod = day.Duration{T: 24 * time.Hour * 4, Txt: "4d"}
-				c.DatasetCfg.Traces.RetentionPeriod = day.Duration{T: 24 * time.Hour * 5, Txt: "5d"}
+				c.DatasetCfg.Metrics.HALeaseRefresh = day.Duration(24 * time.Hour * 2)
+				c.DatasetCfg.Metrics.HALeaseTimeout = day.Duration(24 * time.Hour * 3)
+				c.DatasetCfg.Metrics.RetentionPeriod = day.Duration(24 * time.Hour * 4)
+				c.DatasetCfg.Traces.RetentionPeriod = day.Duration(24 * time.Hour * 5)
 				c.DatasetConfig = "metrics:\n  default_chunk_interval: 1h\n"
 				return c
 			},
