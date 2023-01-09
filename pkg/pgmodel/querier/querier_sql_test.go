@@ -370,7 +370,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 			},
 		},
 		{
-			name: "Simple query, metric name matcher, custom column",
+			name: "Should error for simple query, metric name matcher, custom column but no schema name",
 			query: &prompb.Query{
 				StartTimestampMs: 1000,
 				EndTimestampMs:   2000,
@@ -379,6 +379,7 @@ func TestPGXQuerierQuery(t *testing.T) {
 					{Type: prompb.LabelMatcher_EQ, Name: model.MetricNameLabelName, Value: "bar"},
 				},
 			},
+			err: fmt.Errorf("get evaluation metadata: build subQueries: '__schema__' label not found"),
 			result: []*prompb.TimeSeries{
 				{
 					Labels: []prompb.Label{
