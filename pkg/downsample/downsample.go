@@ -8,10 +8,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/jackc/pgx/v4"
 
 	"github.com/timescale/promscale/pkg/internal/day"
-	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/util"
 )
 
@@ -28,7 +29,7 @@ type Config struct {
 }
 
 func (c Config) Name() string {
-	return downsamplePrefix + day.String(c.Interval)
+	return downsamplePrefix + c.Interval.String()
 }
 
 func SetState(ctx context.Context, conn *pgx.Conn, state bool) error {
@@ -52,24 +53,35 @@ func Sync(ctx context.Context, conn *pgx.Conn, cfgs []Config) error {
 		return fmt.Errorf("error getting lock for syncing downsampling config")
 	}
 	defer pgLock.Close()
-	got, err := pgLock.GetAdvisoryLock() // To prevent failure when multiple Promscale start at the same time.
+
+	try := func() (bool, error) {
+		got, err := pgLock.GetAdvisoryLock() // To prevent failure when multiple Promscale start at the same time.
+		if err != nil {
+			return false, fmt.Errorf("error trying pg advisory_lock")
+		}
+		return got, nil
+	}
+
+	got, err := try()
 	if err != nil {
-		return fmt.Errorf("error trying pg advisory_lock")
+		return err
 	}
 	if !got {
-		// Some other Promscale instance is already working on the downsampling.Sync()
-		// Hence, we should skip.
-		return nil
-	}
-	defer func() {
-		if _, err = pgLock.Unlock(); err != nil {
-			log.Error("msg", "error unlocking downsampling.Sync advisory_lock", "err", err.Error())
+		// Wait for sometime and try again. If we still did not get the lock, throw an error.
+		time.Sleep(time.Second * 5)
+		got, err = try()
+		if err != nil {
+			return err
 		}
-	}()
+		if !got {
+			return fmt.Errorf("timeout: unable to take the advisory lock for syncing downsampling state")
+		}
+	}
+
 	var applyCfgs []cfgWithName
 	for i := range cfgs {
 		c := cfgs[i]
-		applyCfgs = append(applyCfgs, cfgWithName{Name: c.Name(), Interval: day.String(c.Interval), Retention: day.String(c.Retention)})
+		applyCfgs = append(applyCfgs, cfgWithName{Name: c.Name(), Interval: c.Interval.String(), Retention: c.Retention.String()})
 	}
 	if len(applyCfgs) > 0 {
 		str, err := json.Marshal(applyCfgs)
