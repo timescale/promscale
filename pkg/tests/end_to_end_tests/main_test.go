@@ -24,6 +24,7 @@ import (
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/prompb"
@@ -66,6 +67,7 @@ var (
 
 func init() {
 	tput.InitWatcher(time.Second)
+	cache.DefaultConfig.SeriesCacheInitialSize = 100000 // we need to reduce cache size due to GH memory limitations
 	if err := os.Setenv("IS_TEST", "true"); err != nil {
 		// Test dependent behaviours call initializing a module more than once.
 		// An example of this is duplicate metrics registry in createAndRegister.
