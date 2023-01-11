@@ -165,13 +165,13 @@ func CreateClient(r prometheus.Registerer, cfg *Config) (*pgclient.Client, error
 		cfg.APICfg.MultiTenancy = multiTenancy
 	}
 
-	if (cfg.DatasetCfg != dataset.Config{}) {
+	if cfg.DatasetCfg != (dataset.Config{}) {
 		if cfg.DatasetConfig != "" {
 			log.Warn("msg", "Ignoring `startup.dataset.config` in favor of the newer `startup.dataset` config option since both were set.")
 		}
-		err = cfg.DatasetCfg.Apply(conn)
+		err = cfg.DatasetCfg.Apply(context.Background(), conn)
 	} else if cfg.DatasetConfig != "" {
-		err = applyDatasetConfig(conn, cfg.DatasetConfig)
+		err = applyDatasetConfig(context.Background(), conn, cfg.DatasetConfig)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("error applying dataset configuration: %w", err)
@@ -231,13 +231,13 @@ func isBGWLessThanDBs(conn *pgx.Conn) (bool, error) {
 	return false, nil
 }
 
-func applyDatasetConfig(conn *pgx.Conn, cfgFilename string) error {
+func applyDatasetConfig(ctx context.Context, conn *pgx.Conn, cfgFilename string) error {
 	cfg, err := dataset.NewConfig(cfgFilename)
 	if err != nil {
 		return err
 	}
 
-	return cfg.Apply(conn)
+	return cfg.Apply(ctx, conn)
 }
 
 func compileAnchoredRegexString(s string) (*regexp.Regexp, error) {

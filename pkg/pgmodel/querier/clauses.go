@@ -33,12 +33,13 @@ func setParameterNumbers(clause string, existingArgs []interface{}, newArgs ...i
 }
 
 type clauseBuilder struct {
-	schemaName    string
-	metricName    string
-	columnName    string
-	contradiction bool
-	clauses       []string
-	args          []interface{}
+	schemaName       string
+	metricName       string
+	columnName       string
+	contradiction    bool
+	downsamplingView bool
+	clauses          []string
+	args             []interface{}
 }
 
 func (c *clauseBuilder) SetMetricName(name string) {
@@ -90,6 +91,18 @@ func (c *clauseBuilder) GetColumnName() string {
 		return defaultColumnName
 	}
 	return c.columnName
+}
+
+// UseDefaultDownsamplingView is set to true when the user applies __schema__ only (and not __column__). In this, we
+// query from q_<metric_name> views since it contains the 'value' column that the connector's SQL query needs.
+// Raw downsampled data does not contain a 'value' column, hence we create these default downsampling views in the database
+// for querying.
+func (c *clauseBuilder) UseDefaultDownsamplingView(b bool) {
+	c.downsamplingView = b
+}
+
+func (c *clauseBuilder) DefaultDownsamplingView() bool {
+	return c.downsamplingView
 }
 
 func (c *clauseBuilder) addClause(clause string, args ...interface{}) error {

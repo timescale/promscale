@@ -1,7 +1,8 @@
 // This file and its contents are licensed under the Apache License 2.0.
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
-package dataset
+
+package day
 
 import (
 	"fmt"
@@ -15,15 +16,16 @@ import (
 const (
 	dayUnit                 = 'd'
 	unknownUnitDErrorPrefix = `time: unknown unit "d"`
+	day                     = int64(time.Hour * 24)
 )
 
-// DayDuration acts like a time.Duration with support for "d" unit
+// Duration acts like a time.Duration with support for "d" unit
 // which is used for specifying number of days in duration.
-type DayDuration time.Duration
+type Duration time.Duration
 
 // UnmarshalText unmarshals strings into DayDuration values while
 // handling the day unit. It leans heavily into time.ParseDuration.
-func (d *DayDuration) UnmarshalText(s []byte) error {
+func (d *Duration) UnmarshalText(s []byte) error {
 	val, err := time.ParseDuration(string(s))
 	if err != nil {
 		// Check for specific error indicating we are using days unit.
@@ -36,7 +38,7 @@ func (d *DayDuration) UnmarshalText(s []byte) error {
 			return err
 		}
 	}
-	*d = DayDuration(val)
+	*d = Duration(val)
 	return nil
 }
 
@@ -67,8 +69,30 @@ func handleDays(s []byte) (time.Duration, error) {
 }
 
 // String returns a string value of DayDuration.
-func (d DayDuration) String() string {
-	return time.Duration(d).String()
+func (d Duration) String() string {
+	remainder := int64(d)
+	days := remainder / day
+	remainder = remainder % day
+	hours := remainder / int64(time.Hour)
+	remainder = remainder % int64(time.Hour)
+	mins := remainder / int64(time.Minute)
+	remainder = remainder % int64(time.Minute)
+	secs := remainder / int64(time.Second)
+
+	display := ""
+	if days != 0 {
+		display = fmt.Sprintf("%dd", days)
+	}
+	if hours != 0 {
+		display = fmt.Sprintf("%s%dh", display, hours)
+	}
+	if mins != 0 {
+		display = fmt.Sprintf("%s%dm", display, mins)
+	}
+	if secs != 0 {
+		display = fmt.Sprintf("%s%ds", display, secs)
+	}
+	return display
 }
 
 // StringToDayDurationHookFunc returns a mapstructure.DecodeHookFunc that
@@ -82,7 +106,7 @@ func StringToDayDurationHookFunc() mapstructure.DecodeHookFunc {
 			return data, nil
 		}
 
-		var d DayDuration
+		var d Duration
 
 		if t != reflect.TypeOf(d) {
 			return data, nil
@@ -92,6 +116,6 @@ func StringToDayDurationHookFunc() mapstructure.DecodeHookFunc {
 		if err != nil {
 			return nil, err
 		}
-		return DayDuration(d), nil
+		return d, nil
 	}
 }

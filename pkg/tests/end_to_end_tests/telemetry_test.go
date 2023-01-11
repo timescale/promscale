@@ -288,8 +288,8 @@ func TestTelemetrySQLStats(t *testing.T) {
 		require.NoError(t, engine.Sync())
 
 		err = conn.QueryRow(context.Background(), "SELECT value FROM _timescaledb_catalog.metadata WHERE key = 'promscale_metrics_total' AND value IS NOT NULL").Scan(&metrics)
-		require.NoError(t, err)
-		require.Equal(t, "0", metrics) // Without promscale_extension, this will give error saying "no rows in result set".
+		require.NoError(t, err) // Without promscale_extension, this will give error saying "no rows in result set".
+		require.Equal(t, "0", metrics)
 
 		// Add dummy metric.
 		_, err = conn.Exec(context.Background(), "SELECT _prom_catalog.create_metric_table('test_metric')")

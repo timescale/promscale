@@ -586,6 +586,48 @@ var metrics = []metricQueryWrap{
 			},
 		),
 		query: `select count(*)::bigint from _prom_catalog.metric`,
+	}, {
+		metrics: gauges(
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "caggs_compression_policy_total",
+				Help:      "Total number of caggs compression policy executed.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "caggs_compression_policy_success",
+				Help:      "Total number of caggs compression policy executed successfully.",
+			},
+		),
+		query: `
+SELECT
+    total_runs,
+    total_successes
+FROM timescaledb_information.jobs j
+    INNER JOIN timescaledb_information.job_stats js ON ( j.job_id = js.job_id AND j.proc_name = 'execute_caggs_compression_policy')`,
+	}, {
+		metrics: gauges(
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "caggs_retention_policy_total",
+				Help:      "Total number of caggs retention policy executed.",
+			},
+			prometheus.GaugeOpts{
+				Namespace: util.PromNamespace,
+				Subsystem: "sql_database",
+				Name:      "caggs_retention_policy_success",
+				Help:      "Total number of caggs retention policy executed successfully.",
+			},
+		),
+		query: `
+SELECT
+    total_runs,
+    total_successes
+FROM timescaledb_information.jobs j
+    INNER JOIN timescaledb_information.job_stats js ON ( j.job_id = js.job_id AND j.proc_name = 'execute_caggs_retention_policy')`,
 	},
 	{
 		metrics: gauges(

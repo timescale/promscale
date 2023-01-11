@@ -55,6 +55,7 @@ var (
 func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 	var err error
 	cb := &clauseBuilder{}
+	var hasColumnLabel, hasSchemaLabel bool
 
 	for _, m := range matchers {
 		// From the PromQL docs: "Label matchers that match
@@ -68,8 +69,10 @@ func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 			case pgmodel.MetricNameLabelName:
 				cb.SetMetricName(m.Value)
 			case pgmodel.SchemaNameLabelName:
+				hasSchemaLabel = true
 				cb.SetSchemaName(m.Value)
 			case pgmodel.ColumnNameLabelName:
+				hasColumnLabel = true
 				cb.SetColumnName(m.Value)
 			default:
 				sq := subQueryEQ
@@ -117,6 +120,15 @@ func BuildSubQueries(matchers []*labels.Matcher) (*clauseBuilder, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	if hasSchemaLabel && !hasColumnLabel {
+		// There is no __column__ label in the given PromQL query. Hence, we need to use a default column to respond.
+		// We create 'q_' views in the database in the downsampling schema. The aim of these views is to provide 'value' column
+		// that the connector needs while querying.
+		cb.UseDefaultDownsamplingView(true)
+	} else if hasColumnLabel && !hasSchemaLabel {
+		// We cannot decide which schema to query from if the __schema__ is not provided. Hence, we should error here.
+		return nil, fmt.Errorf("'__schema__' label not found")
 	}
 
 	return cb, err
@@ -247,13 +259,16 @@ type aggregators struct {
 
 // getAggregators returns the aggregator which should be used to fetch data for
 // a single metric. It may apply pushdowns to functions.
-func getAggregators(metadata *promqlMetadata) (*aggregators, parser.Node) {
-
-	agg, node, err := tryPushDown(metadata)
-	if err != nil {
-		log.Info("msg", "error while trying to push down, will skip pushdown optimization", "error", err)
-	} else if agg != nil {
-		return agg, node
+func getAggregators(metadata *evalMetadata) (*aggregators, parser.Node) {
+	if !metadata.timeFilter.useDownsamplingViews {
+		// Pushdown functions do not behave properly with downsampling views.
+		// Hence, try a pushdown only if we do not aim to use a downsampling views.
+		agg, node, err := tryPushDown(metadata.promqlMetadata)
+		if err != nil {
+			log.Info("msg", "error while trying to push down, will skip pushdown optimization", "error", err)
+		} else if agg != nil {
+			return agg, node
+		}
 	}
 
 	defaultAggregators := &aggregators{

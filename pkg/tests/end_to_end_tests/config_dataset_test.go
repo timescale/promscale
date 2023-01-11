@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/dataset"
+	"github.com/timescale/promscale/pkg/internal/day"
 )
 
 func TestDatasetConfigApply(t *testing.T) {
@@ -28,18 +29,18 @@ func TestDatasetConfigApply(t *testing.T) {
 
 		cfg := dataset.Config{
 			Metrics: dataset.Metrics{
-				ChunkInterval:   dataset.DayDuration(4 * time.Hour),
+				ChunkInterval:   day.Duration(4 * time.Hour),
 				Compression:     &disableCompression,
-				HALeaseRefresh:  dataset.DayDuration(15 * time.Second),
-				HALeaseTimeout:  dataset.DayDuration(2 * time.Minute),
-				RetentionPeriod: dataset.DayDuration(15 * 24 * time.Hour),
+				HALeaseRefresh:  day.Duration(15 * time.Second),
+				HALeaseTimeout:  day.Duration(2 * time.Minute),
+				RetentionPeriod: day.Duration(15 * 24 * time.Hour),
 			},
 			Traces: dataset.Traces{
-				RetentionPeriod: dataset.DayDuration(10 * 24 * time.Hour),
+				RetentionPeriod: day.Duration(10 * 24 * time.Hour),
 			},
 		}
 
-		err = cfg.Apply(pgxConn)
+		err = cfg.Apply(context.Background(), pgxConn)
 		require.NoError(t, err)
 
 		require.Equal(t, 4*time.Hour, getMetricsDefaultChunkInterval(t, pgxConn))
@@ -52,7 +53,7 @@ func TestDatasetConfigApply(t *testing.T) {
 		// Set to default if chunk interval is not specified.
 		cfg = dataset.Config{}
 
-		err = cfg.Apply(pgxConn)
+		err = cfg.Apply(context.Background(), pgxConn)
 		require.NoError(t, err)
 
 		require.Equal(t, 8*time.Hour, getMetricsDefaultChunkInterval(t, pgxConn))

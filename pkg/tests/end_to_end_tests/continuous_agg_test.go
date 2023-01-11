@@ -43,7 +43,7 @@ func TestContinuousAggDownsampling(t *testing.T) {
 	}{
 		{
 			name:    "Query non-existant column, empty result",
-			query:   `cagg{__column__="nonexistant"}`,
+			query:   `cagg{__schema__="cagg_schema",__column__="nonexistant"}`,
 			startMs: startTime,
 			endMs:   endTime,
 			stepMs:  360 * 1000,
@@ -78,7 +78,7 @@ func TestContinuousAggDownsampling(t *testing.T) {
 		},
 		{
 			name:    "Query max column",
-			query:   `cagg{__column__="max",instance="1"}`,
+			query:   `cagg{__schema__="cagg_schema",__column__="max",instance="1"}`,
 			startMs: startTime,
 			endMs:   startTime + 4*3600*1000 - 1, // -1ms to exclude fifth value
 			stepMs:  3600 * 1000,
@@ -104,7 +104,7 @@ func TestContinuousAggDownsampling(t *testing.T) {
 		},
 		{
 			name:    "Query min column",
-			query:   `cagg{__column__="min",instance="1"}`,
+			query:   `cagg{__schema__="cagg_schema",__column__="min",instance="1"}`,
 			startMs: startTime,
 			endMs:   startTime + 4*3600*1000 - 1, // -1ms to exclude fifth value
 			stepMs:  3600 * 1000,
@@ -130,7 +130,7 @@ func TestContinuousAggDownsampling(t *testing.T) {
 		},
 		{
 			name:    "Query avg column",
-			query:   `cagg{__column__="avg",instance="1"}`,
+			query:   `cagg{__schema__="cagg_schema",__column__="avg",instance="1"}`,
 			startMs: startTime,
 			endMs:   startTime + 4*3600*1000 - 1, // -1ms to exclude fifth value
 			stepMs:  3600 * 1000,
@@ -190,7 +190,7 @@ WITH (timescaledb.continuous) AS
 			t.Fatalf("unexpected error while creating metric view: %s", err)
 
 		}
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg')"); err != nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg', NULL)"); err != nil {
 			t.Fatalf("unexpected error while registering metric view: %s", err)
 		}
 
@@ -372,7 +372,7 @@ WITH (timescaledb.continuous) AS
     FROM prom_data.test
     GROUP BY public.time_bucket('1hour', time), series_id`)
 		require.NoError(t, err)
-		_, err = db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg')")
+		_, err = db.Exec(context.Background(), "SELECT prom_api.register_metric_view('cagg_schema', 'cagg', NULL)")
 		require.NoError(t, err)
 
 		_, err = db.Exec(context.Background(), "SELECT prom_api.set_metric_retention_period('cagg_schema', 'cagg', INTERVAL '180 days')")
@@ -450,7 +450,7 @@ WITH (timescaledb.continuous) AS
 			t.Fatalf("unexpected error while creating metric view: %s", err)
 		}
 
-		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('public', 'tw_1hour')"); err != nil {
+		if _, err := db.Exec(context.Background(), "SELECT prom_api.register_metric_view('public', 'tw_1hour', NULL)"); err != nil {
 			t.Fatalf("unexpected error while registering metric view: %s", err)
 		}
 

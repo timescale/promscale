@@ -2,6 +2,7 @@
 // Please see the included NOTICE for copyright information and
 // LICENSE for a copy of the license.
 // +k8s:deepcopy-gen=package
+
 package dataset
 
 import (
@@ -10,8 +11,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v4"
-	"github.com/timescale/promscale/pkg/log"
 	"gopkg.in/yaml.v2"
+
+	"github.com/timescale/promscale/pkg/downsample"
+	"github.com/timescale/promscale/pkg/internal/day"
+	"github.com/timescale/promscale/pkg/log"
 )
 
 const (
@@ -42,16 +46,17 @@ type Config struct {
 
 // Metrics contains dataset configuration options for metrics data.
 type Metrics struct {
-	ChunkInterval   DayDuration `mapstructure:"default_chunk_interval" yaml:"default_chunk_interval"`
-	Compression     *bool       `mapstructure:"compress_data" yaml:"compress_data"` // Using pointer to check if the the value was set.
-	HALeaseRefresh  DayDuration `mapstructure:"ha_lease_refresh" yaml:"ha_lease_refresh"`
-	HALeaseTimeout  DayDuration `mapstructure:"ha_lease_timeout" yaml:"ha_lease_timeout"`
-	RetentionPeriod DayDuration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
+	ChunkInterval   day.Duration         `mapstructure:"default_chunk_interval" yaml:"default_chunk_interval"`
+	Compression     *bool                `mapstructure:"compress_data" yaml:"compress_data"` // Using pointer to check if the the value was set.
+	HALeaseRefresh  day.Duration         `mapstructure:"ha_lease_refresh" yaml:"ha_lease_refresh"`
+	HALeaseTimeout  day.Duration         `mapstructure:"ha_lease_timeout" yaml:"ha_lease_timeout"`
+	RetentionPeriod day.Duration         `mapstructure:"default_retention_period" yaml:"default_retention_period"`
+	Downsampling    *[]downsample.Config `mapstructure:"downsampling" yaml:"downsampling,omitempty"`
 }
 
 // Traces contains dataset configuration options for traces data.
 type Traces struct {
-	RetentionPeriod DayDuration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
+	RetentionPeriod day.Duration `mapstructure:"default_retention_period" yaml:"default_retention_period"`
 }
 
 // NewConfig creates a new dataset config based on the configuration YAML contents.
@@ -61,8 +66,24 @@ func NewConfig(contents string) (cfg Config, err error) {
 }
 
 // Apply applies the configuration to the database via the supplied DB connection.
-func (c *Config) Apply(conn *pgx.Conn) error {
+func (c *Config) Apply(ctx context.Context, conn *pgx.Conn) error {
 	c.applyDefaults()
+
+	if c.Metrics.Downsampling == nil {
+		if err := downsample.SetState(ctx, conn, false); err != nil {
+			return fmt.Errorf("error setting state for automatic-downsampling: %w", err)
+		}
+		log.Info("msg", "Metric downsampling is disabled")
+	} else {
+		if err := downsample.SetState(ctx, conn, true); err != nil {
+			return fmt.Errorf("error setting state for automatic-downsampling: %w", err)
+		}
+		log.Info("msg", "Metric downsampling is enabled")
+		if err := downsample.Sync(ctx, conn, *c.Metrics.Downsampling); err != nil {
+			return fmt.Errorf("error syncing downsampling configurations: %w", err)
+		}
+		log.Info("msg", "Metric downsampling configurations synced", "configuration", fmt.Sprint(*c.Metrics.Downsampling))
+	}
 
 	log.Info("msg", fmt.Sprintf("Setting metric dataset default chunk interval to %s", c.Metrics.ChunkInterval))
 	log.Info("msg", fmt.Sprintf("Setting metric dataset default compression to %t", *c.Metrics.Compression))
@@ -91,21 +112,21 @@ func (c *Config) Apply(conn *pgx.Conn) error {
 
 func (c *Config) applyDefaults() {
 	if c.Metrics.ChunkInterval <= 0 {
-		c.Metrics.ChunkInterval = DayDuration(defaultMetricChunkInterval)
+		c.Metrics.ChunkInterval = day.Duration(defaultMetricChunkInterval)
 	}
 	if c.Metrics.Compression == nil {
 		c.Metrics.Compression = &defaultMetricCompressionVar
 	}
 	if c.Metrics.HALeaseRefresh <= 0 {
-		c.Metrics.HALeaseRefresh = DayDuration(defaultMetricHALeaseRefresh)
+		c.Metrics.HALeaseRefresh = day.Duration(defaultMetricHALeaseRefresh)
 	}
 	if c.Metrics.HALeaseTimeout <= 0 {
-		c.Metrics.HALeaseTimeout = DayDuration(defaultMetricHALeaseTimeout)
+		c.Metrics.HALeaseTimeout = day.Duration(defaultMetricHALeaseTimeout)
 	}
 	if c.Metrics.RetentionPeriod <= 0 {
-		c.Metrics.RetentionPeriod = DayDuration(defaultMetricRetentionPeriod)
+		c.Metrics.RetentionPeriod = day.Duration(defaultMetricRetentionPeriod)
 	}
 	if c.Traces.RetentionPeriod <= 0 {
-		c.Traces.RetentionPeriod = DayDuration(defaultTraceRetentionPeriod)
+		c.Traces.RetentionPeriod = day.Duration(defaultTraceRetentionPeriod)
 	}
 }
