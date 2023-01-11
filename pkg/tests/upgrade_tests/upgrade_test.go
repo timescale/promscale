@@ -86,7 +86,12 @@ func getDBImages(extensionState testhelpers.TestOptions, prevPromscaleVersion *s
 		panic("Only use pg12 for upgrade tests")
 	}
 
-	// From Promscale 0.15.0 onwards the minimum extension version is 0.7.0
+	// From Promscale 0.17.0 onwards the minimum extension version is 0.8.0
+	if prevPromscaleVersion != nil && prevPromscaleVersion.GE(semver.MustParse("0.17.0")) {
+		return "timescale/timescaledb-ha:pg" + pgVersion + ".13-ts2.9.1-latest", dockerImageName, nil
+	}
+
+	// From Promscale 0.15.0 to 0.16.0 the minimum extension version is 0.7.0
 	if prevPromscaleVersion != nil && prevPromscaleVersion.GE(semver.MustParse("0.15.0")) {
 		return "timescale/timescaledb-ha:pg" + pgVersion + ".12-ts2.8.1-latest", dockerImageName, nil
 	}
