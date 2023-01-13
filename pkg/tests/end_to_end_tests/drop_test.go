@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
@@ -225,7 +225,7 @@ func TestSQLDropChunkWithLocked(t *testing.T) {
 	withDB(t, *testDatabase, func(db *pgxpool.Pool, t testing.TB) {
 		dbJob := testhelpers.PgxPoolWithRole(t, *testDatabase, "prom_maintenance")
 		defer dbJob.Close()
-		dbSuper, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
+		dbSuper, err := pgxpool.New(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser))
 		require.NoError(t, err)
 		defer dbSuper.Close()
 		//a chunk way back in 2009

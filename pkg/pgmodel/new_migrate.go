@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/blang/semver/v4"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/migrations"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"

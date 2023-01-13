@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/timescale/promscale/pkg/clockcache"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/pgmodel/lreader"

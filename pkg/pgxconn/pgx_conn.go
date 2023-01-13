@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgconn"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/timescale/promscale/pkg/log"
@@ -56,7 +56,7 @@ func promMethodLabel(method string) prometheus.Labels {
 }
 
 type PgxBatch interface {
-	Queue(query string, arguments ...interface{})
+	Queue(query string, arguments ...any) *pgx.QueuedQuery
 	Len() int
 }
 

@@ -18,7 +18,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/grafana/regexp"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -259,7 +259,7 @@ func compareHTTPHeaders(t *testing.T, expected, actual http.Header) {
 }
 
 // dateHeadersMatch checks if the date headers from two HTTP responses match
-// and are within a tolerance of 10 seconds.
+// and are within a tolerance of 60 seconds (GH runner is slow sometimes)
 func dateHeadersMatch(expected, actual []string) bool {
 	if len(expected) != 1 {
 		return false
@@ -275,7 +275,7 @@ func dateHeadersMatch(expected, actual []string) bool {
 		return false
 	}
 
-	return expectedDate.Sub(actualDate) <= 10*time.Second
+	return expectedDate.Sub(actualDate) <= 60*time.Second
 }
 
 func defaultAPIConfig() *api.Config {

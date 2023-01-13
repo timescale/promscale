@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jackc/pgx/v4/pgxpool"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/prometheus/common/model"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"

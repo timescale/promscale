@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/jackc/pgx/v4/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/oklog/run"
 	"github.com/timescale/promscale/pkg/vacuum"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 )
@@ -192,10 +192,7 @@ func getUUIDFromTraceID(traceID model.TraceID) (pgtype.UUID, error) {
 		return uuid, fmt.Errorf("marshaling TraceID: %w", err)
 	}
 
-	if err := uuid.Set(buf); err != nil {
-		return uuid, fmt.Errorf("setting TraceID: %w", err)
-	}
-	return uuid, nil
+	return pgtype.UUID{Bytes: buf, Valid: true}, nil
 }
 
 func (b *Builder) getTraceQuery(traceID model.TraceID) (string, []interface{}, error) {

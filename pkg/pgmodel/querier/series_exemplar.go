@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +25,7 @@ const getExemplarLabelPositions = "SELECT * FROM _prom_catalog.get_exemplar_labe
 
 type exemplarSeriesRow struct {
 	metricName string
-	labelIds   []int64
+	labelIds   []*int64
 	data       []exemplarRow
 }
 
@@ -46,7 +47,7 @@ func getExemplarSeriesRows(metricName string, in pgxconn.PgxRows) (rows []exempl
 		var (
 			err      error
 			row      exemplarRow
-			labelIds []int64
+			labelIds []*int64
 		)
 		err = in.Scan(&labelIds, &row.time, &row.value, &row.labelValues)
 		if err != nil {
@@ -54,7 +55,7 @@ func getExemplarSeriesRows(metricName string, in pgxconn.PgxRows) (rows []exempl
 			return rows, err
 		}
 
-		key := fmt.Sprintf("%v", labelIds)
+		key := labelIdsToKey(labelIds)
 		if existingSeriesRow, exists := seriesRowMap[key]; exists {
 			existingSeriesRow.data = append(existingSeriesRow.data, row)
 			continue
@@ -69,6 +70,18 @@ func getExemplarSeriesRows(metricName string, in pgxconn.PgxRows) (rows []exempl
 		seriesRowMap[key] = seriesRow
 	}
 	return getExemplarSeriesSlice(seriesRowMap), in.Err()
+}
+
+func labelIdsToKey(labelIds []*int64) string {
+	key := ""
+	for _, v := range labelIds {
+		if v == nil {
+			key += "nil "
+			continue
+		}
+		key += strconv.FormatInt(*v, 10) + " "
+	}
+	return key
 }
 
 func getExemplarSeriesSlice(m map[string]*exemplarSeriesRow) []exemplarSeriesRow {
@@ -142,13 +155,13 @@ func getPositionIndex(tools *queryTools, posCache cache.PositionCache, metric st
 	return keyPosIndex, nil
 }
 
-func initLabelIdIndexForExemplars(index map[int64]labels.Label, labelIds []int64) {
+func initLabelIdIndexForExemplars(index map[int64]labels.Label, labelIds []*int64) {
 	for _, labelId := range labelIds {
-		if labelId == 0 {
+		if labelId == nil || *labelId == 0 {
 			// no label to look-up for.
 			continue
 		}
-		index[labelId] = labels.Label{}
+		index[*labelId] = labels.Label{}
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	jaegerJSONModel "github.com/jaegertracing/jaeger/model/json"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/stretchr/testify/require"

@@ -32,7 +32,7 @@
 
 ### Create GitHub release notes
 
-[ ] The `goreleaser` GitHub Action will automatically create a new draft release with the generated binaries, docker images, and a changelog attached. When it is created contact PM to validate if release notes are correct and click green publish button.
+  - [ ] The `goreleaser` GitHub Action will automatically create a new draft release with the generated binaries, docker images, and a changelog attached. When it is created contact PM to validate if release notes are correct and click green publish button.
 
 ### Post-release
 
@@ -43,7 +43,6 @@ For major/minor releases:
  - [ ] If there is a hard dependency on promscale_extension version, make sure to modify [pkg/tests/upgrade_tests/upgrade_test.go#getDBImages](https://github.com/timescale/promscale/blob/master/pkg/tests/upgrade_tests/upgrade_test.go#L89-L92) as done in this [commit](https://github.com/timescale/promscale/pull/1516/commits/6e2434d51dfd3e91505049a2828add3266f3e0f8#diff-6343d0a8cf4936b8f948769738eef8b0624d15d13ccc0a53b457e4f5c53b14e6R90-R94) to return timescale image which has the required promscale_extension. Missing to do so will cause `TestUpgradeFromPrev` failure.
  - [ ] Commit: `git commit -a -m "Prepare for the next development cycle"`
  - [ ] Create PR & Merge when ready
- - [ ] Update Promscale docs to point to the latest release as done in this [PR](https://github.com/timescale/docs/pull/1075)
 
 For patch releases:
 

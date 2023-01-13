@@ -18,19 +18,18 @@ import (
 	constants "github.com/timescale/promscale/pkg/tests"
 
 	"github.com/docker/go-connections/nat"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
 	"github.com/timescale/promscale/pkg/pgmodel"
+	"github.com/timescale/promscale/pkg/pgmodel/cache"
 	"github.com/timescale/promscale/pkg/pgmodel/common/extension"
 	ingstr "github.com/timescale/promscale/pkg/pgmodel/ingestor"
 	"github.com/timescale/promscale/pkg/prompb"
 	tput "github.com/timescale/promscale/pkg/util/throughput"
 	"github.com/timescale/promscale/pkg/version"
-
-	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
 var (
@@ -66,6 +65,7 @@ var (
 
 func init() {
 	tput.InitWatcher(time.Second)
+	cache.DefaultConfig.SeriesCacheInitialSize = 100000 // we need to reduce cache size due to GH memory limitations
 	if err := os.Setenv("IS_TEST", "true"); err != nil {
 		// Test dependent behaviours call initializing a module more than once.
 		// An example of this is duplicate metrics registry in createAndRegister.
@@ -202,7 +202,7 @@ func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAd
 				t.Fatal("Shouldn't be using beforeAddNode unless testing multinode")
 			}
 			func() {
-				pool, err := pgxpool.Connect(context.Background(), connectURL)
+				pool, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -218,8 +218,10 @@ func withDBAttachNode(t testing.TB, DBName string, attachExisting bool, beforeAd
 			attachDataNode2(t, DBName, connectURL)
 		}
 
-		// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
-		pool, err := pgxpool.Connect(context.Background(), connectURL)
+		// need to get a new pool after the Migrate to catch any GUC changes made
+		// during Migrate and to set the afterConnect that registers the custom
+		// PG types.
+		pool, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -243,7 +245,7 @@ func performMigrate(t testing.TB, connectURL string) {
 		t.Fatal(err)
 	}
 
-	migratePool, err := pgxpool.Connect(context.Background(), connectURL)
+	migratePool, err := pgxpool.New(context.Background(), connectURL)
 	if err != nil {
 		t.Fatal(err)
 	}

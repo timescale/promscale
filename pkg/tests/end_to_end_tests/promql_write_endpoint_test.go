@@ -18,7 +18,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/common/model"
 	pgmodel "github.com/timescale/promscale/pkg/pgmodel/model"
 	"github.com/timescale/promscale/pkg/prompb"

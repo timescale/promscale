@@ -24,9 +24,9 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/timescale/promscale/pkg/internal/testhelpers"
 	"github.com/timescale/promscale/pkg/log"
@@ -86,7 +86,12 @@ func getDBImages(extensionState testhelpers.TestOptions, prevPromscaleVersion *s
 		panic("Only use pg12 for upgrade tests")
 	}
 
-	// From Promscale 0.15.0 onwards the minimum extension version is 0.7.0
+	// From Promscale 0.17.0 onwards the minimum extension version is 0.8.0
+	if prevPromscaleVersion != nil && prevPromscaleVersion.GE(semver.MustParse("0.17.0")) {
+		return "timescale/timescaledb-ha:pg" + pgVersion + ".13-ts2.9.1-latest", dockerImageName, nil
+	}
+
+	// From Promscale 0.15.0 to 0.16.0 the minimum extension version is 0.7.0
 	if prevPromscaleVersion != nil && prevPromscaleVersion.GE(semver.MustParse("0.15.0")) {
 		return "timescale/timescaledb-ha:pg" + pgVersion + ".12-ts2.8.1-latest", dockerImageName, nil
 	}
@@ -181,7 +186,7 @@ func TestUpgradeFromEarliestNoData(t *testing.T) {
 }
 
 func turnOffCompressionOnMetric(t *testing.T) {
-	db, err := pgxpool.Connect(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser))
+	db, err := pgxpool.New(context.Background(), testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,8 +221,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool, prevVersionStr string, extensi
 			if !noData {
 				func() {
 					connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
-
-					db, err := pgxpool.Connect(context.Background(), connectURL)
+					db, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -235,7 +239,7 @@ func getUpgradedDbInfo(t *testing.T, noData bool, prevVersionStr string, extensi
 			}
 
 			connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
-			db, err := pgxpool.Connect(context.Background(), connectURL)
+			db, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -265,7 +269,7 @@ func getPristineDbInfo(t *testing.T, noData bool, extensionState testhelpers.Tes
 			if !noData {
 				func() {
 					connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.NoSuperuser)
-					db, err := pgxpool.Connect(context.Background(), connectURL)
+					db, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -507,7 +511,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 			testhelpers.MakePromUserPromAdmin(t, DBName)
 
 			// need to get a new pool after the Migrate to catch any GUC changes made during Migrate
-			db, err := pgxpool.Connect(context.Background(), connectURL)
+			db, err := testhelpers.PgxPoolWithRegisteredTypes(connectURL)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -526,7 +530,7 @@ func withNewDBAtCurrentVersion(t testing.TB, DBName string, extensionState testh
 	}
 	defer func() { _ = closer.Close() }()
 	connectURL := testhelpers.PgConnectURL(*testDatabase, testhelpers.Superuser)
-	db, err := pgxpool.Connect(context.Background(), connectURL)
+	db, err := pgxpool.New(context.Background(), connectURL)
 	if err != nil {
 		t.Fatal(err)
 	}
