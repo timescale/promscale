@@ -133,7 +133,7 @@ var (
 	traceLinkLabel  = prometheus.Labels{"type": "trace", "kind": "link"}
 )
 
-var tracesMarshaller = ptrace.NewProtoMarshaler()
+// var tracesMarshaller = ptrace.NewProtoMarshaler()
 
 func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces ptrace.Traces) error {
 	startIngest := time.Now() // Time taken for complete ingestion => Processing + DB insert.
@@ -358,11 +358,11 @@ func (t *traceWriterImpl) InsertTraces(ctx context.Context, traces ptrace.Traces
 	tput.ReportSpansProcessed(timestamp.FromTime(time.Now()), traces.SpanCount())
 
 	// since otel is making Protobufs internal this is our only chance to get the size of the message
-	tracesSizer, ok := tracesMarshaller.(ptrace.Sizer)
-	if ok {
-		size := tracesSizer.TracesSize(traces)
-		metrics.IngestorBytes.With(prometheus.Labels{"type": "trace"}).Add(float64(size))
-	}
+	// tracesSizer, ok := tracesMarshaller.(ptrace.Sizer)
+	// if ok {
+	//   size := tracesSizer.TracesSize(traces)
+	//   metrics.IngestorBytes.With(prometheus.Labels{"type": "trace"}).Add(float64(size))
+	// }
 	return nil
 }
 

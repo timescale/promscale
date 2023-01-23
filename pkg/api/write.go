@@ -62,6 +62,20 @@ func Write(
 	return wh.handler()
 }
 
+// Write returns an http.Handler that is responsible for data ingest.
+func WriteILP(
+	inserter ingestor.DBInserter,
+	dataParser *parser.DefaultParser,
+	updateMetrics func(code string, duration, receivedSamples, receivedMetadata float64),
+) http.Handler {
+	wh := writeHandler{}
+	wh.addStages(
+		validateWriteHeaders,
+		decodeSnappy,
+		ingest(inserter, dataParser, updateMetrics),
+	)
+	return wh.handler()
+}
 func validateWriteHeaders(w http.ResponseWriter, r *http.Request) bool {
 	// validate headers from https://github.com/prometheus/prometheus/blob/2bd077ed9724548b6a631b6ddba48928704b5c34/storage/remote/client.go
 	_, span := tracer.Default().Start(r.Context(), "validate-write-headers")
@@ -198,6 +212,56 @@ var decodedBufPool = sync.Pool{
 	New: func() interface{} {
 		return new(bytes.Buffer)
 	},
+}
+
+func ingestILP(
+	inserter ingestor.DBInserter,
+	dataParser *parser.DefaultParser,
+	updateMetrics func(code string, durationSeconds, receivedSamples, receivedMetadata float64),
+) func(http.ResponseWriter, *http.Request) bool {
+	return func(w http.ResponseWriter, r *http.Request) bool {
+		begin := time.Now()
+		statusCode := "400"
+		numSamplesReceived := uint64(0)
+		numMetadataReceived := uint64(0)
+		defer func() {
+			updateMetrics(
+				statusCode,
+				time.Since(begin).Seconds(),
+				float64(numSamplesReceived), float64(numMetadataReceived),
+			)
+		}()
+		ctx, span := tracer.Default().Start(r.Context(), "ingest")
+		defer span.End()
+
+		req := ingestor.NewWriteRequest()
+		err := dataParser.ParseRequest(r, req)
+		if err != nil {
+			ingestor.FinishWriteRequest(req)
+			invalidRequestError(w, "parser error", err.Error(), metrics)
+			return false
+		}
+		numSamplesReceived = uint64(getTotalSamples(req))
+		numMetadataReceived = uint64(len(req.Metadata))
+
+		// if samples in write request are empty then we do not need to
+		// proceed further
+		if len(req.Timeseries) == 0 && len(req.Metadata) == 0 {
+			statusCode = "2xx"
+			ingestor.FinishWriteRequest(req)
+			return false
+		}
+
+		numSamples, _, err := inserter.IngestMetrics(ctx, req)
+		if err != nil {
+			statusCode = "500"
+			log.Warn("msg", "Error sending samples to remote storage", "err", err, "num_samples", numSamples)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return false
+		}
+		statusCode = "2xx"
+		return true
+	}
 }
 
 func ingest(

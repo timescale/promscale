@@ -5,6 +5,7 @@ import (
 	"mime"
 	"net/http"
 
+	"github.com/timescale/promscale/pkg/api/parser/ilp"
 	"github.com/timescale/promscale/pkg/api/parser/json"
 	"github.com/timescale/promscale/pkg/api/parser/protobuf"
 	"github.com/timescale/promscale/pkg/api/parser/text"
@@ -32,7 +33,7 @@ func NewParser() *DefaultParser {
 		formatParsers: map[string]formatParser{
 			"application/x-protobuf":       protobuf.ParseRequest,
 			"application/json":             json.ParseRequest,
-			"text/plain":                   text.ParseRequest,
+			"text/plain":                   ilp.ParseRequest,
 			"application/openmetrics-text": text.ParseRequest,
 		},
 	}

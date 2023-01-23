@@ -21,7 +21,6 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/oklog/run"
 	"github.com/timescale/promscale/pkg/vacuum"
-	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -242,7 +241,6 @@ func Run(cfg *Config) error {
 		options = append(options, grpc.Creds(creds))
 	}
 	grpcServer := grpc.NewServer(options...)
-	ptraceotlp.RegisterServer(grpcServer, api.NewTraceServer(client))
 
 	queryPlugin := shared.StorageGRPCPlugin{
 		Impl: jaegerStore,

@@ -9,7 +9,6 @@ import (
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
-	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	conventions "go.opentelemetry.io/collector/semconv/v1.9.0"
@@ -106,30 +105,31 @@ func jSpanKindToInternal(spanKind string) string {
 	return "unspecified"
 }
 
-func ProtoToTraces(span *model.Span) (ptrace.Traces, error) {
-	encodeBinaryTags(span)
-	batches := []*model.Batch{
-		{
-			Spans: []*model.Span{span},
-		},
-	}
-	traces, err := jaegertranslator.ProtoToTraces(batches)
-	if err != nil {
-		return ptrace.NewTraces(), err
-	}
+// func ProtoToTraces(span *model.Span) (ptrace.Traces, error) {
+//   return ptrace.Traces{}, nil
+//   // encodeBinaryTags(span)
+//   // batches := []*model.Batch{
+//   //   {
+//   //     Spans: []*model.Span{span},
+//   //   },
+//   // }
+//   // traces, err := jaegertranslator.ProtoToTraces(batches)
+//   // if err != nil {
+//   //   return ptrace.NewTraces(), err
+//   // }
 
-	// TODO: There's an open PR against the Jaeger translator that adds support
-	// for keeping the RefType. Once the PR is merged we can remove the following
-	// if condition and the addRefTypeAttributeToLinks function.
-	//
-	// https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/14463
-	if len(span.References) > 1 {
-		links := traces.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).Links()
-		addRefTypeAttributeToLinks(span, links)
-	}
+//   // // TODO: There's an open PR against the Jaeger translator that adds support
+//   // // for keeping the RefType. Once the PR is merged we can remove the following
+//   // // if condition and the addRefTypeAttributeToLinks function.
+//   // //
+//   // // https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/14463
+//   // if len(span.References) > 1 {
+//   //   links := traces.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).Links()
+//   //   addRefTypeAttributeToLinks(span, links)
+//   // }
 
-	return traces, nil
-}
+//   // return traces, nil
+// }
 
 // TODO: There's an open PR against the Jaeger translator that adds support
 // for keeping the RefType. Once the PR is merged we can delete this function.
@@ -169,47 +169,40 @@ func jSpanRefToInternal(ref model.SpanRef, link ptrace.SpanLink) {
 	// Since there are only 2 types of refereces, ChildOf and FollowsFrom, we
 	// keep track only of the former.
 	// Everything that's not ChildOf will be set as FollowsFrom.
-	if ref.RefType == model.ChildOf {
-		link.Attributes().PutString(
-			conventions.AttributeOpentracingRefType,
-			conventions.AttributeOpentracingRefTypeChildOf,
-		)
-	} else {
-		link.Attributes().PutString(
-			conventions.AttributeOpentracingRefType,
-			conventions.AttributeOpentracingRefTypeFollowsFrom,
-		)
-	}
 }
 
 func ProtoFromTraces(traces ptrace.Traces) ([]*model.Batch, error) {
-	batches, err := jaegertranslator.ProtoFromTraces(traces)
-	if err != nil {
-		return nil, fmt.Errorf("internal-traces-to-jaeger-proto: %w", err)
-	}
-	otherParents := getOtherParents(traces)
-	for _, batch := range batches {
-		if batch != nil {
-			decodeBinaryTags(batch.Process.Tags)
-		}
-		for _, span := range batch.GetSpans() {
-			decodeSpanBinaryTags(span)
-
-			// TODO: There's an open PR against the Jaeger translator that adds
-			// support for keeping the RefType. Once the PR is merged we can remove
-			// the following if condition and the getOtherParents function.
-			//
-			// https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/14463
-			if pIdxs, ok := otherParents[span.SpanID]; ok {
-				refs := span.GetReferences()
-				for _, i := range pIdxs {
-					refs[i].RefType = model.ChildOf
-				}
-			}
-		}
-	}
-	return batches, nil
+	return nil, nil
 }
+
+// func ProtoFromTraces(traces ptrace.Traces) ([]*model.Batch, error) {
+//   batches, err := jaegertranslator.ProtoFromTraces(traces)
+//   if err != nil {
+//     return nil, fmt.Errorf("internal-traces-to-jaeger-proto: %w", err)
+//   }
+//   otherParents := getOtherParents(traces)
+//   for _, batch := range batches {
+//     if batch != nil {
+//       decodeBinaryTags(batch.Process.Tags)
+//     }
+//     for _, span := range batch.GetSpans() {
+//       decodeSpanBinaryTags(span)
+
+//       // TODO: There's an open PR against the Jaeger translator that adds
+//       // support for keeping the RefType. Once the PR is merged we can remove
+//       // the following if condition and the getOtherParents function.
+//       //
+//       // https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/14463
+//       if pIdxs, ok := otherParents[span.SpanID]; ok {
+//         refs := span.GetReferences()
+//         for _, i := range pIdxs {
+//           refs[i].RefType = model.ChildOf
+//         }
+//       }
+//     }
+//   }
+//   return batches, nil
+// }
 
 // getOtherParents returns a map where the keys are the IDs of Spans that have
 // more than one parent and the values are the position in the Span.References

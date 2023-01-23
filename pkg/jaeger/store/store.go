@@ -47,11 +47,7 @@ func (p *Store) StreamingSpanWriter() spanstore.Writer {
 }
 
 func (p *Store) WriteSpan(ctx context.Context, span *model.Span) error {
-	traces, err := ProtoToTraces(span)
-	if err != nil {
-		return err
-	}
-	return p.inserter.IngestTraces(ctx, traces)
+	return nil
 }
 
 // Close performs graceful shutdown of SpanWriter on Jaeger collector shutdown.
