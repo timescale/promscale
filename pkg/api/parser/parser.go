@@ -33,8 +33,17 @@ func NewParser() *DefaultParser {
 		formatParsers: map[string]formatParser{
 			"application/x-protobuf":       protobuf.ParseRequest,
 			"application/json":             json.ParseRequest,
-			"text/plain":                   ilp.ParseRequest,
+			"text/plain":                   text.ParseRequest,
 			"application/openmetrics-text": text.ParseRequest,
+		},
+	}
+}
+
+// NewParser returns a parser with the correct mapping of format and format parser.
+func NewILPParser() *DefaultParser {
+	return &DefaultParser{
+		formatParsers: map[string]formatParser{
+			"text/plain": ilp.ParseRequest,
 		},
 	}
 }

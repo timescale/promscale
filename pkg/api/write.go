@@ -72,7 +72,7 @@ func WriteILP(
 	wh.addStages(
 		validateWriteHeaders,
 		decodeSnappy,
-		ingest(inserter, dataParser, updateMetrics),
+		ingestILP(inserter, dataParser, updateMetrics),
 	)
 	return wh.handler()
 }
@@ -214,7 +214,7 @@ var decodedBufPool = sync.Pool{
 	},
 }
 
-func ingestILP(
+func ingest(
 	inserter ingestor.DBInserter,
 	dataParser *parser.DefaultParser,
 	updateMetrics func(code string, durationSeconds, receivedSamples, receivedMetadata float64),
@@ -264,7 +264,7 @@ func ingestILP(
 	}
 }
 
-func ingest(
+func ingestILP(
 	inserter ingestor.DBInserter,
 	dataParser *parser.DefaultParser,
 	updateMetrics func(code string, durationSeconds, receivedSamples, receivedMetadata float64),

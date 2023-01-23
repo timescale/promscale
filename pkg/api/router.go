@@ -65,6 +65,9 @@ func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.
 
 	router.Path("/write").Methods(http.MethodPost).HandlerFunc(writeHandler)
 
+	writeILPHandler := timeHandler(metrics.HTTPRequestDuration, "write", otelhttp.NewHandler(WriteILP(client, parser.NewILPParser(), updateIngestMetrics), "write-ilp-metrics"))
+	router.Path("/ilp").Methods(http.MethodPost).HandlerFunc(writeILPHandler)
+
 	readHandler := timeHandler(metrics.HTTPRequestDuration, "read", Read(apiConf, client, metrics, updateQueryMetrics))
 	router.Path("/read").Methods(http.MethodGet, http.MethodPost).HandlerFunc(readHandler)
 
