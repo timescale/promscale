@@ -51,7 +51,7 @@ func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.
 		dataParser.AddPreprocessor(preproc)
 	}
 
-	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write", otelhttp.NewHandler(Write(client, dataParser, updateIngestMetrics), "write-metrics"))
+	writeHandler := timeHandler(metrics.HTTPRequestDuration, "write-prom", otelhttp.NewHandler(Write(client, dataParser, updateIngestMetrics), "write-metrics"))
 
 	// If we are running in read-only mode, log and send NotFound status.
 	if apiConf.ReadOnly {
@@ -63,10 +63,10 @@ func GenerateRouter(apiConf *Config, promqlConf *query.Config, client *pgclient.
 		router.Use(authWrapper)
 	}
 
-	router.Path("/write").Methods(http.MethodPost).HandlerFunc(writeHandler)
+	router.Path("/write-prom").Methods(http.MethodPost).HandlerFunc(writeHandler)
 
 	writeILPHandler := timeHandler(metrics.HTTPRequestDuration, "write", otelhttp.NewHandler(WriteILP(client, parser.NewILPParser(), updateIngestMetrics), "write-ilp-metrics"))
-	router.Path("/ilp").Methods(http.MethodPost).HandlerFunc(writeILPHandler)
+	router.Path("/write").Methods(http.MethodPost).HandlerFunc(writeILPHandler)
 
 	readHandler := timeHandler(metrics.HTTPRequestDuration, "read", Read(apiConf, client, metrics, updateQueryMetrics))
 	router.Path("/read").Methods(http.MethodGet, http.MethodPost).HandlerFunc(readHandler)

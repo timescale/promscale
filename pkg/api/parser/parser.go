@@ -44,6 +44,7 @@ func NewILPParser() *DefaultParser {
 	return &DefaultParser{
 		formatParsers: map[string]formatParser{
 			"text/plain": ilp.ParseRequest,
+			"text/ascii": ilp.ParseRequest,
 		},
 	}
 }

@@ -109,10 +109,10 @@ func validateWriteHeaders(w http.ResponseWriter, r *http.Request) bool {
 		}
 	case "application/json":
 		// Don't need any other header checks for JSON content type.
-	case "text/plain", "application/openmetrics":
+	case "text/plain", "application/openmetrics", "text/ascii":
 		// Don't need any other header checks for text content type.
 	default:
-		validateError(w, "unsupported data format (not protobuf, JSON, or text format)", metrics)
+		validateError(w, fmt.Sprintf("unsupported content type: %s", mediaType), metrics)
 		return false
 	}
 
@@ -274,20 +274,20 @@ func ingestILP(
 		statusCode := "400"
 		numSamplesReceived := uint64(0)
 		numMetadataReceived := uint64(0)
+		req := ingestor.NewWriteRequest()
 		defer func() {
 			updateMetrics(
 				statusCode,
 				time.Since(begin).Seconds(),
 				float64(numSamplesReceived), float64(numMetadataReceived),
 			)
+			ingestor.FinishWriteRequest(req)
 		}()
 		ctx, span := tracer.Default().Start(r.Context(), "ingest")
 		defer span.End()
 
-		req := ingestor.NewWriteRequest()
 		err := dataParser.ParseRequest(r, req)
 		if err != nil {
-			ingestor.FinishWriteRequest(req)
 			invalidRequestError(w, "parser error", err.Error(), metrics)
 			return false
 		}
@@ -298,7 +298,6 @@ func ingestILP(
 		// proceed further
 		if len(req.Timeseries) == 0 && len(req.Metadata) == 0 {
 			statusCode = "2xx"
-			ingestor.FinishWriteRequest(req)
 			return false
 		}
 
@@ -310,6 +309,7 @@ func ingestILP(
 			return false
 		}
 		statusCode = "2xx"
+		w.WriteHeader(http.StatusNoContent)
 		return true
 	}
 }
