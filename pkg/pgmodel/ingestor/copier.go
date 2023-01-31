@@ -399,9 +399,11 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 
 		visitor := req.data.batch.Visitor()
 		err = visitor.Visit(
-			func(t time.Time, v float64, seriesId int64) {
+			func(seriesId int64, t time.Time, v []float64) {
 				hasSamples = true
-				sampleRows = append(sampleRows, []interface{}{t, v, seriesId})
+				isMultiValued := len(v) > 1 // We can push this to DB as 1:1 columns
+				fmt.Println(isMultiValued)
+				sampleRows = append(sampleRows, []interface{}{t, v[0], seriesId}) // Since we support only 1 sample ATM.
 			},
 			func(t time.Time, v float64, seriesId int64, lvalues []string) {
 				hasExemplars = true

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -147,160 +146,26 @@ func getPrecisionMultiplier(precision string) time.Duration {
 }
 
 func SerializeBatch(metrics []telegraf.Metric, wr *prompb.WriteRequest) error {
-	var entries = make(map[MetricKey]prompb.TimeSeries)
+	var promTS = make([]prompb.TimeSeries, 0, len(metrics))
 	for _, metric := range metrics {
 		commonLabels := createLabels(metric)
-		var metrickey MetricKey
-		var promts prompb.TimeSeries
+		var values []float64
+		metricName := metric.Name()
+		metricName, ok := SanitizeMetricName(metricName)
+		if !ok {
+			fmt.Println("unsantized metric_name")
+			continue
+		}
 		for _, field := range metric.FieldList() {
-			metricName := MetricName(metric.Name(), field.Key, metric.Type())
-			metricName, ok := SanitizeMetricName(metricName)
+			val, ok := prometheus.SampleValue(field.Value)
 			if !ok {
+				fmt.Println("couldnt parse sample value")
 				continue
 			}
-			switch metric.Type() {
-			case telegraf.Counter:
-				fallthrough
-			case telegraf.Gauge:
-				fallthrough
-			case telegraf.Untyped:
-				value, ok := prometheus.SampleValue(field.Value)
-				if !ok {
-					continue
-				}
-				metrickey, promts = getPromTS(metricName, commonLabels, value, metric.Time())
-			case telegraf.Histogram:
-				switch {
-				case strings.HasSuffix(field.Key, "_bucket"):
-					// if bucket only, init sum, count, inf
-					metrickeysum, promtssum := getPromTS(fmt.Sprintf("%s_sum", metricName), commonLabels, float64(0), metric.Time())
-					if _, ok = entries[metrickeysum]; !ok {
-						entries[metrickeysum] = promtssum
-					}
-					metrickeycount, promtscount := getPromTS(fmt.Sprintf("%s_count", metricName), commonLabels, float64(0), metric.Time())
-					if _, ok = entries[metrickeycount]; !ok {
-						entries[metrickeycount] = promtscount
-					}
-					labels := make([]prompb.Label, len(commonLabels), len(commonLabels)+1)
-					copy(labels, commonLabels)
-					labels = append(labels, prompb.Label{
-						Name:  "le",
-						Value: "+Inf",
-					})
-					metrickeyinf, promtsinf := getPromTS(fmt.Sprintf("%s_bucket", metricName), labels, float64(0), metric.Time())
-					if _, ok = entries[metrickeyinf]; !ok {
-						entries[metrickeyinf] = promtsinf
-					}
-
-					le, ok := metric.GetTag("le")
-					if !ok {
-						continue
-					}
-					bound, err := strconv.ParseFloat(le, 64)
-					if err != nil {
-						continue
-					}
-					count, ok := prometheus.SampleCount(field.Value)
-					if !ok {
-						continue
-					}
-
-					labels = make([]prompb.Label, len(commonLabels), len(commonLabels)+1)
-					copy(labels, commonLabels)
-					labels = append(labels, prompb.Label{
-						Name:  "le",
-						Value: fmt.Sprint(bound),
-					})
-					metrickey, promts = getPromTS(fmt.Sprintf("%s_bucket", metricName), labels, float64(count), metric.Time())
-				case strings.HasSuffix(field.Key, "_sum"):
-					sum, ok := prometheus.SampleSum(field.Value)
-					if !ok {
-						continue
-					}
-
-					metrickey, promts = getPromTS(fmt.Sprintf("%s_sum", metricName), commonLabels, sum, metric.Time())
-				case strings.HasSuffix(field.Key, "_count"):
-					count, ok := prometheus.SampleCount(field.Value)
-					if !ok {
-						continue
-					}
-
-					// if no bucket generate +Inf entry
-					labels := make([]prompb.Label, len(commonLabels), len(commonLabels)+1)
-					copy(labels, commonLabels)
-					labels = append(labels, prompb.Label{
-						Name:  "le",
-						Value: "+Inf",
-					})
-					metrickeyinf, promtsinf := getPromTS(fmt.Sprintf("%s_bucket", metricName), labels, float64(count), metric.Time())
-					if minf, ok := entries[metrickeyinf]; !ok || minf.Samples[0].Value == 0 {
-						entries[metrickeyinf] = promtsinf
-					}
-
-					metrickey, promts = getPromTS(fmt.Sprintf("%s_count", metricName), commonLabels, float64(count), metric.Time())
-				default:
-					continue
-				}
-			case telegraf.Summary:
-				switch {
-				case strings.HasSuffix(field.Key, "_sum"):
-					sum, ok := prometheus.SampleSum(field.Value)
-					if !ok {
-						continue
-					}
-
-					metrickey, promts = getPromTS(fmt.Sprintf("%s_sum", metricName), commonLabels, sum, metric.Time())
-				case strings.HasSuffix(field.Key, "_count"):
-					count, ok := prometheus.SampleCount(field.Value)
-					if !ok {
-						continue
-					}
-
-					metrickey, promts = getPromTS(fmt.Sprintf("%s_count", metricName), commonLabels, float64(count), metric.Time())
-				default:
-					quantileTag, ok := metric.GetTag("quantile")
-					if !ok {
-						continue
-					}
-					quantile, err := strconv.ParseFloat(quantileTag, 64)
-					if err != nil {
-						continue
-					}
-					value, ok := prometheus.SampleValue(field.Value)
-					if !ok {
-						continue
-					}
-
-					labels := make([]prompb.Label, len(commonLabels), len(commonLabels)+1)
-					copy(labels, commonLabels)
-					labels = append(labels, prompb.Label{
-						Name:  "quantile",
-						Value: fmt.Sprint(quantile),
-					})
-					metrickey, promts = getPromTS(metricName, labels, value, metric.Time())
-				}
-			default:
-				return fmt.Errorf("unknown type %v", metric.Type())
-			}
-
-			// A batch of metrics can contain multiple values for a single
-			// Prometheus sample.  If this metric is older than the existing
-			// sample then we can skip over it.
-			m, ok := entries[metrickey]
-			if ok {
-				if metric.Time().Before(time.Unix(0, m.Samples[0].Timestamp*1_000_000)) {
-					continue
-				}
-			}
-			entries[metrickey] = promts
+			values = append(values, val)
 		}
-	}
-
-	var promTS = make([]prompb.TimeSeries, len(entries))
-	var i int
-	for _, promts := range entries {
-		promTS[i] = promts
-		i++
+		_, ts := getPromTS(metricName, commonLabels, metric.Time(), values...)
+		promTS = append(promTS, ts)
 	}
 
 	// if s.config.MetricSortOrder == SortMetrics {
@@ -404,11 +269,11 @@ func hasLabel(name string, labels []prompb.Label) bool {
 	return false
 }
 
-func getPromTS(name string, labels []prompb.Label, value float64, ts time.Time) (MetricKey, prompb.TimeSeries) {
+func getPromTS(name string, labels []prompb.Label, ts time.Time, values ...float64) (MetricKey, prompb.TimeSeries) {
 	sample := []prompb.Sample{{
 		// Timestamp is int milliseconds for remote write.
-		Timestamp: ts.UnixNano() / int64(time.Millisecond),
-		Value:     value,
+		Timestamp:  ts.UnixNano() / int64(time.Millisecond),
+		MultiValue: values,
 	}}
 	labelscopy := make([]prompb.Label, len(labels), len(labels)+1)
 	copy(labelscopy, labels)

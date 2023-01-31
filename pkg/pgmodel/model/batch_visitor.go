@@ -30,7 +30,7 @@ func (vtr *batchVisitor) MinTime() int64 {
 }
 
 func (vtr *batchVisitor) Visit(
-	visitSamples func(t time.Time, v float64, seriesId int64),
+	visitSamples func(seriesId int64, t time.Time, v []float64),
 	visitExemplars func(t time.Time, v float64, seriesId int64, lvalues []string),
 ) error {
 	var (
@@ -62,7 +62,7 @@ func (vtr *batchVisitor) Visit(
 			for itr.HasNext() {
 				t, v := itr.Value()
 				updateMinTs(t)
-				visitSamples(model.Time(t).Time(), v, int64(seriesId))
+				visitSamples(int64(seriesId), model.Time(t).Time(), v)
 			}
 		case Exemplar:
 			itr := insertable.Iterator().(ExemplarsIterator)

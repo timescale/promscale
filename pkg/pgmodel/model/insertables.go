@@ -40,7 +40,7 @@ type Iterator interface {
 type SamplesIterator interface {
 	Iterator
 	// Value returns current samples timestamp and value.
-	Value() (timestamp int64, value float64)
+	Value() (timestamp int64, values []float64)
 }
 
 // ExemplarsIterator iterates over exemplars.
