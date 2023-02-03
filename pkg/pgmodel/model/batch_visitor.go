@@ -30,7 +30,7 @@ func (vtr *batchVisitor) MinTime() int64 {
 }
 
 func (vtr *batchVisitor) Visit(
-	visitSamples func(seriesId int64, t time.Time, v []float64),
+	visitSamples func(seriesId int64, t time.Time, v map[string]interface{}),
 	visitExemplars func(t time.Time, v float64, seriesId int64, lvalues []string),
 ) error {
 	var (

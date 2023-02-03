@@ -5,8 +5,6 @@
 package model
 
 import (
-	"fmt"
-
 	"github.com/timescale/promscale/pkg/prompb"
 )
 
@@ -16,9 +14,6 @@ type promSamples struct {
 }
 
 func NewPromSamples(series *Series, sampleSet []prompb.Sample) Insertable {
-	if len(sampleSet[0].MultiValue) > 0 {
-		fmt.Println("num multi values", len(sampleSet[0].MultiValue), sampleSet[0].MultiValue)
-	}
 	return &promSamples{series, sampleSet}
 }
 
@@ -52,17 +47,18 @@ func (i *samplesIterator) HasNext() bool {
 
 // Value in samplesIterator does not return labels, since samples do not have labels.
 // Its the series that have th labels in samples.
-func (i *samplesIterator) Value() (timestamp int64, value []float64) {
+func (i *samplesIterator) Value() (int64, map[string]interface{}) {
 	defer func() {
 		i.curr++
 	}()
-	timestamp = i.data[i.curr].Timestamp
+	timestamp := i.data[i.curr].Timestamp
 	isMultiValued := len(i.data[i.curr].MultiValue) > 0
 	if isMultiValued {
 		return timestamp, i.data[i.curr].MultiValue
 	}
-	singleValued := i.data[i.curr].Value
-	return timestamp, []float64{singleValued}
+
+	singleValue := map[string]interface{}{"": i.data[i.curr].Value}
+	return timestamp, singleValue
 }
 
 func (t *promSamples) Iterator() Iterator {

@@ -73,6 +73,10 @@ func (reqs copyBatch) VisitExemplar(callBack func(info *pgmodel.MetricInfo, s *p
 	return nil
 }
 
+// a map of table name -> columns
+// this helps us to cache information aboust missing value columns
+var tableValueColumns sync.Map
+
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
 func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf *ExemplarLabelFormatter) {
@@ -372,7 +376,9 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 		sort.Sort(&req.data.batch)
 		numSamples, numExemplars := req.data.batch.Count()
 		metrics.IngestorRowsPerInsert.With(labelsCopier).Observe(float64(numSamples + numExemplars))
-
+		valueColumns, _ := tableValueColumns.LoadOrStore(pgx.Identifier{req.info.TableSchema, req.info.TableName}.Sanitize(), new(sync.Map))
+		valueColumnsMap := valueColumns.(*sync.Map)
+		var columnsToAdd []string
 		// flatten the various series into arrays.
 		// there are four main bottlenecks for insertion:
 		//   1. The round trip time.
@@ -399,11 +405,27 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 
 		visitor := req.data.batch.Visitor()
 		err = visitor.Visit(
-			func(seriesId int64, t time.Time, v []float64) {
+			func(seriesId int64, t time.Time, v map[string]interface{}) {
 				hasSamples = true
-				isMultiValued := len(v) > 1 // We can push this to DB as 1:1 columns
-				fmt.Println(isMultiValued)
-				sampleRows = append(sampleRows, []interface{}{t, v[0], seriesId}) // Since we support only 1 sample ATM.
+				values := []interface{}{t, 0} // TODO: remove the 0 here. We add it b/c we have column value already that can't be NULL
+				// we need to make sure that values and value columns are sorted in the same order
+				// this is to avoid inserting value in the wrong column when doing COPY
+				// this approach has not covered the case when in the same batch/measurement we have samples with different value columns
+				// however this is just a POC so we cut some corners here
+				sortedKeys := make([]string, 0, len(v))
+				for k := range v {
+					sortedKeys = append(sortedKeys, k)
+				}
+				sort.Strings(sortedKeys)
+				for _, k := range sortedKeys {
+					values = append(values, v[k])
+					_, exist := valueColumnsMap.LoadOrStore(k, struct{}{})
+					if !exist && k != "value" { // TODO: we skip existing value column
+						columnsToAdd = append(columnsToAdd, k)
+					}
+				}
+				values = append(values, seriesId)
+				sampleRows = append(sampleRows, values)
 			},
 			func(t time.Time, v float64, seriesId int64, lvalues []string) {
 				hasExemplars = true
@@ -427,7 +449,15 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 		totalExemplars += numExemplars
 
 		copyFromFunc := func(tableName, schemaName string, isExemplar bool) error {
-			columns := schema.PromDataColumns
+			columns := []string{"time", "value"}
+			sortedValueColumns := make([]string, 0)
+			valueColumnsMap.Range(func(key, value any) bool {
+				sortedValueColumns = append(sortedValueColumns, key.(string)) //nolint:forcetypeassert
+				return true
+			})
+			sort.Strings(sortedValueColumns[:])
+			columns = append(columns, sortedValueColumns...)
+			columns = append(columns, "series_id")
 			tempTablePrefix := fmt.Sprintf("s%d_", req.info.MetricID)
 			rows := sampleRows
 			if isExemplar {
@@ -463,6 +493,22 @@ func insertSeries(ctx context.Context, conn pgxconn.PgxConn, onConflict bool, re
 
 		if hasSamples {
 			numRowsPerInsert = append(numRowsPerInsert, numSamples)
+			if len(columnsToAdd) > 0 {
+				// we need to add the new columns to the table
+				cmd := fmt.Sprintf("ALTER TABLE %s", pgx.Identifier{req.info.TableSchema, req.info.TableName}.Sanitize())
+				for i, col := range columnsToAdd {
+					cmd = cmd + fmt.Sprintf(" ADD COLUMN IF NOT EXISTS %s DOUBLE PRECISION", col) //TODO: use correct type
+					if i != len(columnsToAdd)-1 {
+						cmd = cmd + ","
+					}
+				}
+				log.Info("query", cmd)
+				if _, err := tx.Exec(ctx, cmd); err != nil {
+					log.Error("msg", "error adding new columns to table", "table", req.info.TableName, "err", err)
+					return err, lowestMinTime
+				}
+				log.Info("msg", "added new columns to table", "table", req.info.TableName)
+			}
 			if err = copyFromFunc(req.info.TableName, req.info.TableSchema, false); err != nil {
 				return err, lowestMinTime
 			}

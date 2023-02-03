@@ -200,7 +200,7 @@ func (m *MetricMetadata) GetUnit() string {
 
 type Sample struct {
 	Value float64 `protobuf:"fixed64,1,opt,name=value,proto3" json:"value,omitempty"`
-	MultiValue []float64
+	MultiValue map[string]interface{}
 	// timestamp is in ms format, see pkg/timestamp/timestamp.go for
 	// conversion from time.Time to Prometheus timestamp.
 	Timestamp            int64    `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
@@ -249,7 +249,7 @@ func (m *Sample) GetValue() float64 {
 	return 0
 }
 
-func (m *Sample) GetMultiValue() []float64 {
+func (m *Sample) GetMultiValue() map[string]interface{} {
 	return m.MultiValue
 }
 

@@ -281,13 +281,13 @@ func ingestILP(
 				time.Since(begin).Seconds(),
 				float64(numSamplesReceived), float64(numMetadataReceived),
 			)
-			ingestor.FinishWriteRequest(req)
 		}()
 		ctx, span := tracer.Default().Start(r.Context(), "ingest")
 		defer span.End()
 
 		err := dataParser.ParseRequest(r, req)
 		if err != nil {
+			ingestor.FinishWriteRequest(req)
 			invalidRequestError(w, "parser error", err.Error(), metrics)
 			return false
 		}
@@ -298,6 +298,7 @@ func ingestILP(
 		// proceed further
 		if len(req.Timeseries) == 0 && len(req.Metadata) == 0 {
 			statusCode = "2xx"
+			ingestor.FinishWriteRequest(req)
 			return false
 		}
 

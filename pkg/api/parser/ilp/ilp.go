@@ -149,22 +149,13 @@ func SerializeBatch(metrics []telegraf.Metric, wr *prompb.WriteRequest) error {
 	var promTS = make([]prompb.TimeSeries, 0, len(metrics))
 	for _, metric := range metrics {
 		commonLabels := createLabels(metric)
-		var values []float64
 		metricName := metric.Name()
 		metricName, ok := SanitizeMetricName(metricName)
 		if !ok {
 			fmt.Println("unsantized metric_name")
 			continue
 		}
-		for _, field := range metric.FieldList() {
-			val, ok := prometheus.SampleValue(field.Value)
-			if !ok {
-				fmt.Println("couldnt parse sample value")
-				continue
-			}
-			values = append(values, val)
-		}
-		_, ts := getPromTS(metricName, commonLabels, metric.Time(), values...)
+		_, ts := getPromTS(metricName, commonLabels, metric.Time(), metric.FieldList())
 		promTS = append(promTS, ts)
 	}
 
@@ -269,7 +260,16 @@ func hasLabel(name string, labels []prompb.Label) bool {
 	return false
 }
 
-func getPromTS(name string, labels []prompb.Label, ts time.Time, values ...float64) (MetricKey, prompb.TimeSeries) {
+func getPromTS(name string, labels []prompb.Label, ts time.Time, fields []*telegraf.Field) (MetricKey, prompb.TimeSeries) {
+	values := make(map[string]interface{}, len(fields))
+	for _, field := range fields {
+		val, ok := prometheus.SampleValue(field.Value)
+		if !ok {
+			log.Debug("msg", "couldn't parse sample value", "value", field.Value)
+			continue
+		}
+		values[field.Key] = val
+	}
 	sample := []prompb.Sample{{
 		// Timestamp is int milliseconds for remote write.
 		Timestamp:  ts.UnixNano() / int64(time.Millisecond),
