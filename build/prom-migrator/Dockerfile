@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.19.3-alpine AS builder
+FROM golang:1.19.4-alpine AS builder
 COPY ./.git build/.git
 COPY ./pkg  build/pkg
 COPY ./migration-tool build/migration-tool
