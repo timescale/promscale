@@ -1,3 +1,13 @@
+> **Warning**
+>
+> Promscale has been discontinued and is deprecated.
+>
+> The code in this repository is no longer maintained.
+>
+> [Learn more](https://github.com/timescale/promscale/issues/1836).
+
+
+
 # Promscale
 
 [![Go](https://github.com/timescale/promscale/workflows/Go/badge.svg)](https://github.com/timescale/promscale/actions?query=workflow%3AGo)
