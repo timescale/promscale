@@ -52,6 +52,10 @@ func (t *Batch) Count() (numSamples, numExemplars int) {
 	return t.numSamples, t.numExemplars
 }
 
+func (t *Batch) CountPoints() int {
+	return t.numSamples + t.numExemplars
+}
+
 func (t *Batch) AppendSlice(s []Insertable) {
 	t.data = append(t.data, s...)
 	for _, d := range s {

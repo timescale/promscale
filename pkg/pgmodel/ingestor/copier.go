@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -35,8 +36,9 @@ const (
 )
 
 type copyRequest struct {
-	data *pendingBuffer
-	info *pgmodel.MetricInfo
+	data   *pendingBuffer
+	info   *pgmodel.MetricInfo
+	doneCh chan<- struct{}
 }
 
 var (
@@ -75,48 +77,34 @@ func (reqs copyBatch) VisitExemplar(callBack func(info *pgmodel.MetricInfo, s *p
 
 // Handles actual insertion into the DB.
 // We have one of these per connection reserved for insertion.
-func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf *ExemplarLabelFormatter) {
-	requestBatch := make([]readRequest, 0, metrics.MaxInsertStmtPerTxn)
-	insertBatch := make([]copyRequest, 0, cap(requestBatch))
+func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf *ExemplarLabelFormatter, numCopiers int) {
+	insertBatch := make([]copyRequest, 0, metrics.MaxInsertStmtPerTxn)
+	var stats batchStats
 	for {
 		ctx, span := tracer.Default().Start(context.Background(), "copier-run")
 		var (
-			ok        bool
-			numSeries int
+			ok bool
 		)
 
-		// fetch a batch of read requests upfront to make sure that all the
-		// requests fetched are for unique metrics. This is ensured by the fact
-		// that the batcher only has one outstanding readRequest at a time and
-		// the fact that we fetch the entire batch before executing any of the
-		// reads. This guarantees that we never need to batch the same metrics
-		// together in the copier.
-		requestBatch, ok = copierGetBatch(ctx, requestBatch, in)
+		insertBatch, stats, ok = copierGetBatch(ctx, insertBatch, in, numCopiers)
 		if !ok {
 			span.End()
 			return
 		}
 
-		insertCtx, insertSpan := tracer.Default().Start(ctx, "insert-batch-append")
-		for i := range requestBatch {
-			copyRequest, ok := <-requestBatch[i].copySender
-			if !ok {
-				continue
-			}
-
-			_, batchSpan := tracer.Default().Start(insertCtx, "append-batch", trace.WithLinks(
+		ackCtx, ackSpan := tracer.Default().Start(ctx, "acknowledge-batch")
+		for i := range insertBatch {
+			insertBatch[i].doneCh <- struct{}{}
+			_, batchSpan := tracer.Default().Start(ackCtx, "append-batch", trace.WithLinks(
 				trace.Link{
-					SpanContext: trace.SpanContextFromContext(copyRequest.data.spanCtx),
+					SpanContext: trace.SpanContextFromContext(insertBatch[i].data.spanCtx),
 				},
 			))
-			insertBatch = append(insertBatch, copyRequest)
-			numSeries = numSeries + copyRequest.data.batch.CountSeries()
 			batchSpan.End()
 		}
-		insertSpan.End()
+		ackSpan.End()
 
-		span.SetAttributes(attribute.Int("num_series", numSeries))
-
+		span.SetAttributes(attribute.Int("num_series", stats.numSeries))
 		// sort to prevent deadlocks on table locks
 		sort.Slice(insertBatch, func(i, j int) bool {
 			return insertBatch[i].info.TableName < insertBatch[j].info.TableName
@@ -129,14 +117,11 @@ func runCopier(conn pgxconn.PgxConn, in chan readRequest, sw *seriesWriter, elf 
 				insertBatch[i].data.release()
 			}
 		}
-		for i := range requestBatch {
-			requestBatch[i] = readRequest{}
-		}
+
 		for i := range insertBatch {
 			insertBatch[i] = copyRequest{}
 		}
 		insertBatch = insertBatch[:0]
-		requestBatch = requestBatch[:0]
 		span.End()
 	}
 }
@@ -158,9 +143,24 @@ func persistBatch(ctx context.Context, conn pgxconn.PgxConn, sw *seriesWriter, e
 	return nil
 }
 
-func copierGetBatch(ctx context.Context, batch []readRequest, in <-chan readRequest) ([]readRequest, bool) {
+type batchStats struct {
+	numSeries    int
+	numSamples   int
+	numExemplars int
+}
+
+func (bs *batchStats) Update(cr copyRequest) {
+	series := cr.data.batch.CountSeries()
+	samples, exemplars := cr.data.batch.Count()
+	bs.numSamples += series
+	bs.numSamples += samples
+	bs.numExemplars += exemplars
+}
+
+func copierGetBatch(ctx context.Context, batch []copyRequest, in <-chan readRequest, numCopiers int) ([]copyRequest, batchStats, bool) {
 	_, span := tracer.Default().Start(ctx, "get-batch")
 	defer span.End()
+	stats := batchStats{}
 	//This mutex is not for safety, but rather for better batching.
 	//It guarantees that only one copier is reading from the channel at one time
 	//This ensures bigger batches as well as less spread of a
@@ -176,30 +176,53 @@ func copierGetBatch(ctx context.Context, batch []readRequest, in <-chan readRequ
 
 	req, ok := <-in
 	if !ok {
-		return batch, false
+		return batch, stats, false
 	}
 	span.AddEvent("Appending first batch")
-	batch = append(batch, req)
+	copyRequest, ok := <-req.copySender
+	if !ok {
+		return batch, stats, false
+	}
+	batch = append(batch, copyRequest)
+	cnt := copyRequest.data.batch.CountPoints()
+	stats.Update(copyRequest)
+
+	totalPoints := atomic.LoadInt64(&metrics.BatchingPoints)
+	//try to get a fair number of points across copiers
+	targetPoints := int(totalPoints) / numCopiers
+	//but don't go too crazy small batches help no one
+	if targetPoints < 1000 {
+		targetPoints = 1000
+	}
+
+	metrics.IngestorBatchTargetPoints.With(labelsCopier).Observe(float64(targetPoints))
 
 	//we use a small timeout to prevent low-pressure systems from using up too many
 	//txns and putting pressure on system
-	timeout := time.After(20 * time.Millisecond)
+	timeout := time.After(100 * time.Millisecond)
 hot_gather:
-	for len(batch) < cap(batch) {
+	for len(batch) < cap(batch) && cnt < targetPoints {
 		select {
 		case r2 := <-in:
 			span.AddEvent("Appending batch")
-			batch = append(batch, r2)
+			copyRequest, ok := <-r2.copySender
+			if !ok {
+				return batch, stats, false
+			}
+			batch = append(batch, copyRequest)
+			cnt += copyRequest.data.batch.CountPoints()
+			stats.Update(copyRequest)
 		case <-timeout:
 			span.AddEvent("Timeout appending batches")
 			break hot_gather
 		}
 	}
+	atomic.AddInt64(&metrics.BatchingPoints, -int64(cnt))
 	if len(batch) == cap(batch) {
 		span.AddEvent("Batch is full")
 	}
 	span.SetAttributes(attribute.Int("num_batches", len(batch)))
-	return batch, true
+	return batch, stats, true
 }
 
 func doInsertOrFallback(ctx context.Context, conn pgxconn.PgxConn, reqs ...copyRequest) {
