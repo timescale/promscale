@@ -12,7 +12,6 @@ import (
 	jaegertranslator "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/jaeger"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
-	conventions "go.opentelemetry.io/collector/semconv/v1.9.0"
 )
 
 var (
@@ -30,6 +29,15 @@ var (
 		"consumer":    ptrace.SpanKindConsumer,
 		"producer":    ptrace.SpanKindProducer,
 		"unspecified": ptrace.SpanKindUnspecified,
+	}
+
+	spanKindToInternalValue = map[string]string{
+		"SPAN_KIND_UNSPECIFIED": "unspecified",
+		"SPAN_KIND_INTERNAL":    "internal",
+		"SPAN_KIND_SERVER":      "server",
+		"SPAN_KIND_CLIENT":      "client",
+		"SPAN_KIND_PRODUCER":    "producer",
+		"SPAN_KIND_CONSUMER":    "consumer",
 	}
 	// Map of Jaeger span kind tag strings to internal DB values.
 	// This is kept explicit even though the values are identical.
@@ -88,12 +96,11 @@ func internalToSpanKind(s string) ptrace.SpanKind {
 }
 
 func spanKindStringToInternal(kind string) (string, error) {
-	for k, v := range spanKindInternalValue {
-		if v.String() == kind {
-			return k, nil
-		}
+	v, ok := spanKindToInternalValue[kind]
+	if !ok {
+		return "", fmt.Errorf("unknown span kind: %s", kind)
 	}
-	return "", fmt.Errorf("unknown span kind: %s", kind)
+	return v, nil
 }
 
 // JSpanKindToInternal translates Jaeger span kind tag value to internal enum value used for storage.
@@ -118,68 +125,7 @@ func ProtoToTraces(span *model.Span) (ptrace.Traces, error) {
 		return ptrace.NewTraces(), err
 	}
 
-	// TODO: There's an open PR against the Jaeger translator that adds support
-	// for keeping the RefType. Once the PR is merged we can remove the following
-	// if condition and the addRefTypeAttributeToLinks function.
-	//
-	// https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/14463
-	if len(span.References) > 1 {
-		links := traces.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0).Links()
-		addRefTypeAttributeToLinks(span, links)
-	}
-
 	return traces, nil
-}
-
-// TODO: There's an open PR against the Jaeger translator that adds support
-// for keeping the RefType. Once the PR is merged we can delete this function.
-//
-// https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/14463
-//
-// addRefTypeAttributeToLinks adds the RefType of the Jaeger Span references as
-// an attribute to their corresponding OTEL links. The `links` argument must
-// be the OTEL representation of the given `span.References`.
-//
-// The added attributes follow the OpenTracing to OTEL semantic convention
-// https://opentelemetry.io/docs/reference/specification/trace/semantic_conventions/compatibility/#opentracing
-func addRefTypeAttributeToLinks(span *model.Span, links ptrace.SpanLinkSlice) {
-
-	// The reference to the parent span is stored directly as an attribute
-	// of the Span and not as a Link.
-	parentsSpanID := span.ParentSpanID()
-
-	// Recreate SpanLinkSlice from Span References.
-	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/c9e646b99610615730a845acc278b30bf49aa35f/pkg/translator/jaeger/jaegerproto_to_traces.go#L411-L427
-	spanLinks := ptrace.NewSpanLinkSlice()
-	spanLinks.EnsureCapacity(len(span.References))
-	for _, ref := range span.References {
-		if ref.RefType == model.ChildOf && ref.SpanID == parentsSpanID {
-			continue
-		}
-		sl := spanLinks.AppendEmpty()
-		jSpanRefToInternal(ref, sl)
-	}
-	spanLinks.CopyTo(links)
-}
-
-func jSpanRefToInternal(ref model.SpanRef, link ptrace.SpanLink) {
-	link.SetTraceID(uInt64ToTraceID(ref.TraceID.High, ref.TraceID.Low))
-	link.SetSpanID(uInt64ToSpanID(uint64(ref.SpanID)))
-
-	// Since there are only 2 types of refereces, ChildOf and FollowsFrom, we
-	// keep track only of the former.
-	// Everything that's not ChildOf will be set as FollowsFrom.
-	if ref.RefType == model.ChildOf {
-		link.Attributes().PutString(
-			conventions.AttributeOpentracingRefType,
-			conventions.AttributeOpentracingRefTypeChildOf,
-		)
-	} else {
-		link.Attributes().PutString(
-			conventions.AttributeOpentracingRefType,
-			conventions.AttributeOpentracingRefTypeFollowsFrom,
-		)
-	}
 }
 
 func ProtoFromTraces(traces ptrace.Traces) ([]*model.Batch, error) {
@@ -187,7 +133,6 @@ func ProtoFromTraces(traces ptrace.Traces) ([]*model.Batch, error) {
 	if err != nil {
 		return nil, fmt.Errorf("internal-traces-to-jaeger-proto: %w", err)
 	}
-	otherParents := getOtherParents(traces)
 	for _, batch := range batches {
 		if batch != nil {
 			decodeBinaryTags(batch.Process.Tags)
@@ -195,82 +140,9 @@ func ProtoFromTraces(traces ptrace.Traces) ([]*model.Batch, error) {
 		for _, span := range batch.GetSpans() {
 			decodeSpanBinaryTags(span)
 
-			// TODO: There's an open PR against the Jaeger translator that adds
-			// support for keeping the RefType. Once the PR is merged we can remove
-			// the following if condition and the getOtherParents function.
-			//
-			// https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/14463
-			if pIdxs, ok := otherParents[span.SpanID]; ok {
-				refs := span.GetReferences()
-				for _, i := range pIdxs {
-					refs[i].RefType = model.ChildOf
-				}
-			}
 		}
 	}
 	return batches, nil
-}
-
-// getOtherParents returns a map where the keys are the IDs of Spans that have
-// more than one parent and the values are the position in the Span.References
-// list where those other parents references are.
-//
-// A parent is a link that has the `child_of` attribute defined in the semantic
-// convention for opentracing:
-//
-// https://opentelemetry.io/docs/reference/specification/trace/semantic_conventions/compatibility/#opentracing
-//
-// It tracks the position instead of the SpanID because there might multiple
-// links to the same SpanID but different RefTypes.
-func getOtherParents(traces ptrace.Traces) map[model.SpanID][]int {
-	otherParents := map[model.SpanID][]int{}
-
-	resourceSpans := traces.ResourceSpans()
-	for i := 0; i < resourceSpans.Len(); i++ {
-		rSpan := resourceSpans.At(i)
-		sSpans := rSpan.ScopeSpans()
-		for j := 0; j < sSpans.Len(); j++ {
-			sSpan := sSpans.At(j)
-			spans := sSpan.Spans()
-			for k := 0; k < spans.Len(); k++ {
-				span := spans.At(k)
-				links := span.Links()
-
-				// We need an offset because if the span has a ParentSpanID, then
-				// that's going to be the first link when translating from OTEL to
-				// Jaeger. We could say that is it doesn't have a ParentSpanID then
-				// it shouldn't have other parents, but just to be extra safe we
-				// inspect the attributes even if there's no ParentSpanID set.
-				offset := 0
-				if !span.ParentSpanID().IsEmpty() {
-					offset = 1
-				}
-				for l := 0; l < links.Len(); l++ {
-					link := links.At(l)
-					v, ok := link.Attributes().Get(conventions.AttributeOpentracingRefType)
-					if !ok || v.Str() != conventions.AttributeOpentracingRefTypeChildOf {
-						continue
-					}
-					spanID := spanIDToJaegerProto(span.SpanID())
-					pIdxs, ok := otherParents[spanID]
-					if !ok {
-						pIdxs = []int{}
-						otherParents[spanID] = pIdxs
-					}
-					otherParents[spanID] = append(pIdxs, l+offset)
-				}
-			}
-		}
-	}
-	return otherParents
-}
-
-// UInt64ToTraceID converts the pair of uint64 representation of a TraceID to pcommon.TraceID.
-func uInt64ToTraceID(high, low uint64) pcommon.TraceID {
-	traceID := [16]byte{}
-	binary.BigEndian.PutUint64(traceID[:8], high)
-	binary.BigEndian.PutUint64(traceID[8:], low)
-	return traceID
 }
 
 func uInt64ToSpanID(id uint64) pcommon.SpanID {

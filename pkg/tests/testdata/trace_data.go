@@ -51,7 +51,7 @@ var (
 
 func newMapFromRaw(m map[string]interface{}) pcommon.Map {
 	pm := pcommon.NewMap()
-	pm.FromRaw(m)
+	_ = pm.FromRaw(m)
 	return pm
 }
 
@@ -261,7 +261,9 @@ func fillSpanThree(span ptrace.Span, parentSpanID pcommon.SpanID) {
 
 // deep copy the traces since we mutate them.
 func CopyTraces(traces ptrace.Traces) ptrace.Traces {
-	return traces.Clone()
+	newTraces := ptrace.NewTraces()
+	traces.CopyTo(newTraces)
+	return newTraces
 }
 
 func readTraces(t testing.TB, count int) []ptrace.Traces {
@@ -297,7 +299,7 @@ func readTraces(t testing.TB, count int) []ptrace.Traces {
 	var (
 		buf               []byte
 		tr                ptrace.Traces
-		tracesUnmarshaler = ptrace.NewProtoUnmarshaler()
+		tracesUnmarshaler = ptrace.ProtoUnmarshaler{}
 		i                 = 0
 		result            = make([]ptrace.Traces, 0, count)
 	)
