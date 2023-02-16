@@ -64,7 +64,7 @@ require (
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
-	github.com/Microsoft/hcsshim v0.8.24 // indirect
+	github.com/Microsoft/hcsshim v0.8.25 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
 	github.com/apache/thrift v0.17.0 // indirect
 	github.com/armon/go-metrics v0.4.0 // indirect
@@ -73,7 +73,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
 	github.com/cilium/ebpf v0.6.2 // indirect
-	github.com/containerd/containerd v1.5.16 // indirect
+	github.com/containerd/containerd v1.5.18 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dennwc/varint v1.0.0 // indirect
