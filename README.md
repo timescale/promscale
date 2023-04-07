@@ -56,7 +56,7 @@ exemplars and Prometheus HA.
 * **Certified Jaeger trace storage:** Promscale is a [certified Jaeger storage backend](https://github.com/jaegertracing/jaeger#multiple-storage-backends).
 Integrate Jaeger with Promscale to store and visualize your traces with a simple configuration change in Jaeger.
 Use Promscale as the storage backend for the metrics required by the
-[Service Performance Management UI](https://www.jaegertracing.io/docs/1.38/spm/). No need for a separate 
+[Service Performance Management UI](https://www.jaegertracing.io/docs/latest/spm/). No need for a separate 
 Prometheus / PromQL compatible storage.
 * **OpenTelemetry trace storage:** support for ingestion of traces through the OpenTelemetry Protocol
 (OTLP).
