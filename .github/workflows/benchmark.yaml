@@ -16,10 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Go ${{ env.golang-version }}
-        uses: actions/setup-go@v3.5.0
+        uses: actions/setup-go@v5.0.0
         with:
           go-version: ${{ env.golang-version }}
         id: go
@@ -28,13 +28,13 @@ jobs:
         run: go test -bench=. -run=^$ -benchmem -cpu=1 -count=10 -timeout=6h ./... | tee current.txt
 
       - name: Upload results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: current
           path: current.txt
 
       - name: Checkout master branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: 'master'
 
@@ -42,7 +42,7 @@ jobs:
         run: go test -bench=. -run=^$ -benchmem -cpu=1 -count=10 -timeout=6h ./... | tee master.txt
 
       - name: Download results of "Benchmark current PR"
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: current
 

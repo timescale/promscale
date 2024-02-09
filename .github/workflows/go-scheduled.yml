@@ -20,16 +20,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.5.0
+      uses: actions/setup-go@v5.0.0
       with:
         go-version: ${{ env.golang-version }}
       id: go
 
     - name: Use Go module caching
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/go/pkg/mod
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         lfs: true
 
@@ -52,13 +52,13 @@ jobs:
       run: git lfs checkout 
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.5.0
+      uses: actions/setup-go@v5.0.0
       with:
         go-version: ${{ env.golang-version }}
       id: go
 
     - name: Use Go module caching
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/go/pkg/mod
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
