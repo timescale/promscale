@@ -19,15 +19,15 @@ jobs:
     runs-on: ubuntu-latest
     name: Check monitoring mixin
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Go ${{ env.golang-version }}
-      uses: actions/setup-go@v3.5.0
+      uses: actions/setup-go@v5.0.0
       with:
         go-version: ${{ env.golang-version }}
       id: go
 
-    - uses: actions/setup-go@v3
+    - uses: actions/setup-go@v5
       with:
         go-version: ${{ env.golang-version }}
 
