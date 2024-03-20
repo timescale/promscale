@@ -8,7 +8,7 @@ on:
 env:
   PROMSCALE_LOGGING: false
   SKIP_PROMQL_BENCHMARKS: true
-  golang-version: 1.19.4
+  golang-version: 1.22.1
 
 jobs:
   benchmark:
