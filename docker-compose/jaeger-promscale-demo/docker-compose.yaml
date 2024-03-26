@@ -27,7 +27,7 @@ services:
     depends_on:
       - promscale
     restart: on-failure
-    image: jaegertracing/jaeger-query:1.37.0
+    image: jaegertracing/jaeger-query:1.55.0
     environment:
       SPAN_STORAGE_TYPE: grpc-plugin
       GRPC_STORAGE_SERVER: promscale:9202
@@ -37,7 +37,7 @@ services:
   hotrod:
     depends_on:
       - jaeger-collector
-    image: jaegertracing/example-hotrod:1.37.0
+    image: jaegertracing/example-hotrod:1.55.0
     environment:
       JAEGER_ENDPOINT: http://jaeger-collector:14268/api/traces
     ports:
@@ -47,7 +47,7 @@ services:
     depends_on:
       - promscale
     restart: on-failure
-    image: jaegertracing/jaeger-collector:1.37.0
+    image: jaegertracing/jaeger-collector:1.55.0
     environment:
       SPAN_STORAGE_TYPE: grpc-plugin
       GRPC_STORAGE_SERVER: promscale:9202
