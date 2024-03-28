@@ -11,7 +11,7 @@ on:
     branches: [master, main, force_test, release-*]
 
 env:
-  golang-version: 1.19.4
+  golang-version: 1.22.1
 
 jobs:
   run:
